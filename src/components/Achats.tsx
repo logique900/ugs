@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import {  Achat, Fournisseur, Article, Projet, LigneAchat, Reglement , Utilisateur } from '../types';
+import {  Achat, Fournisseur, Article, Projet, LigneAchat, Reglement , Utilisateur, MouvementStock } from '../types';
 import { generatePurchaseOrderPdf } from '../utils/pdfExportEngine';
+import { getArticleStock, updateArticleStock } from '../utils/stockUtils';
 
 interface AchatsProps {
   currentUser: Utilisateur;
@@ -12,6 +13,9 @@ interface AchatsProps {
   reglements: Reglement[];
   onAchatsChange: (achats: Achat[]) => void;
   onReglementsChange: (reglements: Reglement[]) => void;
+  onArticlesChange?: (articles: Article[]) => void;
+  mouvements?: MouvementStock[];
+  onMouvementsChange?: (mouvements: MouvementStock[]) => void;
 }
 
 export function Achats({
@@ -22,7 +26,10 @@ export function Achats({
   projets,
   reglements,
   onAchatsChange,
-  onReglementsChange
+  onReglementsChange,
+  onArticlesChange,
+  mouvements,
+  onMouvementsChange
 }: AchatsProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -274,6 +281,72 @@ export function Achats({
       return a;
     });
     onAchatsChange(updated);
+
+    // BF-STOCK-021: Stock Movement Logic when receiving an order
+    if (achat.statut === 'Commandé' && nextStatut === 'Reçu' && onArticlesChange && onMouvementsChange && articles && mouvements) {
+      const newMvts: MouvementStock[] = [];
+      let updatedArticles = [...articles];
+
+      achat.lignes?.forEach(line => {
+        if (!line.articleId) return;
+        const art = updatedArticles.find(a => a.id === line.articleId);
+        if (art && art.typeArticle !== 'Service') {
+          updatedArticles = updatedArticles.map(a => 
+            a.id === art.id ? updateArticleStock(a, achat.projetId || 'p1', line.quantite) : a
+          );
+
+          newMvts.push({
+            id: `mvt-ach-${Date.now()}-${art.id}`,
+            projetId: achat.projetId || 'p1',
+            articleId: art.id,
+            designation: art.designation,
+            type: 'Entrée',
+            quantite: line.quantite,
+            date: new Date().toISOString().split('T')[0],
+            motif: `Réception achat ${achat.numero}`,
+            reference: achat.numero,
+            referencePiece: achat.numero,
+            stockAvant: getArticleStock(art, achat.projetId || 'p1'),
+            stockApres: getArticleStock(art, achat.projetId || 'p1') + line.quantite
+          });
+        }
+      });
+      onArticlesChange(updatedArticles);
+      onMouvementsChange([...newMvts, ...mouvements]);
+    }
+
+    // Handle reversal (Reçu -> Commandé/Payé -> Commandé)
+    if (nextStatut === 'Commandé' && (achat.statut === 'Reçu' || achat.statut === 'Payé') && onArticlesChange && onMouvementsChange && articles && mouvements) {
+      const newMvts: MouvementStock[] = [];
+      let updatedArticles = [...articles];
+
+      achat.lignes?.forEach(line => {
+        if (!line.articleId) return;
+        const art = updatedArticles.find(a => a.id === line.articleId);
+        if (art && art.typeArticle !== 'Service') {
+          updatedArticles = updatedArticles.map(a => 
+            a.id === art.id ? updateArticleStock(a, achat.projetId || 'p1', -line.quantite) : a
+          );
+
+          newMvts.push({
+            id: `mvt-ach-rev-${Date.now()}-${art.id}`,
+            projetId: achat.projetId || 'p1',
+            articleId: art.id,
+            designation: art.designation,
+            type: 'Sortie', // Reversing the Entrée
+            quantite: line.quantite,
+            date: new Date().toISOString().split('T')[0],
+            motif: `Annulation réception achat ${achat.numero}`,
+            reference: achat.numero,
+            referencePiece: achat.numero,
+            stockAvant: getArticleStock(art, achat.projetId || 'p1'),
+            stockApres: Math.max(0, getArticleStock(art, achat.projetId || 'p1') - line.quantite)
+          });
+        }
+      });
+      onArticlesChange(updatedArticles);
+      onMouvementsChange([...newMvts, ...mouvements]);
+    }
   };
 
   // Open Quick Payment (Bouton de Paiement Fournisseur)

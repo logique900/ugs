@@ -1,6 +1,7 @@
-import Barcode from "react-barcode";
+import { Barcode1D, PrintLabelModal, generateEAN13, generateCode128 } from './Barcode1D';
+import { getArticleStock, hasLowStock, isOutOfStock, updateArticleStock } from '../utils/stockUtils';
 import React, { useState, useMemo } from 'react';
-import { Article, Projet, HistoriqueModification } from '../types';
+import { Article, Projet, HistoriqueModification, Role } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -17,15 +18,39 @@ interface ArticlesProps {
 
 export function Articles({ currentUser, selectedProjectId, articles, onArticlesChange, projets }: ArticlesProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [printLabelArticle, setPrintLabelArticle] = useState<Article | null>(null);
   const [familleFilter, setFamilleFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'actif' | 'inactif'>('all');
+  const [sortBy, setSortBy] = useState<'most_sold' | 'name_asc' | 'price_asc' | 'price_desc' | 'stock_low' | 'margin_desc'>('most_sold');
   
   // BF-PROD-013: Filtres recommandés (Boutique, Prix min, Prix max)
   const [boutiqueFilter, setBoutiqueFilter] = useState('all');
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
   
+  // Gestion des permissions (Admin, Comptable, Caissier)
+  const activeRole: Role = currentUser.role || 'admin';
+
+  const isAdmin = activeRole === 'admin' || activeRole === 'directeur';
+  const isComptable = activeRole === 'comptable';
+  const isCaissier = activeRole === 'caissier' || activeRole === 'agent' || activeRole === 'chef_projet';
+
+  // Matrice des permissions
+  const canAddProduct = isAdmin || isCaissier;
+  const canEditProduct = isAdmin || isCaissier;
+  const canDeactivateProduct = isAdmin;
+  const canEditPrices = isAdmin || isCaissier;
+  const canManageCategories = isAdmin || isCaissier;
+  const canViewPurchasePrice = isAdmin || isComptable;
+  const canViewMargins = isAdmin || isComptable;
+  const canViewSellingPrice = true;
+  const canSearchAndScan = true;
+
+  // BF-PROD-017: Contrôle des données saisies & Avertissement Vente à Perte
+  const [allowLossSale, setAllowLossSale] = useState(false);
+  const [lossSaleWarning, setLossSaleWarning] = useState<{ show: boolean; pa: number; pv: number; loss: number } | null>(null);
+
   // BF-PROD-015: Architecture Multi-Boutiques (Produit vs Stock)
   const [isMultiBoutiqueModalOpen, setIsMultiBoutiqueModalOpen] = useState(false);
   const [transferModalArticle, setTransferModalArticle] = useState<Article | null>(null);
@@ -104,6 +129,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
   const [formData, setFormData] = useState<Partial<Article>>({
     code: '',
+    typeArticle: 'Produit',
     referenceInterne: '',
     designation: '',
     description: '',
@@ -130,13 +156,21 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
     ? articles 
     : articles.filter(a => a.projetId === selectedProjectId);
 
+  const familles = useMemo(() => {
+    const set = new Set<string>();
+    articlesToShow.forEach(a => {
+      if (a.famille) set.add(a.famille);
+    });
+    return Array.from(set);
+  }, [articlesToShow]);
+
   // KPIs
   const kpis = useMemo(() => {
     const total = articlesToShow.length;
-    const stockValue = articlesToShow.reduce((acc, a) => acc + (a.prixAchatHT * a.stock), 0);
-    const expectedRevenue = articlesToShow.reduce((acc, a) => acc + (a.prixVenteHT * a.stock), 0);
-    const lowStockCount = articlesToShow.filter(a => a.stock > 0 && a.stock < (a.stockMinimum || 15)).length;
-    const outOfStockCount = articlesToShow.filter(a => a.stock === 0).length;
+    const stockValue = articlesToShow.reduce((acc, a) => acc + (a.prixAchatHT * getArticleStock(a, selectedProjectId)), 0);
+    const expectedRevenue = articlesToShow.reduce((acc, a) => acc + (a.prixVenteHT * getArticleStock(a, selectedProjectId)), 0);
+    const lowStockCount = articlesToShow.filter(a => getArticleStock(a, selectedProjectId) > 0 && getArticleStock(a, selectedProjectId) < (a.stockMinimums?.[selectedProjectId] || 15)).length;
+    const outOfStockCount = articlesToShow.filter(a => getArticleStock(a, selectedProjectId) === 0).length;
     
     const avgMargin = articlesToShow.length 
       ? articlesToShow.reduce((acc, a) => {
@@ -163,10 +197,10 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
     const matchStock = stockFilter === 'all' 
       ? true 
       : stockFilter === 'low' 
-        ? a.stock > 0 && a.stock < (a.stockMinimum || 15) 
+        ? getArticleStock(a, selectedProjectId) > 0 && getArticleStock(a, selectedProjectId) < (a.stockMinimums?.[selectedProjectId] || 15) 
         : stockFilter === 'out' 
-          ? a.stock === 0 
-          : a.stock >= (a.stockMinimum || 15);
+          ? getArticleStock(a, selectedProjectId) === 0 
+          : getArticleStock(a, selectedProjectId) >= (a.stockMinimums?.[selectedProjectId] || 15);
           
     const matchStatus = statusFilter === 'all' 
       ? true 
@@ -176,7 +210,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
     const matchBoutique = boutiqueFilter === 'all' 
       ? true 
-      : (a.stockParDepot && a.stockParDepot.some(d => (d.depotId === boutiqueFilter || d.nom.toLowerCase().includes(boutiqueFilter.toLowerCase())) && d.quantite > 0)) || a.projetId === boutiqueFilter;
+      : ((a.stocks || {})[boutiqueFilter] > 0) || a.projetId === boutiqueFilter;
 
     const parsedMinPrice = minPrice !== '' ? parseFloat(minPrice) : null;
     const matchMinPrice = parsedMinPrice === null || isNaN(parsedMinPrice) ? true : a.prixVenteHT >= parsedMinPrice;
@@ -187,10 +221,51 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
     return matchSearch && matchFamille && matchStock && matchStatus && matchBoutique && matchMinPrice && matchMaxPrice;
   });
 
-  const familles = Array.from(new Set(articlesToShow.map(a => a.famille)));
+  const families = Array.from(new Set(articlesToShow.map(a => a.famille).filter(Boolean)));
+
+  // Calculate sales frequency for sorting (Most Sold)
+  const articleSalesCount = useMemo(() => {
+    // Note: We'd normally get this from ventes, but here we can mock it or use ventes if available
+    // For now, let's assume we can access sales data or mock it based on statsCommerciales
+    const counts: Record<string, number> = {};
+    articlesToShow.forEach(a => {
+      counts[a.id] = a.statsCommerciales?.ventesCount || 0;
+    });
+    return counts;
+  }, [articlesToShow]);
+
+  // Sorting logic
+  const sortedArticles = useMemo(() => {
+    const result = [...filteredArticles];
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'most_sold':
+          return (articleSalesCount[b.id] || 0) - (articleSalesCount[a.id] || 0);
+        case 'name_asc':
+          return a.designation.localeCompare(b.designation);
+        case 'price_asc':
+          return a.prixVenteHT - b.prixVenteHT;
+        case 'price_desc':
+          return b.prixVenteHT - a.prixVenteHT;
+        case 'stock_low':
+          return getArticleStock(a, selectedProjectId) - getArticleStock(b, selectedProjectId);
+        case 'margin_desc':
+          const marginA = a.prixAchatHT > 0 ? (a.prixVenteHT - a.prixAchatHT) / a.prixAchatHT : 0;
+          const marginB = b.prixAchatHT > 0 ? (b.prixVenteHT - b.prixAchatHT) / b.prixAchatHT : 0;
+          return marginB - marginA;
+        default:
+          return 0;
+      }
+    });
+    return result;
+  }, [filteredArticles, sortBy, articleSalesCount, selectedProjectId]);
 
   const handleOpenAddModal = () => {
     setEditingArticle(null);
+    setAllowLossSale(false);
+    setLossSaleWarning(null);
+    setFormError('');
+    setActiveModalTab('ident');
     setFormData({
       code: '',
       referenceInterne: '',
@@ -203,6 +278,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       codeBarres: [],
       prixAchatHT: 0,
       prixVenteHT: 0,
+      margeBeneficiaire: 0,
       prixPromotionnelHT: 0,
       tva: 19,
       stock: 0,
@@ -219,14 +295,24 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
   const handleOpenEditModal = (article: Article) => {
     setEditingArticle(article);
+    setAllowLossSale(false);
+    setLossSaleWarning(null);
+    setFormError('');
+    setActiveModalTab('ident');
+    const computedMargin = article.margeBeneficiaire ?? (article.prixAchatHT > 0 ? parseFloat((((article.prixVenteHT - article.prixAchatHT) / article.prixAchatHT) * 100).toFixed(2)) : 0);
     setFormData({
       ...article,
+      margeBeneficiaire: computedMargin,
       tva: article.tva || 19,
     });
     setIsModalOpen(true);
   };
 
   const handleDeleteArticle = (id: string) => {
+    if (!canDeactivateProduct) {
+      alert(`❌ Accès refusé : La désactivation de produits est réservée aux Administrateurs. Rôle actuel : ${activeRole.toUpperCase()}.`);
+      return;
+    }
     const target = articles.find(a => a.id === id);
     if (target) {
       setDeactivatingArticle(target);
@@ -234,6 +320,10 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
   };
 
   const handleBulkDelete = () => {
+    if (!canDeactivateProduct) {
+      alert(`❌ Accès refusé : La désactivation groupée est réservée aux Administrateurs. Rôle actuel : ${activeRole.toUpperCase()}.`);
+      return;
+    }
     if (selectedArticles.length > 0) {
       setIsBulkDeactivateModalOpen(true);
     }
@@ -243,7 +333,59 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
   const handleSaveArticle = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
-    if (!formData.code || !formData.designation) return;
+
+    // Permission Guard
+    if (!canEditProduct) {
+      setFormError(`❌ Accès refusé : Vous n'avez pas l'autorisation de créer ou modifier des produits. Rôle actuel : ${activeRole.toUpperCase()}.`);
+      return;
+    }
+
+    // Validation of inputs
+    // 1. Mandatory SKU
+    if (!formData.code || !formData.code.trim()) {
+      setFormError("❌ Erreur de saisie : La référence / SKU du produit est obligatoire.");
+      return;
+    }
+
+    // 2. Mandatory Designation
+    if (!formData.designation || !formData.designation.trim()) {
+      setFormError("❌ Erreur de saisie : Le nom commercial / la désignation du produit est obligatoire.");
+      return;
+    }
+
+    // 3. Selling Price Negative Control
+    if (formData.prixVenteHT === undefined || formData.prixVenteHT === null || isNaN(formData.prixVenteHT) || formData.prixVenteHT < 0) {
+      setFormError(`❌ Erreur de saisie : Prix de vente négatif non autorisé (${formData.prixVenteHT ?? 0} DT). Veuillez indiquer un prix supérieur ou égal à 0 DT.`);
+      return;
+    }
+
+    // 4. Purchase Price Negative Control
+    if (formData.prixAchatHT !== undefined && formData.prixAchatHT !== null && formData.prixAchatHT < 0) {
+      setFormError(`❌ Erreur de saisie : Prix d'achat négatif non autorisé (${formData.prixAchatHT} DT).`);
+      return;
+    }
+
+    // 5. Stock Quantity Negative Control
+    if (formData.stocks !== undefined && formData.stocks !== null && formData.stocks < 0) {
+      setFormError(`❌ Erreur de saisie : Quantité en stock négative non autorisée (${formData.stocks}).`);
+      return;
+    }
+
+    // 6. Multi-Depot Stock Negative Control
+    if (formData.stocks && formData.stocks.some(d => d.quantite < 0)) {
+      setFormError("❌ Erreur de saisie : La quantité attribuée à une boutique ne peut pas être négative.");
+      return;
+    }
+
+    // 7. Warning: Purchase Price > Selling Price (Vente à perte)
+    const pa = formData.prixAchatHT || 0;
+    const pv = formData.prixVenteHT || 0;
+    if (pa > 0 && pv < pa && !allowLossSale) {
+      const loss = pa - pv;
+      setLossSaleWarning({ show: true, pa, pv, loss });
+      setFormError(`⚠ Avertissement : Le prix de vente (${pv.toFixed(3)} DT) est inférieur au prix d'achat (${pa.toFixed(3)} DT), générant une perte unitaire de -${loss.toFixed(3)} DT. Cochez "J'autorise la vente à perte" ci-dessous ou confirmez pour enregistrer.`);
+      return;
+    }
 
     // BF-PROD-016: Check SKU uniqueness
     const skuToTest = (formData.code || '').trim().toLowerCase();
@@ -332,6 +474,19 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
         });
       }
 
+      // Audit Logging: Marge Bénéficiaire (%)
+      if (editingArticle.margeBeneficiaire !== formData.margeBeneficiaire && formData.margeBeneficiaire !== undefined) {
+        newMods.push({
+          id: `mod-${Date.now()}-mb`,
+          date: nowIso,
+          utilisateur: userLabel,
+          roleUtilisateur: userRole,
+          champModifie: 'Marge Bénéficiaire (%)',
+          ancienneValeur: `${editingArticle.margeBeneficiaire ?? 0}%`,
+          nouvelleValeur: `${(formData.margeBeneficiaire || 0)}%`
+        });
+      }
+
       // BF-PROD-009 Audit Logging: Statut
       if (editingArticle.statut !== formData.statut && formData.statut) {
         newMods.push({
@@ -395,9 +550,21 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
         historiqueModifications: mergedMods 
       } : a));
     } else {
+      const initialStocks: Record<string, number> = {};
+      (projets || []).forEach(p => {
+        initialStocks[p.id] = (formData.stocks && formData.stocks[p.id] !== undefined) ? formData.stocks[p.id] : 0;
+      });
+
+      // Auto-generate unique 1D Barcode (EAN-13 or Code 128) if missing
+      const autoBarcode = (formData.codeBarres && formData.codeBarres.length > 0)
+        ? formData.codeBarres
+        : [generateEAN13()];
+
       const newArticle: any = {
         id: `a-${Date.now()}`,
         ...formData,
+        codeBarres: autoBarcode,
+        stocks: initialStocks,
         statut: formData.statut || 'Actif',
       };
       onArticlesChange([newArticle, ...articles]);
@@ -427,15 +594,19 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
   };
 
   const handleExportCSV = () => {
-    const headers = ['Code', 'Désignation', 'Famille', 'Achat HT', 'Vente HT', 'Stock'];
-    const rows = filteredArticles.map(a => [
-      a.code,
-      `"${a.designation.replace(/"/g, '""')}"`,
-      `"${a.famille.replace(/"/g, '""')}"`,
-      a.prixAchatHT.toString(),
-      a.prixVenteHT.toString(),
-      a.stock.toString()
-    ]);
+    const headers = ['Code', 'Désignation', 'Famille', 'Achat HT', 'Marge (%)', 'Vente HT', 'Stock'];
+    const rows = filteredArticles.map(a => {
+      const mb = a.margeBeneficiaire ?? (a.prixAchatHT > 0 ? ((a.prixVenteHT - a.prixAchatHT) / a.prixAchatHT) * 100 : 0);
+      return [
+        a.code,
+        `"${a.designation.replace(/"/g, '""')}"`,
+        `"${a.famille.replace(/"/g, '""')}"`,
+        a.prixAchatHT.toString(),
+        `${mb.toFixed(2)}%`,
+        a.prixVenteHT.toString(),
+        getArticleStock(a, selectedProjectId).toString()
+      ];
+    });
     
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -461,15 +632,19 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
     
     autoTable(doc, {
       startY: 36,
-      head: [['Code', 'Désignation', 'Famille', 'Achat HT', 'Vente HT', 'Stock']],
-      body: filteredArticles.map(a => [
-        a.code,
-        a.designation,
-        a.famille,
-        `${a.prixAchatHT.toFixed(3)} DT`,
-        `${a.prixVenteHT.toFixed(3)} DT`,
-        a.stock.toString()
-      ]),
+      head: [['Code', 'Désignation', 'Famille', 'Achat HT', 'Marge (%)', 'Vente HT', 'Stock']],
+      body: filteredArticles.map(a => {
+        const mb = a.margeBeneficiaire ?? (a.prixAchatHT > 0 ? ((a.prixVenteHT - a.prixAchatHT) / a.prixAchatHT) * 100 : 0);
+        return [
+          a.code,
+          a.designation,
+          a.famille,
+          `${a.prixAchatHT.toFixed(3)} DT`,
+          `${mb.toFixed(1)}%`,
+          `${a.prixVenteHT.toFixed(3)} DT`,
+          getArticleStock(a, selectedProjectId).toString()
+        ];
+      }),
       theme: 'grid',
       headStyles: { fillColor: [220, 38, 38] },
     });
@@ -483,17 +658,19 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       {/* Header Actions */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="font-display-lg text-display-lg text-on-surface flex items-center gap-2">
-            Gestion des Articles 
-            <span className="text-sm font-medium px-2.5 py-0.5 bg-primary/10 text-primary rounded-full border border-primary/20">
-              Avancé
+          <h1 className="font-display-lg text-xl sm:text-display-lg text-on-surface flex items-center gap-2 flex-wrap">
+            {selectedProjectId === 'all' ? 'Catalogue Central UGS' : 'Gestion des Articles'}
+            <span className="text-xs sm:text-sm font-medium px-2.5 py-0.5 bg-primary/10 text-primary rounded-full border border-primary/20">
+              {selectedProjectId === 'all' ? 'Centrale' : 'Boutique'}
             </span>
           </h1>
-          <p className="font-body-lg text-body-lg text-on-surface-variant mt-1">
-            Gérez votre catalogue, surveillez les marges et optimisez votre stock.
+          <p className="font-body-lg text-xs sm:text-body-lg text-on-surface-variant mt-1">
+            {selectedProjectId === 'all' 
+              ? 'Référentiel maître des produits distribués par la Société UGS.' 
+              : 'Gérez votre catalogue local et optimisez votre stock boutique.'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="relative">
             <button 
               onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
@@ -526,25 +703,51 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
           <button 
             onClick={() => setIsMultiBoutiqueModalOpen(true)}
             className="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-label-md text-label-md transition-all shadow-sm cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-            title="BF-PROD-015: Architecture Produit vs Stock Multi-Boutiques"
+            title="Gestion des stocks multi-boutiques"
           >
             <span className="material-symbols-outlined text-[18px] mr-2">domain</span>
-            Stocks Multi-Boutiques (BF-PROD-015)
+            Stocks Multi-Boutiques
           </button>
-          <button 
-            onClick={() => setIsCategoryModalOpen(true)}
-            className="inline-flex items-center justify-center px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-label-md text-label-md transition-colors shadow-sm cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[18px] mr-2">category</span>
-            Nouvelle Catégorie
-          </button>
-          <button 
-            onClick={handleOpenAddModal}
-            className="inline-flex items-center justify-center px-4 py-2.5 bg-primary hover:bg-red-700 text-white rounded-lg font-label-md text-label-md transition-colors shadow-sm cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[18px] mr-2">add</span>
-            Nouvel Article
-          </button>
+          
+          {/* Category Management Button */}
+          {canManageCategories ? (
+            <button 
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="inline-flex items-center justify-center px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-label-md text-label-md transition-colors shadow-sm cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[18px] mr-2">category</span>
+              Catégories
+            </button>
+          ) : (
+            <button 
+              disabled
+              className="inline-flex items-center justify-center px-4 py-2.5 bg-slate-200 text-slate-400 rounded-lg font-label-md text-label-md cursor-not-allowed border border-slate-300 opacity-60"
+              title="🔒 Accès restreint : Gestion des catégories réservée à l'Administrateur"
+            >
+              <span className="material-symbols-outlined text-[18px] mr-2">lock</span>
+              Catégories (Restreint)
+            </button>
+          )}
+
+          {/* New Article Button */}
+          {canAddProduct ? (
+            <button 
+              onClick={handleOpenAddModal}
+              className="inline-flex items-center justify-center px-4 py-2.5 bg-primary hover:bg-red-700 text-white rounded-lg font-label-md text-label-md transition-colors shadow-sm cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[18px] mr-2">add</span>
+              Nouvel Article
+            </button>
+          ) : (
+            <button 
+              disabled
+              className="inline-flex items-center justify-center px-4 py-2.5 bg-slate-200 text-slate-400 rounded-lg font-label-md text-label-md cursor-not-allowed border border-slate-300 opacity-60"
+              title="🔒 Accès restreint : Création d'articles réservée à l'Administrateur"
+            >
+              <span className="material-symbols-outlined text-[18px] mr-2">lock</span>
+              Nouvel Article (Restreint)
+            </button>
+          )}
         </div>
       </div>
 
@@ -609,7 +812,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={familles.map(f => ({
                 name: f,
-                value: articlesToShow.filter(a => a.famille === f).reduce((acc, a) => acc + (a.prixAchatHT * a.stock), 0)
+                value: articlesToShow.filter(a => a.famille === f).reduce((acc, a) => acc + (a.prixAchatHT * getArticleStock(a, selectedProjectId)), 0)
               })).sort((a,b) => b.value - a.value).slice(0, 4)} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#52525b' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#52525b' }} tickFormatter={(v) => v > 1000 ? `${(v/1000).toFixed(0)}k` : v} />
@@ -631,61 +834,16 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
         </div>
       </div>
 
-      {/* BF-PROD-008 & BF-PROD-009 Banners */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-sm flex flex-col justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-[22px]">toggle_off</span>
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-white uppercase tracking-wide">
-                BF-PROD-008 — Statut du Produit (ACTIF / INACTIF)
-              </h3>
-              <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                Les produits <strong>INACTIFS</strong> ne sont plus proposés lors des nouvelles ventes, devis ou commandes. Leur historique reste toutefois intégralement conservé.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 self-start">
-            <span className="px-3 py-1 bg-amber-500/20 text-amber-300 rounded-xl text-xs font-bold border border-amber-500/30">
-              {articles.filter(a => a.statut === 'Inactif').length} Produit(s) Inactif(s)
-            </span>
-          </div>
-        </div>
-
-        <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-sm flex flex-col justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-[22px]">edit_note</span>
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-white uppercase tracking-wide">
-                BF-PROD-009 — Modification & Traçabilité Utilisateur
-              </h3>
-              <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                Modification du nom, catégorie, prix d'achat, prix de vente, code-barres, description et statut. Chaque modification enregistre l'utilisateur et l'horodatage.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 self-start">
-            <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-xl text-xs font-bold border border-indigo-500/30">
-              🔒 Traçabilité Active ({currentUser.nom})
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* Advanced Data Table Area */}
       <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl overflow-hidden shadow-sm">
-        {/* Filters Toolbar & Search (BF-PROD-012) */}
+        {/* Filters Toolbar & Search */}
         <div className="p-4 border-b border-outline-variant bg-surface flex flex-col gap-3">
           <div className="flex flex-col lg:flex-row items-center gap-4">
             <div className="relative flex-1 w-full">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
               <input
                 type="text"
-                placeholder="BF-PROD-012 — Recherche rapide par Nom ('ordinateur'), SKU ('PRD-000145') ou Code-barres ('6191234567890')..."
+                placeholder="Recherche rapide par nom, SKU ou code-barres..."
                 className="block w-full pl-10 pr-10 py-2.5 border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest text-on-surface font-body-md transition-shadow shadow-2xs"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -781,8 +939,25 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 />
               </div>
 
+              {/* Trier par */}
+              <div className="flex items-center gap-2 flex-1 lg:flex-none">
+                <span className="material-symbols-outlined text-on-surface-variant text-[18px]">sort</span>
+                <select 
+                  className="w-full lg:w-44 py-2.5 px-3 border border-outline-variant rounded-xl bg-surface-container-lowest text-on-surface font-body-sm focus:outline-none focus:border-primary cursor-pointer font-bold"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                >
+                  <option value="most_sold">Trier: Plus vendus 🔥</option>
+                  <option value="name_asc">Trier: Nom (A-Z)</option>
+                  <option value="price_asc">Trier: Prix croissant</option>
+                  <option value="price_desc">Trier: Prix décroissant</option>
+                  <option value="stock_low">Trier: Stock faible</option>
+                  <option value="margin_desc">Trier: Plus forte marge</option>
+                </select>
+              </div>
+
               {/* Réinitialiser */}
-              {(familleFilter !== 'all' || stockFilter !== 'all' || statusFilter !== 'all' || boutiqueFilter !== 'all' || minPrice !== '' || maxPrice !== '' || searchTerm !== '') && (
+              {(familleFilter !== 'all' || stockFilter !== 'all' || statusFilter !== 'all' || boutiqueFilter !== 'all' || minPrice !== '' || maxPrice !== '' || searchTerm !== '' || sortBy !== 'most_sold') && (
                 <button
                   onClick={() => {
                     setFamilleFilter('all');
@@ -792,6 +967,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     setMinPrice('');
                     setMaxPrice('');
                     setSearchTerm('');
+                    setSortBy('most_sold');
                   }}
                   className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors cursor-pointer flex items-center gap-1"
                   title="Réinitialiser tous les filtres"
@@ -801,69 +977,6 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 </button>
               )}
             </div>
-          </div>
-
-          {/* Quick Search & Filter Test Presets for BF-PROD-012 & BF-PROD-013 */}
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/60 text-xs">
-            <span className="font-extrabold text-slate-500 uppercase tracking-wider text-[10px]">
-              Exemples Cahier des Charges :
-            </span>
-            <button 
-              type="button"
-              onClick={() => {
-                setFamilleFilter('Informatique');
-                setStatusFilter('actif');
-                setStockFilter('low');
-                setBoutiqueFilter('all');
-                setMinPrice('');
-                setMaxPrice('');
-                setSearchTerm('');
-              }}
-              className={`px-2.5 py-1 rounded-lg font-bold border transition-all cursor-pointer text-[11px] flex items-center gap-1 ${
-                familleFilter === 'Informatique' && statusFilter === 'actif' && stockFilter === 'low'
-                  ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
-                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[14px]">filter_list</span>
-              BF-PROD-013 Ex. : Informatique + Actif + Stock Faible
-            </button>
-            <button 
-              type="button"
-              onClick={() => setSearchTerm('ordinateur')}
-              className={`px-2.5 py-1 rounded-lg font-bold border transition-all cursor-pointer text-[11px] flex items-center gap-1 ${
-                searchTerm.toLowerCase() === 'ordinateur'
-                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
-                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[14px]">search</span>
-              BF-PROD-012 Ex. 1: Nom "ordinateur"
-            </button>
-            <button 
-              type="button"
-              onClick={() => setSearchTerm('PRD-000145')}
-              className={`px-2.5 py-1 rounded-lg font-bold border transition-all cursor-pointer text-[11px] flex items-center gap-1 ${
-                searchTerm.toUpperCase() === 'PRD-000145'
-                  ? 'bg-purple-600 text-white border-purple-700 shadow-xs'
-                  : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[14px]">qr_code</span>
-              BF-PROD-012 Ex. 2: SKU "PRD-000145"
-            </button>
-            <button 
-              type="button"
-              onClick={() => setSearchTerm('6191234567890')}
-              className={`px-2.5 py-1 rounded-lg font-bold border transition-all cursor-pointer text-[11px] flex items-center gap-1 ${
-                searchTerm === '6191234567890'
-                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[14px]">barcode_scanner</span>
-              BF-PROD-012 Ex. 3: Code-barres "6191234567890"
-            </button>
           </div>
         </div>
 
@@ -901,16 +1014,20 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 <th className="px-4 py-4 font-semibold">Code</th>
                 <th className="px-4 py-4 font-semibold">Désignation & Famille</th>
                 {selectedProjectId === 'all' && <th className="px-4 py-4 font-semibold">Projet</th>}
-                <th className="px-4 py-4 font-semibold text-right">Achat HT</th>
+                <th className="px-4 py-4 font-semibold text-right">
+                  {canViewPurchasePrice ? 'Achat HT' : 'Achat (🔒)'}
+                </th>
                 <th className="px-4 py-4 font-semibold text-right">Vente HT</th>
-                <th className="px-4 py-4 font-semibold text-right">Marge</th>
+                <th className="px-4 py-4 font-semibold text-right">
+                  {canViewMargins ? 'Marge' : 'Marge (🔒)'}
+                </th>
                 <th className="px-4 py-4 font-semibold text-right">Stock</th>
-                <th className="px-4 py-4 font-semibold text-center">Statut (BF-PROD-008)</th>
+                <th className="px-4 py-4 font-semibold text-center">Statut</th>
                 <th className="px-4 py-4 font-semibold text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/50">
-              {filteredArticles.map((article) => {
+              {sortedArticles.map((article) => {
                 const assocProjet = projets.find(p => p.id === article.projetId);
                 const isSelected = selectedArticles.includes(article.id);
                 const marginPercent = article.prixAchatHT > 0 
@@ -929,9 +1046,20 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     </td>
                     <td className="px-4 py-4 font-bold text-on-surface">{article.code}</td>
                     <td className="px-4 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-on-surface font-medium">{article.designation}</span>
-                        <span className="text-[11px] text-on-surface-variant font-semibold uppercase">{article.famille}</span>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-on-surface font-bold">{article.designation}</span>
+                        <div className="flex items-center gap-2">
+                          {article.typeArticle === 'Service' ? (
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-purple-100 text-purple-700 rounded border border-purple-200 inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[12px]">design_services</span> Service
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-200 inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[12px]">inventory_2</span> Produit
+                            </span>
+                          )}
+                          <span className="text-[11px] text-on-surface-variant font-semibold uppercase">{article.famille}</span>
+                        </div>
                       </div>
                     </td>
                     {selectedProjectId === 'all' && (
@@ -941,93 +1069,173 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         </span>
                       </td>
                     )}
-                    <td className="px-4 py-4 text-right text-on-surface-variant font-medium">{article.prixAchatHT.toFixed(3)}</td>
-                    <td className="px-4 py-4 text-right text-on-surface font-bold">{article.prixVenteHT.toFixed(3)}</td>
+                    
+                    {/* Prix d'Achat HT (BF-PROD-018: Masqué pour Caissier) */}
                     <td className="px-4 py-4 text-right">
-                      <div className="flex flex-col items-end">
-                        <span className="text-xs font-black text-slate-800">
-                          {(article.prixVenteHT - article.prixAchatHT).toFixed(3)} DT
+                      {canViewPurchasePrice ? (
+                        <span className="text-on-surface-variant font-medium">{article.prixAchatHT.toFixed(3)}</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          🔒 Restreint
                         </span>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mt-0.5 ${
-                          marginPercent > 30 ? 'bg-emerald-100 text-emerald-800' :
-                          marginPercent > 10 ? 'bg-amber-100 text-amber-800' :
-                          marginPercent > 0 ? 'bg-orange-100 text-orange-800' :
-                          'bg-rose-100 text-rose-800'
-                        }`}>
-                          {marginPercent > 0 ? '+' : ''}{marginPercent.toFixed(1)}%
-                        </span>
-                      </div>
+                      )}
                     </td>
+
+                    {/* Prix de Vente HT (Visible pour tous) */}
+                    <td className="px-4 py-4 text-right text-on-surface font-bold">{article.prixVenteHT.toFixed(3)}</td>
+
+                    {/* Marge Commerciale (BF-PROD-018: Masquée pour Caissier) */}
                     <td className="px-4 py-4 text-right">
-                      <div className="flex flex-col items-end">
-                        <span className={`text-sm font-black ${
-                          article.stock === 0 ? 'text-error' : 
-                          article.stock < (article.stockMinimum || 15) ? 'text-orange-500' : 'text-green-600'
-                        }`}>
-                          {article.stock}
+                      {canViewMargins ? (
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs font-black text-slate-800">
+                            {(article.prixVenteHT - article.prixAchatHT).toFixed(3)} DT
+                          </span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mt-0.5 ${
+                            marginPercent > 30 ? 'bg-emerald-100 text-emerald-800' :
+                            marginPercent > 10 ? 'bg-amber-100 text-amber-800' :
+                            marginPercent > 0 ? 'bg-orange-100 text-orange-800' :
+                            'bg-rose-100 text-rose-800'
+                          }`}>
+                            {marginPercent > 0 ? '+' : ''}{marginPercent.toFixed(1)}%
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          🔒 Restreint
                         </span>
-                        {article.stock === 0 ? (
-                          <span className="text-[10px] font-bold uppercase text-error">Rupture</span>
-                        ) : article.stock < (article.stockMinimum || 15) ? (
-                          <span className="text-[10px] font-bold uppercase text-orange-500">À Réappro.</span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-4 text-right">
+                      {article.typeArticle === 'Service' ? (
+                         <div className="flex justify-end">
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg">
+                              Service (Pas de stock)
+                            </span>
+                         </div>
+                      ) : (
+                      <div className="flex flex-col items-end">
+                        {selectedProjectId === 'all' ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-sm font-black text-slate-900">
+                              {getArticleStock(article, 'all')} <span className="text-[10px] font-normal text-slate-500">(Total)</span>
+                            </span>
+                            <div className="flex flex-col items-end gap-0.5">
+                              {Object.entries(article.stocks || {}).map(([pId, qty]) => {
+                                const pNom = projets.find(p => p.id === pId)?.nom || pId;
+                                return (
+                                  <span key={pId} className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-medium">
+                                    {pNom}: <strong className="font-bold">{qty}</strong>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
                         ) : (
-                          <span className="text-[10px] font-bold uppercase text-green-600">En Stock</span>
+                          <>
+                            <span className={`text-sm font-black ${
+                              getArticleStock(article, selectedProjectId) === 0 ? 'text-error' : 
+                              getArticleStock(article, selectedProjectId) < (article.stockMinimums?.[selectedProjectId] || 15) ? 'text-orange-500' : 'text-green-600'
+                            }`}>
+                              {getArticleStock(article, selectedProjectId)}
+                            </span>
+                            {getArticleStock(article, selectedProjectId) === 0 ? (
+                              <span className="text-[10px] font-bold uppercase text-error">Rupture</span>
+                            ) : getArticleStock(article, selectedProjectId) < (article.stockMinimums?.[selectedProjectId] || 15) ? (
+                              <span className="text-[10px] font-bold uppercase text-orange-500">À Réappro.</span>
+                            ) : (
+                              <span className="text-[10px] font-bold uppercase text-green-600">En Stock</span>
+                            )}
+                          </>
                         )}
                       </div>
+                      )}
                     </td>
+
+                    {/* Statut Toggle (BF-PROD-018: Action réservée aux Administrateurs) */}
                     <td className="px-4 py-4 text-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newStatus = article.statut === 'Inactif' ? 'Actif' : 'Inactif';
-                          onArticlesChange(articles.map(a => a.id === article.id ? { ...a, statut: newStatus } : a));
-                        }}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase inline-flex items-center gap-1 cursor-pointer transition-all border shadow-2xs ${
-                          article.statut === 'Inactif'
-                            ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                        }`}
-                        title={article.statut === 'Inactif' ? "Cliquer pour réactiver ce produit (BF-PROD-008)" : "Cliquer pour désactiver ce produit (BF-PROD-008)"}
-                      >
-                        <span className="material-symbols-outlined text-[14px]">
-                          {article.statut === 'Inactif' ? 'block' : 'check_circle'}
+                      {canDeactivateProduct ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newStatus = article.statut === 'Inactif' ? 'Actif' : 'Inactif';
+                            onArticlesChange(articles.map(a => a.id === article.id ? { ...a, statut: newStatus } : a));
+                          }}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase inline-flex items-center gap-1 cursor-pointer transition-all border shadow-2xs ${
+                            article.statut === 'Inactif'
+                              ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                          }`}
+                          title={article.statut === 'Inactif' ? "Cliquer pour réactiver ce produit" : "Cliquer pour désactiver ce produit"}
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            {article.statut === 'Inactif' ? 'block' : 'check_circle'}
+                          </span>
+                          {article.statut === 'Inactif' ? 'INACTIF' : 'ACTIF'}
+                        </button>
+                      ) : (
+                        <span 
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase inline-flex items-center gap-1 border opacity-75 ${
+                            article.statut === 'Inactif' ? 'bg-slate-100 text-slate-600 border-slate-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}
+                          title="🔒 Seul un Administrateur peut modifier le statut"
+                        >
+                          <span className="material-symbols-outlined text-[13px]">lock</span>
+                          {article.statut === 'Inactif' ? 'INACTIF' : 'ACTIF'}
                         </span>
-                        {article.statut === 'Inactif' ? 'INACTIF' : 'ACTIF'}
-                      </button>
+                      )}
                     </td>
+
                     <td className="px-4 py-4 text-right space-x-1">
-                      {/* Action 1: Voir (BF-PROD-011) */}
+                      {/* Action 1: Voir */}
                       <button
                         onClick={() => setViewingArticle(article)}
                         className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer" 
-                        title="Voir la fiche produit (BF-PROD-011)"
+                        title="Voir la fiche produit"
                       >
                         <span className="material-symbols-outlined text-[18px]">visibility</span>
                       </button>
 
-                      {/* Action 2: Modifier (BF-PROD-009 & BF-PROD-011) */}
-                      {currentUser.role !== 'caissier' && (
+                      {/* Action 2: Modifier */}
+                      {canEditProduct ? (
                         <button 
                           onClick={() => handleOpenEditModal(article)}
                           className="p-1.5 text-slate-600 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer" 
-                          title="Modifier la fiche produit (BF-PROD-011)"
+                          title="Modifier la fiche produit"
                         >
                           <span className="material-symbols-outlined text-[18px]">edit</span>
                         </button>
-                      )}
-
-                      {/* Action 3: Désactiver (BF-PROD-010 & BF-PROD-011) */}
-                      {currentUser.role !== 'caissier' && (
+                      ) : (
                         <button 
-                          onClick={() => handleDeleteArticle(article.id)}
-                          className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" 
-                          title="Désactiver ce produit (BF-PROD-010 & BF-PROD-011)"
+                          disabled
+                          className="p-1.5 text-slate-300 cursor-not-allowed rounded-lg" 
+                          title="🔒 Modification restreinte"
                         >
-                          <span className="material-symbols-outlined text-[18px]">block</span>
+                          <span className="material-symbols-outlined text-[18px]">lock</span>
                         </button>
                       )}
 
-                      {/* Action 4: Historique Modifications (BF-PROD-009) */}
+                      {/* Action 3: Désactiver */}
+                      {canDeactivateProduct ? (
+                        <button 
+                          onClick={() => handleDeleteArticle(article.id)}
+                          className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" 
+                          title="Désactiver ce produit"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">block</span>
+                        </button>
+                      ) : (
+                        <button 
+                          disabled
+                          className="p-1.5 text-slate-300 cursor-not-allowed rounded-lg" 
+                          title="🔒 Désactivation réservée à l'Administrateur"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">lock</span>
+                        </button>
+                      )}
+
+                      {/* Action 4: Historique Modifications */}
                       <button
                         onClick={() => {
                           setEditingArticle(article);
@@ -1036,9 +1244,18 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           setIsModalOpen(true);
                         }}
                         className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer" 
-                        title="Historique des modifications & traçabilité (BF-PROD-009)"
+                        title="Historique des modifications & traçabilité"
                       >
                         <span className="material-symbols-outlined text-[18px]">history</span>
+                      </button>
+
+                      {/* Action 5: Imprimer Étiquette Code-Barres 1D */}
+                      <button
+                        onClick={() => setPrintLabelArticle(article)}
+                        className="p-1.5 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                        title="Imprimer Étiquette Code-Barres 1D (Code 128 / EAN-13)"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">barcode</span>
                       </button>
                     </td>
                   </tr>
@@ -1144,7 +1361,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 }`}
               >
                 <span className="material-symbols-outlined text-[18px]">history</span>
-                4. Historique (BF-PROD-009)
+                4. Historique & Traçabilité
               </button>
             </div>
 
@@ -1176,14 +1393,35 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
                 return (
                   <div className="space-y-4 animate-in fade-in duration-150">
-                    {/* BF-PROD-016 Duplicate Prevention Banner */}
-                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
-                      <span className="material-symbols-outlined text-amber-600 text-[20px] mt-0.5 shrink-0">verified_user</span>
-                      <div className="text-xs text-amber-950 leading-relaxed">
-                        <p className="font-extrabold uppercase tracking-wider mb-0.5">
-                          BF-PROD-016 — Contrôle des Doublons (SKU & Code-Barres)
-                        </p>
-                        Le système contrôle en temps réel l'unicité de la <strong>Référence/SKU</strong> et du <strong>Code-barres</strong> afin de bloquer tout enregistrement de doublon.
+                    
+                    {/* TYPE ARTICLE SELECTION */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5">
+                        Type d'Article <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input 
+                            type="radio" 
+                            name="typeArticle"
+                            value="Produit"
+                            checked={!formData.typeArticle || formData.typeArticle === 'Produit'}
+                            onChange={(e) => setFormData(prev => ({ ...prev, typeArticle: e.target.value as 'Produit' | 'Service' }))}
+                            className="w-4 h-4 text-indigo-600 focus:ring-indigo-600 border-slate-300"
+                          />
+                          <span className="text-sm font-bold text-slate-800 flex items-center gap-1.5"><span className="material-symbols-outlined text-[18px] text-slate-500">inventory_2</span> Produit Physique</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input 
+                            type="radio" 
+                            name="typeArticle"
+                            value="Service"
+                            checked={formData.typeArticle === 'Service'}
+                            onChange={(e) => setFormData(prev => ({ ...prev, typeArticle: e.target.value as 'Produit' | 'Service' }))}
+                            className="w-4 h-4 text-indigo-600 focus:ring-indigo-600 border-slate-300"
+                          />
+                          <span className="text-sm font-bold text-slate-800 flex items-center gap-1.5"><span className="material-symbols-outlined text-[18px] text-slate-500">design_services</span> Service Prestation</span>
+                        </label>
                       </div>
                     </div>
 
@@ -1249,12 +1487,44 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                          Code-barres (EAN / UPC)
-                        </label>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            Code-barres 1D (EAN-13 / Code 128)
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newEan = generateEAN13();
+                                setFormData(prev => ({
+                                  ...prev,
+                                  codeBarres: [...(prev.codeBarres || []), newEan]
+                                }));
+                              }}
+                              className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-300 rounded text-[10px] font-bold cursor-pointer transition-all"
+                              title="Générer un code EAN-13 numérique unique à 13 chiffres (ex: 2000000001234)"
+                            >
+                              + EAN-13
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newCode128 = generateCode128();
+                                setFormData(prev => ({
+                                  ...prev,
+                                  codeBarres: [...(prev.codeBarres || []), newCode128]
+                                }));
+                              }}
+                              className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-300 rounded text-[10px] font-bold cursor-pointer transition-all"
+                              title="Générer un code Code 128 alphanumérique unique (ex: PRD89234)"
+                            >
+                              + Code 128
+                            </button>
+                          </div>
+                        </div>
                         <input 
                           type="text"
-                          placeholder="Ex: 6191234567890"
+                          placeholder="Ex: 2000000001234 ou PRD89234"
                           className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-bold text-slate-900 focus:outline-none transition-all shadow-2xs ${
                             liveBcDupArticle ? 'border-rose-500 bg-rose-50/50 text-rose-950 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-indigo-600 focus:bg-white'
                           }`}
@@ -1275,29 +1545,10 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       </div>
                     </div>
 
-                    {/* Simulation buttons for BF-PROD-016 testing */}
-                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">Simulations de Test Doublon (BF-PROD-016) :</span>
-                      <button
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, code: articles[0]?.code || 'PRD-000145' }))}
-                        className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[10px] font-bold transition-all cursor-pointer border border-amber-300"
-                      >
-                        ⚡ Simuler Doublon SKU ({articles[0]?.code || 'PRD-000145'})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, codeBarres: (articles[0]?.codeBarres && articles[0].codeBarres.length > 0) ? articles[0].codeBarres : ['6191234567890'] }))}
-                        className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[10px] font-bold transition-all cursor-pointer border border-amber-300"
-                      >
-                        ⚡ Simuler Doublon Code-Barres ({articles[0]?.codeBarres?.[0] || '6191234567890'})
-                      </button>
-                    </div>
-
-                  {/* BF-PROD-008 Statut Selector */}
+                  {/* Statut Selector */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      Statut du Produit (BF-PROD-008)
+                      Statut du Produit
                     </label>
                     <div className="grid grid-cols-2 gap-3">
                       <button
@@ -1347,11 +1598,16 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     />
                   </div>
 
-                  {formData.code && (
+                  {((formData.codeBarres && formData.codeBarres.length > 0) || formData.code) && (
                     <div className="p-4 bg-slate-100 rounded-2xl border border-slate-200 flex flex-col items-center justify-center gap-2">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase">Aperçu Code-barres</span>
-                      <div className="bg-white p-3 rounded-xl shadow-xs border border-slate-200">
-                        <Barcode value={formData.code} width={1.5} height={45} displayValue={true} />
+                      <span className="text-[11px] font-bold text-slate-500 uppercase font-mono">Aperçu Code-barres 1D (Code 128 / EAN-13)</span>
+                      <div className="bg-white p-3 rounded-xl shadow-xs border border-slate-200 flex flex-col items-center">
+                        <Barcode1D
+                          value={(formData.codeBarres && formData.codeBarres.length > 0) ? formData.codeBarres[0] : formData.code!}
+                          width={1.8}
+                          height={50}
+                          fontSize={14}
+                        />
                       </div>
                     </div>
                   )}
@@ -1359,36 +1615,79 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               );
             })()}
 
-              {/* TAB 2: TARIFICATION (BF-PROD-005 - Prix d'achat & Marges) */}
+              {/* TAB 2: TARIFICATION */}
               {activeModalTab === 'tarifs' && (
                 <div className="space-y-4 animate-in fade-in duration-150">
-                  <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-start gap-3">
-                    <span className="material-symbols-outlined text-blue-600 text-[20px] mt-0.5 shrink-0">analytics</span>
-                    <div className="text-xs text-blue-900 leading-relaxed">
-                      <p className="font-extrabold text-blue-950 uppercase tracking-wider mb-0.5">
-                        BF-PROD-005 — Gestion du Prix d'Achat & Analyse de Rentabilité
-                      </p>
-                      Saisissez le prix d'achat HT si vous souhaitez que le système calcule automatiquement la <strong>marge commerciale brute</strong>, le <strong>taux de marque</strong> et prépare vos <strong>rapports de rentabilité</strong>.
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                         <span>Prix d'Achat HT (DT)</span>
-                        <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded">Optionnel</span>
+                        <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded">Coût</span>
                       </label>
                       <input 
                         type="number"
                         step="0.001"
-                        min="0"
                         placeholder="Ex: 150.000"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
-                        value={formData.prixAchatHT || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, prixAchatHT: parseFloat(e.target.value) || 0 }))}
+                        className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-bold text-slate-900 focus:outline-none transition-all shadow-2xs ${
+                          formData.prixAchatHT !== undefined && formData.prixAchatHT < 0 ? 'border-rose-500 bg-rose-50/50 text-rose-950 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-indigo-600 focus:bg-white'
+                        }`}
+                        value={formData.prixAchatHT ?? ''}
+                        onChange={(e) => {
+                          const pa = parseFloat(e.target.value) || 0;
+                          setFormData(prev => {
+                            const mb = prev.margeBeneficiaire || 0;
+                            let newPv = prev.prixVenteHT || 0;
+                            if (mb > 0 && pa > 0) {
+                              newPv = parseFloat((pa * (1 + mb / 100)).toFixed(3));
+                              return { ...prev, prixAchatHT: pa, prixVenteHT: newPv };
+                            } else if (pa > 0 && newPv > 0) {
+                              const newMargin = parseFloat((((newPv - pa) / pa) * 100).toFixed(2));
+                              return { ...prev, prixAchatHT: pa, margeBeneficiaire: newMargin };
+                            }
+                            return { ...prev, prixAchatHT: pa };
+                          });
+                        }}
                       />
-                      <p className="text-[11px] text-slate-500 mt-1">Coût d'acquisition unitaire HT du produit.</p>
+                      {formData.prixAchatHT !== undefined && formData.prixAchatHT < 0 ? (
+                        <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px]">cancel</span>
+                          ❌ Le prix d'achat ne peut pas être négatif ({formData.prixAchatHT} DT).
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-500 mt-1">Coût d'acquisition unitaire HT.</p>
+                      )}
                     </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-indigo-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                        <span>Marge Bénéficiaire (%)</span>
+                        <span className="text-[10px] text-indigo-600 font-extrabold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">% Bénéfice</span>
+                      </label>
+                      <div className="relative">
+                        <input 
+                          type="number"
+                          step="0.1"
+                          placeholder="Ex: 33.3"
+                          className="w-full px-4 py-2.5 pr-8 bg-indigo-50/40 border border-indigo-300 rounded-xl text-sm font-black text-indigo-950 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
+                          value={formData.margeBeneficiaire ?? ''}
+                          onChange={(e) => {
+                            const mb = parseFloat(e.target.value) || 0;
+                            setFormData(prev => {
+                              const pa = prev.prixAchatHT || 0;
+                              const newPv = pa > 0 ? parseFloat((pa * (1 + mb / 100)).toFixed(3)) : prev.prixVenteHT || 0;
+                              return {
+                                ...prev,
+                                margeBeneficiaire: mb,
+                                prixVenteHT: newPv
+                              };
+                            });
+                          }}
+                        />
+                        <span className="absolute right-3 top-3 text-xs font-extrabold text-indigo-400">%</span>
+                      </div>
+                      <p className="text-[11px] text-indigo-600 font-medium mt-1">Recalcule automatiquement le Prix de Vente.</p>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                         Prix de Vente HT (DT) <span className="text-rose-500">*</span>
@@ -1396,16 +1695,74 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       <input 
                         type="number"
                         step="0.001"
-                        min="0"
                         required
                         placeholder="Ex: 200.000"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
-                        value={formData.prixVenteHT || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, prixVenteHT: parseFloat(e.target.value) || 0 }))}
+                        className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-bold text-slate-900 focus:outline-none transition-all shadow-2xs ${
+                          formData.prixVenteHT !== undefined && formData.prixVenteHT < 0 ? 'border-rose-500 bg-rose-50/50 text-rose-950 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-indigo-600 focus:bg-white'
+                        }`}
+                        value={formData.prixVenteHT ?? ''}
+                        onChange={(e) => {
+                          const pv = parseFloat(e.target.value) || 0;
+                          setFormData(prev => {
+                            const pa = prev.prixAchatHT || 0;
+                            const newMargin = pa > 0 ? parseFloat((((pv - pa) / pa) * 100).toFixed(2)) : prev.margeBeneficiaire || 0;
+                            return {
+                              ...prev,
+                              prixVenteHT: pv,
+                              margeBeneficiaire: newMargin
+                            };
+                          });
+                        }}
                       />
-                      <p className="text-[11px] text-slate-500 mt-1">Prix de facturation unitaire Hors Taxe.</p>
+                      {formData.prixVenteHT !== undefined && formData.prixVenteHT < 0 ? (
+                        <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px]">cancel</span>
+                          ❌ Prix de vente négatif non autorisé ({formData.prixVenteHT} DT).
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-500 mt-1">Prix de facturation unitaire HT.</p>
+                      )}
                     </div>
                   </div>
+
+                  {/* Warning Banner for Loss Sale (Prix Achat > Prix Vente) */}
+                  {(() => {
+                    const pa = formData.prixAchatHT || 0;
+                    const pv = formData.prixVenteHT || 0;
+                    if (pa > 0 && pv >= 0 && pv < pa) {
+                      const loss = pa - pv;
+                      return (
+                        <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-amber-950 space-y-2.5 animate-in fade-in duration-200">
+                          <div className="flex items-start gap-2.5">
+                            <span className="material-symbols-outlined text-amber-600 text-[22px] shrink-0 mt-0.5">warning</span>
+                            <div className="text-xs leading-relaxed">
+                              <p className="font-extrabold uppercase tracking-wider text-amber-950">
+                                ⚠ Avertissement : Vente à perte
+                              </p>
+                              <p className="mt-1 font-semibold text-amber-900">
+                                Le prix de vente (<strong>{pv.toFixed(3)} DT</strong>) est inférieur au prix d'achat (<strong>{pa.toFixed(3)} DT</strong>), générant une perte unitaire de <strong className="text-rose-700">-{loss.toFixed(3)} DT</strong>.
+                              </p>
+                            </div>
+                          </div>
+                          <label className="flex items-center gap-2.5 pt-2 border-t border-amber-200 cursor-pointer select-none">
+                            <input 
+                              type="checkbox" 
+                              checked={allowLossSale} 
+                              onChange={(e) => {
+                                setAllowLossSale(e.target.checked);
+                                if (e.target.checked) setFormError('');
+                              }} 
+                              className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer" 
+                            />
+                            <span className="text-xs font-extrabold text-amber-950">
+                              [X] Je confirme vouloir enregistrer ce produit malgré la vente à perte.
+                            </span>
+                          </label>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -1415,7 +1772,6 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       <input 
                         type="number"
                         step="0.001"
-                        min="0"
                         placeholder="Ex: 180.000"
                         className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
                         value={formData.prixPromotionnelHT || ''}
@@ -1455,16 +1811,16 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                             Analyse de Marge & Rentabilité Estimée
                           </span>
                           <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                            margeVal > 0 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            margeVal > 0 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                           }`}>
-                            {margeVal > 0 ? 'Rentable' : pa > 0 ? 'Marge Nulle ou Négative' : 'Prix d\'Achat non défini'}
+                            {margeVal > 0 ? 'Rentable' : pa > 0 ? 'Vente à Perte' : 'Prix d\'Achat non défini'}
                           </span>
                         </div>
 
                         <div className="grid grid-cols-3 gap-3 text-center">
                           <div className="p-2.5 bg-white/5 rounded-xl border border-white/10">
                             <p className="text-[10px] font-bold text-slate-300 uppercase">Marge Brute HT</p>
-                            <p className="text-base font-black text-emerald-400 mt-0.5">
+                            <p className={`text-base font-black mt-0.5 ${margeVal < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                               {margeVal >= 0 ? `+${margeVal.toFixed(3)}` : margeVal.toFixed(3)} DT
                             </p>
                           </div>
@@ -1493,19 +1849,9 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 </div>
               )}
 
-              {/* TAB 3: STOCKS & SEUILS (BF-PROD-007 - Multi-Boutiques) */}
+              {/* TAB 3: STOCKS & SEUILS */}
               {activeModalTab === 'stock' && (
                 <div className="space-y-4 animate-in fade-in duration-150">
-                  <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-start gap-3">
-                    <span className="material-symbols-outlined text-indigo-600 text-[20px] mt-0.5 shrink-0">storefront</span>
-                    <div className="text-xs text-indigo-950 leading-relaxed">
-                      <p className="font-extrabold uppercase tracking-wider mb-0.5">
-                        BF-PROD-007 — Gestion des Quantités & Allocation Multi-Boutiques
-                      </p>
-                      Définissez la quantité globale disponible ainsi que la répartition du stock dans les différentes boutiques (Sfax Centre, Sfax Nord, Gabès, etc.).
-                    </div>
-                  </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -1513,12 +1859,21 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       </label>
                       <input 
                         type="number"
-                        min="0"
                         required
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
-                        value={formData.stock || 0}
+                        className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-bold text-slate-900 focus:outline-none transition-all shadow-2xs ${
+                          formData.stocks !== undefined && formData.stocks < 0 ? 'border-rose-500 bg-rose-50/50 text-rose-950 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-indigo-600 focus:bg-white'
+                        }`}
+                        value={formData.stocks ?? 0}
                         onChange={(e) => setFormData(prev => ({ ...prev, stock: parseInt(e.target.value) || 0 }))}
                       />
+                      {formData.stocks !== undefined && formData.stocks < 0 ? (
+                        <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px]">cancel</span>
+                          ❌ Quantité en stock négative non autorisée ({formData.stocks}).
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-500 mt-1">Quantité physique globale disponible.</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -1544,8 +1899,8 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {projets.map((p) => {
-                        const existingDepot = formData.stockParDepot?.find(d => d.depotId === p.id);
-                        const currentQty = existingDepot ? existingDepot.quantite : (p.id === formData.projetId ? (formData.stock || 0) : 0);
+                        const existingDepot = formData.stocks?.find(d => d.depotId === p.id);
+                        const currentQty = existingDepot ? existingDepot.quantite : (p.id === formData.projetId ? (formData.stocks || 0) : 0);
 
                         return (
                           <div key={p.id} className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
@@ -1564,7 +1919,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                                 value={currentQty}
                                 onChange={(e) => {
                                   const val = parseInt(e.target.value) || 0;
-                                  const currentDepots = formData.stockParDepot ? [...formData.stockParDepot] : [];
+                                  const currentDepots = formData.stocks ? [...formData.stocks] : [];
                                   const idx = currentDepots.findIndex(d => d.depotId === p.id);
                                   if (idx >= 0) {
                                     currentDepots[idx] = { ...currentDepots[idx], quantite: val };
@@ -1573,7 +1928,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                                   }
                                   // Recalculate total stock
                                   const newTotal = currentDepots.reduce((a, b) => a + b.quantite, 0);
-                                  setFormData(prev => ({ ...prev, stockParDepot: currentDepots, stock: newTotal > 0 ? newTotal : prev.stock }));
+                                  setFormData(prev => ({ ...prev, stocks: currentDepots, stock: newTotal > 0 ? newTotal : prev.stocks }));
                                 }}
                               />
                               <span className="text-[11px] font-bold text-slate-500">unités</span>
@@ -1584,19 +1939,51 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Stock Minimum (Alerte)
-                      </label>
-                      <input 
-                        type="number"
-                        min="0"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
-                        value={formData.stockMinimum || 10}
-                        onChange={(e) => setFormData(prev => ({ ...prev, stockMinimum: parseInt(e.target.value) || 0 }))}
-                      />
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                    <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[16px] text-amber-600">warning</span>
+                      Seuils Minimums d'Alerte par Boutique :
+                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {projets.map((p) => {
+                        const minQty = formData.stockMinimums?.[p.id] ?? 10;
+
+                        return (
+                          <div key={p.id} className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-900 truncate">{p.nom}</span>
+                              <span className="text-[10px] font-extrabold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                Seuil Min
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="number" 
+                                min="0"
+                                placeholder="Seuil min"
+                                className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-600"
+                                value={minQty}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 0;
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    stockMinimums: {
+                                      ...(prev.stockMinimums || {}),
+                                      [p.id]: val
+                                    }
+                                  }));
+                                }}
+                              />
+                              <span className="text-[11px] font-bold text-slate-500">unités</span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                         Stock Sécurité
@@ -1628,26 +2015,16 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     <div>
                       <p className="text-xs font-bold text-amber-900">Gestion des Alertes de Réapprovisionnement</p>
                       <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
-                        Le système déclenchera une alerte automatique sur le tableau de bord lorsque la quantité en stock descendra en dessous du seuil minimum de {formData.stockMinimum || 10} unités.
+                        Le système déclenchera une alerte automatique sur le tableau de bord lorsque la quantité en stock descendra en dessous du seuil minimum de {formData.stockMinimums?.[selectedProjectId] || 10} unités.
                       </p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* TAB 4: HISTORIQUE DES MODIFICATIONS & TRAÇABILITÉ (BF-PROD-009) */}
+              {/* TAB 4: HISTORIQUE DES MODIFICATIONS & TRAÇABILITÉ */}
               {activeModalTab === 'historique' && (
                 <div className="space-y-4 animate-in fade-in duration-150">
-                  <div className="p-3.5 bg-slate-900 text-white rounded-2xl flex items-start gap-3 shadow-sm">
-                    <span className="material-symbols-outlined text-amber-400 text-[22px] shrink-0 mt-0.5">history_edu</span>
-                    <div className="text-xs leading-relaxed">
-                      <p className="font-extrabold text-amber-300 uppercase tracking-wider mb-0.5">
-                        BF-PROD-009 — Traçabilité des Modifications & Audit Trail
-                      </p>
-                      Le système enregistre automatiquement l'historique complet des modifications effectuées sur la fiche produit (Nom, Catégorie, Prix d'achat, Prix de vente, Code-barres, Description, Statut) en conservant la date et l'identité de l'utilisateur.
-                    </div>
-                  </div>
-
                   {editingArticle && (editingArticle.historiqueModifications || []).length > 0 ? (
                     <div className="space-y-3">
                       {(editingArticle.historiqueModifications || []).map((mod, i) => (
@@ -1953,7 +2330,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-white">
-                    BF-PROD-010 — Protection de l'Historique Commercial
+                    Protection de l'Historique Commercial
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
                     Prévention des suppressions accidentelles
@@ -2013,7 +2390,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3">
                 <span className="material-symbols-outlined text-blue-600 text-[22px] shrink-0 mt-0.5">info</span>
                 <div className="text-xs text-blue-900 leading-relaxed">
-                  <strong className="block font-bold text-blue-950 mb-0.5">Règle Métier BF-PROD-010 :</strong>
+                  <strong className="block font-bold text-blue-950 mb-0.5">Conservation des données :</strong>
                   Pour garantir la conservation et l'intégrité de vos anciennes ventes, factures et devis, la suppression définitive est évitée. Le produit sera placé au statut <strong>INACTIF</strong>. Il restera lisible dans vos pièces historiques sans être proposé pour les nouvelles ventes.
                 </div>
               </div>
@@ -2039,7 +2416,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     date: nowIso,
                     utilisateur: userLabel,
                     roleUtilisateur: userRole,
-                    champModifie: 'Statut (Désactivation BF-PROD-010)',
+                    champModifie: 'Statut (Désactivation)',
                     ancienneValeur: deactivatingArticle.statut || 'Actif',
                     nouvelleValeur: 'Inactif',
                     remarque: 'Désactivation effectuée pour préserver l\'historique commercial'
@@ -2066,7 +2443,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
         </div>
       )}
 
-      {/* BF-PROD-010: Bulk Article Deactivation Modal */}
+      {/* Bulk Article Deactivation Modal */}
       {isBulkDeactivateModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
@@ -2077,7 +2454,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-white">
-                    BF-PROD-010 — Désactivation Groupée ({selectedArticles.length} article(s))
+                    Désactivation Groupée ({selectedArticles.length} article(s))
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
                     Protection de l'historique commercial des produits sélectionnés
@@ -2094,7 +2471,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
             <div className="p-6 space-y-4">
               <p className="text-xs text-slate-700 leading-relaxed font-medium">
-                Conformément à la règle <strong>BF-PROD-010</strong>, la suppression irréversible est remplacée par la <strong>désactivation</strong>. Les {selectedArticles.length} articles ci-dessous seront basculés au statut <strong>INACTIF</strong> sans effacer leurs historiques de ventes.
+                Pour protéger l'intégrité de vos données, la suppression définitive est remplacée par la <strong>désactivation</strong>. Les {selectedArticles.length} articles ci-dessous seront basculés au statut <strong>INACTIF</strong> sans effacer leurs historiques de ventes.
               </p>
 
               <div className="max-h-48 overflow-y-auto p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
@@ -2146,7 +2523,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-md">
-                      FICHE PRODUIT (BF-PROD-014)
+                      FICHE PRODUIT
                     </span>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
                       viewingArticle.statut === 'Inactif' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
@@ -2196,12 +2573,36 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
                   <div>
                     <span className="text-slate-400 font-bold block text-[10px] uppercase">Prix d'Achat HT</span>
-                    <strong className="text-slate-800 text-sm font-black">{viewingArticle.prixAchatHT.toFixed(3)} DT</strong>
+                    {canViewPurchasePrice ? (
+                      <strong className="text-slate-800 text-sm font-black">{viewingArticle.prixAchatHT.toFixed(3)} DT</strong>
+                    ) : (
+                      <span className="text-rose-600 font-extrabold text-xs bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                        🔒 Masqué (Accès Caissier)
+                      </span>
+                    )}
                   </div>
 
                   <div>
                     <span className="text-slate-400 font-bold block text-[10px] uppercase">Prix de Vente HT</span>
                     <strong className="text-emerald-700 text-sm font-black">{viewingArticle.prixVenteHT.toFixed(3)} DT</strong>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Marge Bénéficiaire (%)</span>
+                    {canViewMargins ? (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <strong className="text-indigo-700 text-sm font-black">
+                          {(viewingArticle.margeBeneficiaire ?? (viewingArticle.prixAchatHT > 0 ? ((viewingArticle.prixVenteHT - viewingArticle.prixAchatHT) / viewingArticle.prixAchatHT) * 100 : 0)).toFixed(1)} %
+                        </strong>
+                        <span className="text-[11px] font-semibold text-slate-500">
+                          (+{(viewingArticle.prixVenteHT - viewingArticle.prixAchatHT).toFixed(3)} DT)
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-rose-600 font-extrabold text-xs bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                        🔒 Masqué (Accès Caissier)
+                      </span>
+                    )}
                   </div>
 
                   <div>
@@ -2224,7 +2625,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   </div>
                   {viewingArticle.codeBarres && viewingArticle.codeBarres.length > 0 && (
                     <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-                      <Barcode value={viewingArticle.codeBarres[0]} height={36} fontSize={11} width={1.4} />
+                      <Barcode1D value={viewingArticle.codeBarres[0]} height={36} fontSize={11} width={1.4} />
                     </div>
                   )}
                 </div>
@@ -2238,13 +2639,13 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     Stock par Boutique
                   </h4>
                   <span className="text-xs font-black text-slate-800">
-                    Total : <span className="text-indigo-600 text-sm">{viewingArticle.stock} unités</span>
+                    Total : <span className="text-indigo-600 text-sm">{getArticleStock(viewingArticle, selectedProjectId)} unités</span>
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {(viewingArticle.stockParDepot || [
-                    { depotId: '1', nom: 'Sfax Centre', quantite: viewingArticle.stock, emplacement: viewingArticle.emplacement || 'Aisle-A1' },
+                  {(viewingArticle.stocks || [
+                    { depotId: '1', nom: 'Sfax Centre', quantite: getArticleStock(viewingArticle, selectedProjectId), emplacement: viewingArticle.emplacement || 'Aisle-A1' },
                     { depotId: '2', nom: 'Sfax Nord', quantite: 7, emplacement: 'Rayon Informatique' },
                     { depotId: '3', nom: 'Gabès', quantite: 12, emplacement: 'Stockage Principal' }
                   ]).map((dep, idx) => (
@@ -2301,7 +2702,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 {/* Audit trail summary */}
                 {(viewingArticle.historiqueModifications || []).length > 0 && (
                   <div className="pt-2 border-t border-slate-200/60">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Journal de Traçabilité Modificative (BF-PROD-009)</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Journal de Traçabilité Modificative</span>
                     <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
                       {(viewingArticle.historiqueModifications || []).map((m, i) => (
                         <div key={i} className="p-2 bg-white rounded-xl border border-slate-200/80 text-[11px] flex justify-between items-center">
@@ -2326,7 +2727,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 Fermer
               </button>
 
-              {currentUser.role !== 'caissier' && (
+              {canEditProduct && (
                 <button
                   onClick={() => {
                     const articleToEdit = viewingArticle;
@@ -2356,10 +2757,10 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-white">
-                    BF-PROD-015 — Architecture Produit vs Stock Multi-Boutiques
+                    Gestion des Stocks Multi-Boutiques
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Séparation stricte du catalogue maître (PRODUIT) et des inventaires localisés (STOCK).
+                    Consultation et transferts d'inventaire entre les points de vente.
                   </p>
                 </div>
               </div>
@@ -2373,31 +2774,6 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {/* Architecture Explanation Banner */}
-              <div className="p-4 bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-2xl border border-indigo-500/30 shadow-sm space-y-3">
-                <div className="flex items-center gap-2 text-indigo-300 font-extrabold text-xs uppercase tracking-wider">
-                  <span className="material-symbols-outlined text-[18px]">account_tree</span>
-                  Principe de la règle BF-PROD-015
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                  <div className="p-3 bg-white/10 rounded-xl border border-white/10 space-y-1">
-                    <span className="text-[10px] text-indigo-300 font-bold block uppercase">Catalogue Maître (PRODUIT)</span>
-                    <strong className="text-white text-sm block">Laptop HP 15</strong>
-                    <p className="text-slate-300 text-[11px]">ID: P001 • SKU: LAP-HP-0015 • Prix: 2 200 DT</p>
-                  </div>
-                  <div className="p-3 bg-white/10 rounded-xl border border-white/10 space-y-1">
-                    <span className="text-[10px] text-emerald-300 font-bold block uppercase">Stock Boutique Sfax Centre (SF001)</span>
-                    <strong className="text-emerald-400 text-sm block">15 Unités</strong>
-                    <p className="text-slate-300 text-[11px]">Boutique ID: SF001 • Emplacement: Vitrine A</p>
-                  </div>
-                  <div className="p-3 bg-white/10 rounded-xl border border-white/10 space-y-1">
-                    <span className="text-[10px] text-amber-300 font-bold block uppercase">Stock Boutique Gabès (GB001)</span>
-                    <strong className="text-amber-400 text-sm block">12 Unités</strong>
-                    <p className="text-slate-300 text-[11px]">Boutique ID: GB001 • Emplacement: Réserve Sud</p>
-                  </div>
-                </div>
-              </div>
-
               {transferSuccessMsg && (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center justify-between animate-in fade-in">
                   <span className="flex items-center gap-2">
@@ -2418,14 +2794,13 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       <th className="p-3.5 text-center">Boutique Sfax Nord (SF002)</th>
                       <th className="p-3.5 text-center">Boutique Gabès (GB001)</th>
                       <th className="p-3.5 text-center">Stock Global Total</th>
-                      <th className="p-3.5 text-right">Action Transfert</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
                     {articlesToShow.map((art) => {
-                      const sfaxCentreQty = art.stockParDepot?.find(d => d.depotId === '1' || d.nom.includes('Centre'))?.quantite ?? art.stock;
-                      const sfaxNordQty = art.stockParDepot?.find(d => d.depotId === '2' || d.nom.includes('Nord'))?.quantite ?? 7;
-                      const gabesQty = art.stockParDepot?.find(d => d.depotId === '3' || d.nom.includes('Gabès'))?.quantite ?? 12;
+                      const sfaxCentreQty = (art.stocks || {})['1'] || 0;
+                      const sfaxNordQty = (art.stocks || {})['2'] || 0;
+                      const gabesQty = (art.stocks || {})['3'] || 0;
                       const totalQty = sfaxCentreQty + sfaxNordQty + gabesQty;
 
                       return (
@@ -2466,22 +2841,6 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           <td className="p-3.5 text-center font-black">
                             <span className="text-indigo-600 text-sm font-extrabold">{totalQty} DT</span>
                           </td>
-
-                          {/* Transfer Action */}
-                          <td className="p-3.5 text-right">
-                            <button
-                              onClick={() => {
-                                setTransferModalArticle(art);
-                                setTransferFromBoutique('1');
-                                setTransferToBoutique('3');
-                                setTransferQuantity(1);
-                              }}
-                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer inline-flex items-center gap-1"
-                            >
-                              <span className="material-symbols-outlined text-[16px]">swap_horiz</span>
-                              Transférer
-                            </button>
-                          </td>
                         </tr>
                       );
                     })}
@@ -2491,10 +2850,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
             </div>
 
             {/* Modal Footer */}
-            <div className="p-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0">
-              <p className="text-xs text-slate-500 font-medium">
-                BF-PROD-015 : Les mouvements de stock d'une boutique n'altèrent pas l'inventaire des autres boutiques.
-              </p>
+            <div className="p-5 bg-slate-50 border-t border-slate-200 flex justify-end items-center shrink-0">
               <button
                 onClick={() => setIsMultiBoutiqueModalOpen(false)}
                 className="px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer border border-slate-300"
@@ -2506,7 +2862,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
         </div>
       )}
 
-      {/* Transfert Inter-Boutiques Modal (BF-PROD-015) */}
+      {/* Transfert Inter-Boutiques Modal */}
       {transferModalArticle && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
@@ -2517,7 +2873,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 </div>
                 <div>
                   <h3 className="text-base font-black text-white">
-                    Transfert Inter-Boutiques (BF-PROD-015)
+                    Transfert Inter-Boutiques
                   </h3>
                   <p className="text-xs text-indigo-200 mt-0.5">
                     Produit : <strong className="text-amber-300">{transferModalArticle.designation}</strong>
@@ -2597,46 +2953,32 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 onClick={() => {
                   const updatedArticles = articles.map(a => {
                     if (a.id === transferModalArticle.id) {
-                      const currentDepots = a.stockParDepot ? [...a.stockParDepot] : [
-                        { depotId: '1', nom: 'Sfax Centre (SF001)', quantite: a.stock },
-                        { depotId: '2', nom: 'Sfax Nord (SF002)', quantite: 7 },
-                        { depotId: '3', nom: 'Gabès (GB001)', quantite: 12 }
-                      ];
-
-                      const newDepots = currentDepots.map(d => {
-                        if (d.depotId === transferFromBoutique) {
-                          return { ...d, quantite: Math.max(0, d.quantite - transferQuantity) };
-                        }
-                        if (d.depotId === transferToBoutique) {
-                          return { ...d, quantite: d.quantite + transferQuantity };
-                        }
-                        return d;
-                      });
-
-                      return {
-                        ...a,
-                        stockParDepot: newDepots
-                      };
+                      let updated = updateArticleStock(a, transferFromBoutique, -transferQuantity);
+                      updated = updateArticleStock(updated, transferToBoutique, transferQuantity);
+                      return updated;
                     }
                     return a;
                   });
-
-                  onArticlesChange(updatedArticles);
-                  setTransferSuccessMsg(`✅ Transfert de ${transferQuantity} unité(s) effectué avec succès pour "${transferModalArticle.designation}" !`);
+                  onArticlesChange?.(updatedArticles);
                   setTransferModalArticle(null);
+                  setTransferQuantity(1);
                 }}
-                className={`px-5 py-2.5 text-xs font-bold text-white rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-2 ${
-                  transferFromBoutique === transferToBoutique ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 hover:scale-[1.02] active:scale-[0.98]'
-                }`}
+                className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-colors cursor-pointer shadow-sm disabled:opacity-50"
               >
-                <span className="material-symbols-outlined text-[16px]">check</span>
-                Valider le Transfert Inter-Boutiques
+                Confirmer le transfert
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* PRINT LABEL MODAL FOR 1D BARCODE */}
+      {printLabelArticle && (
+        <PrintLabelModal
+          article={printLabelArticle}
+          onClose={() => setPrintLabelArticle(null)}
+        />
+      )}
     </div>
   );
 }

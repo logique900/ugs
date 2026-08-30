@@ -38,7 +38,7 @@ export function Credits({
   onRelancesChange,
   onClientsChange
 }: CreditsProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'echeancier' | 'balance_agee' | 'relances' | 'plafonds'>('echeancier');
+  const [activeSubTab, setActiveSubTab] = useState<'echeancier' | 'balance_agee' | 'relances' | 'plafonds' | 'compte_client'>('echeancier');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDelay, setFilterDelay] = useState<'all' | 'echue' | 'retard30' | 'retard60'>('all');
   const [selectedClientFilter, setSelectedClientFilter] = useState<string>('all');
@@ -444,20 +444,22 @@ export function Credits({
   return (
     <div className="space-y-6">
       {/* Header & Quick Action Trigger Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 p-6 rounded-2xl border border-slate-800 text-white shadow-xl">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-800 text-white shadow-xl">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-600 to-rose-600 flex items-center justify-center shadow-lg shadow-red-950/40">
-              <span className="material-symbols-outlined text-[26px]">account_balance</span>
-            </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-tight">Gestion des Crédits & Encaissements</h1>
-              <p className="text-xs text-slate-300 mt-0.5">
-                Pilotage des délais de paiement, balance âgée et relances
-              </p>
-            </div>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-xl bg-gradient-to-br from-red-600 to-rose-600 flex items-center justify-center shadow-lg shadow-red-950/40 shrink-0">
+          <span className="material-symbols-outlined text-[22px] sm:text-[26px]">menu_book</span>
         </div>
+        <div>
+          <h1 className="text-lg sm:text-2xl font-black tracking-tight">
+            {selectedProjectId === '2' ? 'Carnet de Crédit & Paiements' : 'Gestion des Crédits & Encaissements'}
+          </h1>
+          <p className="text-xs text-slate-300 mt-0.5">
+            {selectedProjectId === '2' ? 'Suivi des dettes des parents et des élèves' : 'Pilotage des délais de paiement, balance âgée et relances'}
+          </p>
+        </div>
+      </div>
+    </div>
 
         {/* Global Action & Export Buttons */}
         <div className="flex flex-wrap items-center gap-2">
@@ -592,7 +594,7 @@ export function Credits({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">calendar_month</span>
-          Échéancier des Factures
+          {selectedProjectId === '2' ? 'Liste des dettes' : 'Échéancier des Factures'}
           <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-700 text-slate-200">
             {echeances.length}
           </span>
@@ -607,7 +609,7 @@ export function Credits({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">pie_chart</span>
-          Balance Âgée par Client
+          {selectedProjectId === '2' ? 'Argent dû par client' : 'Balance Âgée par Client'}
           <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-700 text-slate-200">
             {scopedClients.length}
           </span>
@@ -622,7 +624,7 @@ export function Credits({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">send</span>
-          Centre de Relances & Recouvrement
+          {selectedProjectId === '2' ? 'Relances clients' : 'Centre de Relances & Recouvrement'}
           <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-red-600 text-white font-black">
             {scopedRelances.length}
           </span>
@@ -637,7 +639,19 @@ export function Credits({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">speed</span>
-          Plafonds & Solvabilité
+          {selectedProjectId === '2' ? 'Limites de crédit' : 'Plafonds & Solvabilité'}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('compte_client')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+            activeSubTab === 'compte_client'
+              ? 'bg-purple-600 text-white shadow-md border border-purple-500'
+              : 'text-purple-600 hover:bg-purple-50'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">account_balance_wallet</span>
+          Comptes Scolaire Plus
         </button>
       </div>
 
@@ -689,16 +703,16 @@ export function Credits({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3 px-4">N° Facture</th>
-                  <th className="py-3 px-4">Client</th>
-                  <th className="py-3 px-4 text-center">Émission</th>
-                  <th className="py-3 px-4 text-center">Échéance</th>
-                  <th className="py-3 px-4 text-right">Montant TTC</th>
+                  <th className="py-3 px-4">{selectedProjectId === '2' ? 'Numéro' : 'N° Facture'}</th>
+                  <th className="py-3 px-4">{selectedProjectId === '2' ? 'Parent / Élève' : 'Client'}</th>
+                  <th className="py-3 px-4 text-center">{selectedProjectId === '2' ? 'Date' : 'Émission'}</th>
+                  <th className="py-3 px-4 text-center">{selectedProjectId === '2' ? 'À payer le' : 'Échéance'}</th>
+                  <th className="py-3 px-4 text-right">Total</th>
                   <th className="py-3 px-4 text-right">Réglé</th>
-                  <th className="py-3 px-4 text-right">Reste Dû</th>
+                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'Reste à payer' : 'Reste Dû'}</th>
                   <th className="py-3 px-4 text-center">Retard</th>
-                  <th className="py-3 px-4 text-center">Statut Risque</th>
-                  <th className="py-3 px-4 text-right">Boutons d'Actions Rapides</th>
+                  <th className="py-3 px-4 text-center">{selectedProjectId === '2' ? 'Alerte' : 'Statut Risque'}</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -745,7 +759,9 @@ export function Credits({
                             +{ech.joursRetard} jours
                           </span>
                         ) : (
-                          <span className="text-slate-400 text-[11px]">Dans les délais</span>
+                          <span className="text-slate-400 text-[11px]">
+                            {selectedProjectId === '2' ? 'À jour' : 'Dans les délais'}
+                          </span>
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-center">
@@ -831,13 +847,15 @@ export function Credits({
       {activeSubTab === 'balance_agee' && (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <h3 className="font-bold text-sm text-slate-800">Situation des Comptes Débiteurs & En-cours Tiers</h3>
+            <h3 className="font-bold text-sm text-slate-800">
+              {selectedProjectId === '2' ? 'Situation globale de l\'argent dû (Parents/Élèves)' : 'Situation des Comptes Débiteurs & En-cours Tiers'}
+            </h3>
             <button
               onClick={() => generateAgingBalancePdf(echeances, scopedClients, currentProject)}
               className="flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[16px]">print</span>
-              Imprimer Balance Âgée PDF
+              {selectedProjectId === '2' ? 'Imprimer le carnet' : 'Imprimer Balance Âgée PDF'}
             </button>
           </div>
 
@@ -845,15 +863,15 @@ export function Credits({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3 px-4">Client & Tiers</th>
-                  <th className="py-3 px-4 text-right">Plafond Crédit</th>
-                  <th className="py-3 px-4 text-center">Jauge Plafond</th>
-                  <th className="py-3 px-4 text-right">Non Échues</th>
-                  <th className="py-3 px-4 text-right">1 - 30 Jours</th>
-                  <th className="py-3 px-4 text-right">&gt; 30 Jours</th>
-                  <th className="py-3 px-4 text-right font-black">Total Dû</th>
-                  <th className="py-3 px-4 text-center">Statut Compte</th>
-                  <th className="py-3 px-4 text-right">Actions Rapides</th>
+                  <th className="py-3 px-4">{selectedProjectId === '2' ? 'Parent / Élève' : 'Client & Tiers'}</th>
+                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'Limite crédit' : 'Plafond Crédit'}</th>
+                  <th className="py-3 px-4 text-center">Jauge</th>
+                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'À venir' : 'Non Échues'}</th>
+                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'En retard' : '1 - 30 Jours'}</th>
+                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'Retard grave' : '> 30 Jours'}</th>
+                  <th className="py-3 px-4 text-right font-black">{selectedProjectId === '2' ? 'Total à payer' : 'Total Dû'}</th>
+                  <th className="py-3 px-4 text-center">État compte</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -1081,17 +1099,17 @@ export function Credits({
 
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-600">
-                    <span>Plafond de Crédit Autorisé :</span>
+                    <span>{selectedProjectId === '2' ? 'Crédit maximum autorisé :' : 'Plafond de Crédit Autorisé :'}</span>
                     <span className="font-bold text-slate-900">{plafond.toLocaleString('fr-FR')} DT</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>En-cours Actuel Débiteur :</span>
+                    <span>{selectedProjectId === '2' ? 'Dette actuelle :' : 'En-cours Actuel Débiteur :'}</span>
                     <span className={`font-black ${totalDu > plafond ? 'text-rose-600' : 'text-slate-800'}`}>
                       {totalDu.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                     </span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Délai de Règlement Accordé :</span>
+                    <span>{selectedProjectId === '2' ? 'Délai pour payer :' : 'Délai de Règlement Accordé :'}</span>
                     <span className="font-bold text-slate-900">{client.delaiPaiement || 30} jours</span>
                   </div>
 
@@ -1134,6 +1152,240 @@ export function Credits({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {activeSubTab === 'compte_client' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-1 space-y-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[18px]">group</span>
+                  Liste des parents / Clients
+                </h4>
+                <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+                  {scopedClients.map(c => {
+                    const clientEcheances = echeances.filter(e => e.clientId === c.id && e.soldeRestant > 0);
+                    const totalDu = clientEcheances.reduce((a, e) => a + e.soldeRestant, 0);
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setSelectedClientFilter(c.id)}
+                        className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                          selectedClientFilter === c.id 
+                            ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-500/20' 
+                            : 'border-slate-100 hover:border-slate-300 bg-slate-50/30'
+                        }`}
+                      >
+                        <div className="font-bold text-xs text-slate-900 truncate">{c.nom}</div>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-[10px] text-slate-500">Solde :</span>
+                          <span className={`text-[11px] font-black ${totalDu > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                            {totalDu.toLocaleString('fr-FR')} DT
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-3 space-y-4">
+              {selectedClientFilter === 'all' ? (
+                <div className="bg-slate-50 rounded-2xl border border-dashed border-slate-300 p-12 text-center">
+                  <span className="material-symbols-outlined text-slate-300 text-[48px] mb-2">person_search</span>
+                  <p className="text-slate-500 font-medium italic text-sm">Sélectionnez un client à gauche pour voir son carnet de crédit détaillé</p>
+                </div>
+              ) : (
+                <>
+                  {/* Client Detail Header */}
+                  {scopedClients.filter(c => c.id === selectedClientFilter).map(client => {
+                    const clientEcheances = echeances.filter(e => e.clientId === client.id && e.soldeRestant > 0);
+                    const totalDu = clientEcheances.reduce((a, e) => a + e.soldeRestant, 0);
+                    const plafond = client.plafondCredit || 25000;
+
+                    return (
+                      <div key={client.id} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-black text-xl">
+                              {client.nom.charAt(0)}
+                            </div>
+                            <div>
+                              <h3 className="font-black text-lg text-slate-900">{client.nom}</h3>
+                              <div className="flex items-center gap-3 text-xs text-slate-500">
+                                <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">phone</span> {client.telephone || 'N/A'}</span>
+                                <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">location_on</span> {client.ville || 'Tunis'}</span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-6 pr-4">
+                            <div className="text-right">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block">Total dû</span>
+                              <span className="text-xl font-black text-rose-600">{totalDu.toLocaleString('fr-FR')} DT</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block">Plafond restant</span>
+                              <span className="text-xl font-black text-emerald-600">{(plafond - totalDu).toLocaleString('fr-FR')} DT</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Transaction History (Grand Livre Client) */}
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                          <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                            <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                              <span className="material-symbols-outlined text-purple-600 text-[20px]">history_edu</span>
+                              Historique des mouvements de crédit
+                            </h4>
+                            <button 
+                              onClick={() => generateClientStatementPdf(client, scopedVentes, scopedReglements, currentProject)}
+                              className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-1.5"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+                              Extraire Relevé de Compte
+                            </button>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase border-b border-slate-100">
+                                <tr>
+                                  <th className="py-3 px-4">Date</th>
+                                  <th className="py-3 px-4">Référence</th>
+                                  <th className="py-3 px-4">Désignation / Détails</th>
+                                  <th className="py-3 px-4 text-right">Débit (+)</th>
+                                  <th className="py-3 px-4 text-right">Crédit (-)</th>
+                                  <th className="py-3 px-4 text-right">Solde Progressif</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-50">
+                                {/* Initial Balance Entry */}
+                                {client.soldeInitial && client.soldeInitial !== 0 && (
+                                  <tr className="bg-slate-50/30">
+                                    <td className="py-3 px-4 text-slate-400">---</td>
+                                    <td className="py-3 px-4 font-bold text-slate-500 italic">SOLDE_INI</td>
+                                    <td className="py-3 px-4 italic text-slate-500">Solde initial à la création du compte</td>
+                                    <td className="py-3 px-4 text-right text-slate-900 font-bold">{client.soldeInitial > 0 ? client.soldeInitial.toLocaleString('fr-FR') : '0.00'} DT</td>
+                                    <td className="py-3 px-4 text-right text-slate-900 font-bold">{client.soldeInitial < 0 ? Math.abs(client.soldeInitial).toLocaleString('fr-FR') : '0.00'} DT</td>
+                                    <td className="py-3 px-4 text-right font-black text-slate-900">{client.soldeInitial.toLocaleString('fr-FR')} DT</td>
+                                  </tr>
+                                )}
+
+                                {/* Sort and Combine Sales/Invoices and Payments/Receipts */}
+                                {(() => {
+                                  const history: any[] = [
+                                    ...scopedVentes.filter(v => v.clientId === client.id && v.statut !== 'Devis').map(v => ({
+                                      date: v.date,
+                                      ref: v.numero,
+                                      desc: `Vente : ${v.lignes.length} articles`,
+                                      debit: v.montantTTC,
+                                      credit: 0
+                                    })),
+                                    ...scopedReglements.filter(r => r.tierId === client.id && r.tierType === 'Client').map(r => ({
+                                      date: r.date,
+                                      ref: r.numeroPiece,
+                                      desc: `Encaissement : ${r.modePaiement} (${r.referencePaiement || 'N/A'})`,
+                                      debit: 0,
+                                      credit: r.montant
+                                    }))
+                                  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                                  let runningBalance = client.soldeInitial || 0;
+
+                                  return history.map((item, idx) => {
+                                    runningBalance += (item.debit - item.credit);
+                                    return (
+                                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                        <td className="py-3 px-4 text-slate-600">{new Date(item.date).toLocaleDateString('fr-FR')}</td>
+                                        <td className="py-3 px-4 font-bold text-slate-800">{item.ref}</td>
+                                        <td className="py-3 px-4 text-slate-500">{item.desc}</td>
+                                        <td className="py-3 px-4 text-right font-bold text-rose-600">{item.debit > 0 ? `+${item.debit.toLocaleString('fr-FR')} DT` : '-'}</td>
+                                        <td className="py-3 px-4 text-right font-bold text-emerald-600">{item.credit > 0 ? `-${item.credit.toLocaleString('fr-FR')} DT` : '-'}</td>
+                                        <td className="py-3 px-4 text-right font-black text-slate-900">{runningBalance.toLocaleString('fr-FR')} DT</td>
+                                      </tr>
+                                    );
+                                  });
+                                })()}
+                                
+                                <tr className="bg-purple-50/50">
+                                  <td colSpan={5} className="py-4 px-4 text-right font-black text-slate-900 uppercase">Solde Final au {new Date().toLocaleDateString('fr-FR')} :</td>
+                                  <td className="py-4 px-4 text-right font-black text-purple-700 text-sm">
+                                    {totalDu.toLocaleString('fr-FR')} DT
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Quick Actions for this client */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200">
+                             <h5 className="font-bold text-xs text-amber-900 mb-2 flex items-center gap-2">
+                               <span className="material-symbols-outlined text-[18px]">warning</span>
+                               Statut du plafond scolaire
+                             </h5>
+                             <p className="text-[11px] text-amber-800 mb-3 leading-relaxed">
+                               Le client utilise actuellement <span className="font-bold">{Math.round((totalDu / plafond) * 100)}%</span> de sa limite de crédit autorisée. 
+                               En cas de dépassement à 100%, la validation des ventes en caisse sera automatiquement bloquée.
+                             </p>
+                             <button 
+                                onClick={() => {
+                                  setEditLimitModalClient(client);
+                                  setNewCreditLimit(plafond);
+                                  setNewPaymentDelay(client.delaiPaiement || 30);
+                                }}
+                                className="w-full py-2 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 transition-colors shadow-sm cursor-pointer"
+                             >
+                               Augmenter la limite de crédit
+                             </button>
+                           </div>
+
+                           <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-200">
+                             <h5 className="font-bold text-xs text-emerald-900 mb-2 flex items-center gap-2">
+                               <span className="material-symbols-outlined text-[18px]">add_task</span>
+                               Action rapide
+                             </h5>
+                             <p className="text-[11px] text-emerald-800 mb-3 leading-relaxed">
+                               Enregistrer un règlement global pour ce client afin de libérer son plafond de crédit instantanément.
+                             </p>
+                             <button 
+                                onClick={() => {
+                                  const firstUnpaid = scopedVentes.find(v => v.clientId === client.id && (v.montantTTC - (v.montantPaye || 0)) > 0);
+                                  if (firstUnpaid) {
+                                    handleOpenPayment({
+                                      id: `ech-${firstUnpaid.id}`,
+                                      venteId: firstUnpaid.id,
+                                      numeroFacture: firstUnpaid.numero,
+                                      clientId: client.id,
+                                      clientNom: client.nom,
+                                      projetId: firstUnpaid.projetId,
+                                      dateFacture: firstUnpaid.date,
+                                      dateEcheance: firstUnpaid.dateEcheance || firstUnpaid.date,
+                                      montantTTC: firstUnpaid.montantTTC,
+                                      montantPaye: firstUnpaid.montantPaye || 0,
+                                      soldeRestant: firstUnpaid.montantTTC - (firstUnpaid.montantPaye || 0),
+                                      statut: 'En retard',
+                                      joursRetard: 0
+                                    });
+                                  }
+                                }}
+                                className="w-full py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-colors shadow-sm cursor-pointer"
+                             >
+                               Saisir un règlement (Paiement)
+                             </button>
+                           </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

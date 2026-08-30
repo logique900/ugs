@@ -3,8 +3,8 @@ import { Utilisateur } from '../types';
 export function canPerformAction(user: Utilisateur | null, action: 'create' | 'modify' | 'delete' | 'manage_users' | 'sensitive_settings'): boolean {
   if (!user) return false;
   
-  if (user.role === 'admin' || user.role === 'directeur') {
-    return true; // Admin can do everything
+  if (user.role === 'super_admin' || user.role === 'admin' || user.role === 'directeur') {
+    return true; // Super Admin and Admin have total control of Société UGS
   }
 
   if (user.role === 'comptable') {
@@ -28,7 +28,7 @@ export function canPerformAction(user: Utilisateur | null, action: 'create' | 'm
 
 export function canAccessTab(user: Utilisateur | null, tabId: string): boolean {
   if (!user) return false;
-  if (user.role === 'admin' || user.role === 'directeur') return true;
+  if (user.role === 'super_admin' || user.role === 'admin' || user.role === 'directeur') return true;
 
   if (user.role === 'comptable') {
     const allowed = ['dashboard', 'ventes', 'achats', 'credits', 'caisse'];

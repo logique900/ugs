@@ -85,7 +85,7 @@ export function AdminUsers({ projets }: AdminUsersProps) {
 
     const userToSave = {
       ...formData,
-      projetsAffectes: formData.role === 'admin' ? projets.map(p => p.id) : formData.projetsAffectes,
+      projetsAffectes: (formData.role === 'super_admin' || formData.role === 'admin') ? projets.map(p => p.id) : formData.projetsAffectes,
       projetId: formData.projetsAffectes.length > 0 ? formData.projetsAffectes[0] : formData.projetId
     };
 
@@ -107,11 +107,18 @@ export function AdminUsers({ projets }: AdminUsersProps) {
 
   const getRoleBadge = (role: Role) => {
     switch (role) {
+      case 'super_admin':
+        return (
+          <span className="px-2.5 py-1 bg-indigo-500/10 text-indigo-700 rounded-md text-xs font-bold uppercase tracking-wide border border-indigo-500/20 flex w-fit items-center gap-1">
+            <span className="material-symbols-outlined text-[14px]">security</span>
+            Super-Admin
+          </span>
+        );
       case 'admin':
         return (
           <span className="px-2.5 py-1 bg-red-500/10 text-red-700 rounded-md text-xs font-bold uppercase tracking-wide border border-red-500/20 flex w-fit items-center gap-1">
             <span className="material-symbols-outlined text-[14px]">shield_person</span>
-            Super-Admin
+            Admin
           </span>
         );
       case 'chef_projet':
@@ -188,7 +195,7 @@ export function AdminUsers({ projets }: AdminUsersProps) {
                   <tr key={user.id} className="hover:bg-surface-container-low/50 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-label-lg font-bold shadow-sm ${user.role === 'admin' ? 'bg-red-700 text-white' : 'bg-surface-container-highest text-on-surface'}`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-label-lg font-bold shadow-sm ${user.role === 'super_admin' ? 'bg-indigo-700 text-white' : user.role === 'admin' ? 'bg-red-700 text-white' : 'bg-surface-container-highest text-on-surface'}`}>
                           {user.nom.charAt(0)}
                         </div>
                         <div>
@@ -201,7 +208,7 @@ export function AdminUsers({ projets }: AdminUsersProps) {
                       {getRoleBadge(user.role)}
                     </td>
                     <td className="p-4">
-                      {user.role === 'admin' ? (
+                      {(user.role === 'super_admin' || user.role === 'admin') ? (
                         <span className="text-emerald-700 font-label-sm font-bold bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 inline-flex items-center gap-1">
                           <span className="material-symbols-outlined text-[16px]">domain_add</span>
                           Accès Global (Toutes Boutiques)
@@ -228,7 +235,7 @@ export function AdminUsers({ projets }: AdminUsersProps) {
                         >
                           <span className="material-symbols-outlined text-[18px]">edit</span>
                         </button>
-                        {user.role !== 'admin' && (
+                        {(user.role !== 'super_admin' && user.role !== 'admin') && (
                           <button 
                             onClick={() => handleDeleteUser(user.id)}
                             className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" 
@@ -309,11 +316,23 @@ export function AdminUsers({ projets }: AdminUsersProps) {
                   <select 
                     className="w-full px-3.5 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl text-sm font-bold text-on-surface focus:outline-none focus:border-primary"
                     value={formData.role}
-                    onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value as Role }))}
+                    onChange={(e) => {
+                      const newRole = e.target.value as Role;
+                      setFormData(prev => ({
+                        ...prev,
+                        role: newRole,
+                        // Si le nouveau rôle est caissier et qu'il a déjà plus d'une boutique, on garde que la première
+                        projetsAffectes: (newRole === 'caissier' || newRole === 'agent') && prev.projetsAffectes.length > 1 
+                          ? [prev.projetsAffectes[0]] 
+                          : prev.projetsAffectes
+                      }));
+                    }}
                   >
-                    <option value="admin">Super-Admin</option>
+                    <option value="super_admin">Super-Admin</option>
+                    <option value="admin">Administrateur</option>
                     <option value="chef_projet">Chef de Boutique</option>
                     <option value="agent">Agent Commercial</option>
+                    <option value="caissier">Caissier</option>
                     <option value="comptable">Comptable</option>
                   </select>
                 </div>
@@ -331,23 +350,28 @@ export function AdminUsers({ projets }: AdminUsersProps) {
                 </div>
               </div>
 
-              {formData.role !== 'admin' && (
+              {(formData.role !== 'super_admin' && formData.role !== 'admin') && (
                 <div>
-                  <label className="block text-xs font-bold text-on-surface-variant mb-3">Boutiques d'Affectation</label>
+                  <label className="block text-xs font-bold text-on-surface-variant mb-3">Boutiques d'Affectation {formData.role === 'caissier' ? '(Caissier: 1 boutique max)' : ''}</label>
                   <div className="bg-surface-container-low border border-outline-variant rounded-xl p-3 max-h-[160px] overflow-y-auto flex flex-col gap-2">
                     {projets.map(p => {
                       const isSelected = formData.projetsAffectes.includes(p.id);
                       return (
                         <label key={p.id} className="flex items-center gap-3 p-2 hover:bg-white rounded-lg cursor-pointer transition-colors border border-transparent hover:border-outline-variant shadow-sm hover:shadow-md">
                           <input 
-                            type="checkbox"
-                            className="w-4 h-4 text-primary rounded border-outline-variant focus:ring-primary focus:ring-2"
+                            type={formData.role === 'caissier' ? "radio" : "checkbox"}
+                            name={formData.role === 'caissier' ? "boutique_selection" : undefined}
+                            className={`w-4 h-4 text-primary border-outline-variant focus:ring-primary focus:ring-2 ${formData.role === 'caissier' ? 'rounded-full' : 'rounded'}`}
                             checked={isSelected}
                             onChange={(e) => {
-                              if (e.target.checked) {
-                                setFormData(prev => ({ ...prev, projetsAffectes: [...prev.projetsAffectes, p.id] }));
+                              if (formData.role === 'caissier') {
+                                setFormData(prev => ({ ...prev, projetsAffectes: [p.id] }));
                               } else {
-                                setFormData(prev => ({ ...prev, projetsAffectes: prev.projetsAffectes.filter(id => id !== p.id) }));
+                                if (e.target.checked) {
+                                  setFormData(prev => ({ ...prev, projetsAffectes: [...prev.projetsAffectes, p.id] }));
+                                } else {
+                                  setFormData(prev => ({ ...prev, projetsAffectes: prev.projetsAffectes.filter(id => id !== p.id) }));
+                                }
                               }
                             }}
                           />

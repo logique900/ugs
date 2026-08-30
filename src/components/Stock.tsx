@@ -1,6 +1,8 @@
+import { getArticleStock, hasLowStock, isOutOfStock } from '../utils/stockUtils';
 import React, { useState, useMemo } from 'react';
-import {  Article, Projet, MouvementStock , Utilisateur } from '../types';
+import { Article, Projet, MouvementStock, Utilisateur, Role, Vente, Fournisseur, Achat, TabType } from '../types';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, ReferenceLine } from 'recharts';
+import { SmartStockDashboard } from './SmartStockDashboard';
 
 interface StockProps {
   currentUser: Utilisateur;
@@ -10,13 +12,50 @@ interface StockProps {
   mouvements: MouvementStock[];
   onMouvementsChange: (mouvements: MouvementStock[]) => void;
   projets: Projet[];
+  ventes?: Vente[];
+  fournisseurs?: Fournisseur[];
+  onGenerateAchat?: (nouvelAchat: Partial<Achat>) => void;
+  onNavigate?: (tab: TabType) => void;
 }
 
-export function Stock({ currentUser, selectedProjectId, articles, onArticlesChange, mouvements, onMouvementsChange, projets }: StockProps) {
+export function Stock({ 
+  currentUser, 
+  selectedProjectId, 
+  articles, 
+  onArticlesChange, 
+  mouvements, 
+  onMouvementsChange, 
+  projets,
+  ventes = [],
+  fournisseurs = [],
+  onGenerateAchat,
+  onNavigate
+}: StockProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'rupture' | 'faible' | 'normal'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [productFilter, setProductFilter] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalType, setModalType] = useState<'Entrée' | 'Sortie'>('Entrée');
+  const [modalType, setModalType] = useState<'Entrée' | 'Sortie' | 'Correction' | 'Transfert'>('Entrée');
+
+  const activeRole: Role = currentUser?.role || 'admin';
+
+  // Matrice des permissions
+  const isAdmin = activeRole === 'admin' || activeRole === 'directeur' || activeRole === 'chef_projet';
+  const isComptable = activeRole === 'comptable';
+  const isCaissier = activeRole === 'caissier' || activeRole === 'agent';
+
+  const [activeStockMode, setActiveStockMode] = useState<'intelligent' | 'classique'>(isAdmin ? 'intelligent' : 'classique');
+
+  const canConsultStock = true; // Tous les rôles
+  const canConsultMovements = true; // Tous les rôles
+  const canConsultAlerts = true; // Tous les rôles
+  const canManualEntree = isAdmin || isCaissier;
+  const canManualSortie = isAdmin || isCaissier;
+  const canCorrection = isAdmin || isCaissier;
+  const canTransfert = isAdmin || isCaissier;
+  const canConfigureThresholds = isAdmin || isCaissier;
+
   
   const [formData, setFormData] = useState<{
     date: string;
@@ -44,16 +83,51 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
     ? mouvements
     : mouvements.filter(m => m.projetId === selectedProjectId);
 
+  const categoriesList = useMemo(() => {
+    return Array.from(new Set(articles.map(a => a.famille).filter(Boolean)));
+  }, [articles]);
+
   const filteredArticles = articlesToShow.filter(a => {
-    const matchesSearch = a.designation.toLowerCase().includes(searchTerm.toLowerCase()) || a.code.toLowerCase().includes(searchTerm.toLowerCase());
+    // 1. Category filter
+    if (categoryFilter !== 'all' && a.famille !== categoryFilter) {
+      return false;
+    }
+
+    // 2. Product filter
+    if (productFilter !== 'all' && a.id !== productFilter) {
+      return false;
+    }
+
+    // 3. Search term
+    const term = searchTerm.toLowerCase().trim();
+    let matchesSearch = true;
+    if (term) {
+      const matchesDesignation = a.designation?.toLowerCase().includes(term);
+      const matchesCode = a.code?.toLowerCase().includes(term);
+      const matchesRef = a.referenceInterne?.toLowerCase().includes(term);
+      const matchesCodeBarres = a.codeBarres?.some(cb => cb.toLowerCase().includes(term));
+      const matchesFamille = a.famille?.toLowerCase().includes(term);
+      const matchesMarque = a.marque?.toLowerCase().includes(term);
+      matchesSearch = matchesDesignation || matchesCode || matchesRef || matchesCodeBarres || matchesFamille || matchesMarque;
+    }
+
+    // 4. Status filter
     let matchesStatus = true;
-    if (statusFilter === 'rupture') matchesStatus = a.stock === 0;
-    if (statusFilter === 'faible') matchesStatus = a.stock > 0 && a.stock < 15;
-    if (statusFilter === 'normal') matchesStatus = a.stock >= 15;
+    const stockQty = getArticleStock(a, selectedProjectId);
+    const minQty = a.stockMinimums?.[selectedProjectId] || 15;
+
+    if (statusFilter === 'rupture') matchesStatus = stockQty === 0;
+    if (statusFilter === 'faible') matchesStatus = stockQty > 0 && stockQty < minQty;
+    if (statusFilter === 'normal') matchesStatus = stockQty >= minQty;
+
     return matchesSearch && matchesStatus;
   });
 
-  const handleOpenModal = (type: 'Entrée' | 'Sortie', prefillArticleId?: string) => {
+  const handleOpenModal = (type: 'Entrée' | 'Sortie' | 'Correction' | 'Transfert', prefillArticleId?: string) => {
+    if (!canManualEntree && !canManualSortie && !canCorrection && !canTransfert) {
+      alert("Accès refusé : Les mouvements manuels sont réservés aux Administrateurs.");
+      return;
+    }
     setModalType(type);
     const prefillArticle = articles.find(a => a.id === prefillArticleId);
     setFormData({
@@ -69,12 +143,16 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManualEntree && !canManualSortie) {
+      alert("Opération bloquée : Seuls les Administrateurs ont la permission d'effectuer des mouvements de stock manuels.");
+      return;
+    }
     if (formData.lignes.length === 0) return;
 
     if (modalType === 'Sortie') {
       const hasError = formData.lignes.some(ligne => {
         const article = articles.find(a => a.id === ligne.articleId);
-        return !article || article.stock < ligne.quantite;
+        return !article || getArticleStock(article, selectedProjectId) < ligne.quantite;
       });
       if (hasError) {
         alert("Stock insuffisant pour un ou plusieurs articles.");
@@ -90,21 +168,30 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
       const article = updatedArticles.find(a => a.id === ligne.articleId);
       if (!article) return;
 
+      const stockAvant = getArticleStock(article, selectedProjectId);
+      const stockApres = modalType === 'Entrée' ? stockAvant + ligne.quantite : Math.max(0, stockAvant - ligne.quantite);
+      const boutiqueNom = projets.find(p => p.id === article.projetId)?.nom || 'Sfax Centre';
+
       newMouvements.push({
         id: `mvt-${timestamp}-${index}`,
         projetId: article.projetId,
         articleId: ligne.articleId,
+        designation: article.designation,
         type: modalType,
         quantite: ligne.quantite,
         date: formData.date,
-        motif: formData.motif
+        motif: formData.motif,
+        auteur: currentUser?.nom || 'Gestionnaire Stock',
+        boutique: boutiqueNom,
+        stockAvant,
+        stockApres
       });
 
       updatedArticles = updatedArticles.map(a => {
         if (a.id === ligne.articleId) {
           return {
             ...a,
-            stock: modalType === 'Entrée' ? a.stock + ligne.quantite : a.stock - ligne.quantite
+            stock: stockApres
           };
         }
         return a;
@@ -118,9 +205,9 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
 
   // KPIs
   const kpis = useMemo(() => {
-    const value = articlesToShow.reduce((acc, a) => acc + (a.prixAchatHT * a.stock), 0);
-    const lowStock = articlesToShow.filter(a => a.stock > 0 && a.stock < 15).length;
-    const outOfStock = articlesToShow.filter(a => a.stock === 0).length;
+    const value = articlesToShow.reduce((acc, a) => acc + (a.prixAchatHT * getArticleStock(a, selectedProjectId)), 0);
+    const lowStock = articlesToShow.filter(a => getArticleStock(a, selectedProjectId) > 0 && getArticleStock(a, selectedProjectId) < 15).length;
+    const outOfStock = articlesToShow.filter(a => getArticleStock(a, selectedProjectId) === 0).length;
     
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
@@ -156,62 +243,105 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
 
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
-      {/* Enhanced Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Mode Switcher: Stock Intelligent (P3) vs Stock Opérationnel */}
+      {isAdmin && (
+      <div className="flex bg-surface-container-low p-1.5 rounded-2xl border border-outline-variant max-w-xl">
+        <button
+          type="button"
+          onClick={() => setActiveStockMode('intelligent')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeStockMode === 'intelligent'
+              ? 'bg-slate-900 text-white shadow-md'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px] text-indigo-400">psychology</span>
+          <span>Gestion Intelligente P3</span>
+          <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[9px] uppercase font-mono">Avancé</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveStockMode('classique')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeStockMode === 'classique'
+              ? 'bg-white shadow-md text-slate-900'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+          <span>Stock Opérationnel & Journal</span>
+        </button>
+      </div>
+      )}
+
+      {/* RENDER SMART STOCK COCKPIT OR CLASSIC INVENTORY */}
+      {activeStockMode === 'intelligent' ? (
+        <SmartStockDashboard
+          currentUser={currentUser}
+          selectedProjectId={selectedProjectId}
+          articles={articles}
+          onArticlesChange={onArticlesChange}
+          mouvements={mouvements}
+          onMouvementsChange={onMouvementsChange}
+          projets={projets}
+          ventes={ventes}
+          fournisseurs={fournisseurs}
+          onGenerateAchat={onGenerateAchat}
+          onNavigate={onNavigate}
+        />
+      ) : (
+        <>
+          {/* Enhanced Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="font-display-lg text-3xl font-bold text-on-surface flex items-center gap-3">
+          <h1 className="font-display-lg text-xl sm:text-3xl font-bold text-on-surface flex items-center gap-3">
             Centre de Contrôle des Stocks
             <span className="relative flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
             </span>
           </h1>
-          <p className="text-on-surface-variant mt-2 text-base">
+          <p className="text-on-surface-variant mt-2 text-sm sm:text-base">
             Gérez vos flux de marchandises en temps réel et consultez la disponibilité exacte par boutique.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button 
             onClick={() => handleOpenModal('Sortie')}
-            className="group relative inline-flex items-center justify-center px-5 py-2.5 bg-surface-container-lowest text-on-surface rounded-xl font-bold transition-all border border-outline-variant hover:border-error/50 hover:bg-error/5 hover:text-error shadow-sm overflow-hidden cursor-pointer"
+            disabled={!canManualSortie}
+            className={`group relative inline-flex items-center justify-center px-5 py-2.5 rounded-xl font-bold transition-all border shadow-sm overflow-hidden cursor-pointer ${
+              canManualSortie 
+                ? 'bg-surface-container-lowest text-on-surface border-outline-variant hover:border-error/50 hover:bg-error/5 hover:text-error' 
+                : 'bg-slate-100 text-slate-400 border-slate-200 opacity-65 cursor-not-allowed'
+            }`}
+            title={canManualSortie ? "Enregistrer une sortie manuelle de stock" : "🔒 Sortie réservée aux Administrateurs"}
           >
-            <span className="material-symbols-outlined text-[20px] mr-2">remove_shopping_cart</span>
-            Nouvelle Sortie
+            <span className="material-symbols-outlined text-[20px] mr-2">
+              {canManualSortie ? 'remove_shopping_cart' : 'lock'}
+            </span>
+            {canManualSortie ? 'Nouvelle Sortie' : 'Sortie (Admin)'}
           </button>
           <button 
             onClick={() => handleOpenModal('Entrée')}
-            className="group relative inline-flex items-center justify-center px-5 py-2.5 bg-primary hover:bg-red-700 text-white rounded-xl font-bold transition-all shadow-md overflow-hidden cursor-pointer"
+            disabled={!canManualEntree}
+            className={`group relative inline-flex items-center justify-center px-5 py-2.5 rounded-xl font-bold transition-all shadow-md overflow-hidden cursor-pointer ${
+              canManualEntree
+                ? 'bg-primary hover:bg-red-700 text-white'
+                : 'bg-slate-200 text-slate-400 opacity-65 cursor-not-allowed'
+            }`}
+            title={canManualEntree ? "Enregistrer une entrée manuelle de stock" : "🔒 Entrée réservée aux Administrateurs"}
           >
-            <span className="material-symbols-outlined text-[20px] mr-2">add_shopping_cart</span>
-            Nouvelle Entrée
+            <span className="material-symbols-outlined text-[20px] mr-2">
+              {canManualEntree ? 'add_shopping_cart' : 'lock'}
+            </span>
+            {canManualEntree ? 'Nouvelle Entrée' : 'Entrée (Admin)'}
           </button>
-        </div>
-      </div>
-
-      {/* BF-PROD-007 Multi-Boutique Banner */}
-      <div className="p-4 bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-blue-300">storefront</span>
-          </div>
-          <div>
-            <h3 className="font-bold text-sm text-white uppercase tracking-wide">
-              BF-PROD-007 — Suivi des Quantités Disponibles par Boutique
-            </h3>
-            <p className="text-xs text-blue-200 mt-0.5 leading-relaxed">
-              Consultez instantanément les stocks disponibles dans chaque point de vente (ex. <strong>Sfax Centre : 15</strong> | <strong>Sfax Nord : 7</strong> | <strong>Gabès : 12</strong>).
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          <span className="px-3 py-1 bg-white/10 rounded-lg text-xs font-bold text-blue-200 border border-white/10">
-            {selectedProjectId === 'all' ? 'Vue Consolidée (Toutes Boutiques)' : `Boutique Active: ${projets.find(p => p.id === selectedProjectId)?.nom || 'Projet'}`}
-          </span>
         </div>
       </div>
 
       {/* Modern Bento Grid KPI */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {/* KPI 1: Valeur Globale */}
         <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant shadow-sm relative overflow-hidden group">
           <div className="absolute -right-6 -top-6 w-32 h-32 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors"></div>
@@ -297,34 +427,89 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
         {/* Left: Inventory Interactive Table */}
         <div className="lg:col-span-2 flex flex-col gap-4">
           {/* Filtering Tools */}
-          <div className="flex flex-col sm:flex-row justify-between items-center bg-surface-container-lowest p-2 rounded-2xl border border-outline-variant shadow-sm gap-2">
-            <div className="flex gap-1 p-1 bg-surface-container-low rounded-xl overflow-x-auto w-full sm:w-auto">
-              {(['all', 'normal', 'faible', 'rupture'] as const).map(status => (
-                <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${
-                    statusFilter === status 
-                      ? 'bg-white shadow text-on-surface' 
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
-                  }`}
-                >
-                  {status === 'all' && 'Tous'}
-                  {status === 'normal' && 'Normaux'}
-                  {status === 'faible' && 'En Alerte'}
-                  {status === 'rupture' && 'Ruptures'}
-                </button>
-              ))}
+          <div className="flex flex-col gap-3 bg-surface-container-lowest p-3 rounded-2xl border border-outline-variant shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex gap-1 p-1 bg-surface-container-low rounded-xl overflow-x-auto w-full sm:w-auto">
+                {(['all', 'normal', 'faible', 'rupture'] as const).map(status => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                      statusFilter === status 
+                        ? 'bg-white shadow text-on-surface' 
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+                    }`}
+                  >
+                    {status === 'all' && 'Tous les états'}
+                    {status === 'normal' && 'Normal'}
+                    {status === 'faible' && 'Stock faible'}
+                    {status === 'rupture' && 'Rupture'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative w-full sm:w-72">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+                <input
+                  type="text"
+                  placeholder="Rechercher (nom, réf, SKU, code-barres)..."
+                  className="block w-full pl-9 pr-3 py-1.5 border border-outline-variant rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 bg-transparent text-on-surface transition-shadow"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="relative w-full sm:w-80">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
-              <input
-                type="text"
-                placeholder="Rechercher (code, désignation)..."
-                className="block w-full pl-10 pr-4 py-2.5 border-none rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 bg-transparent text-on-surface font-body-sm transition-shadow"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-outline-variant/40">
+              <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1 mr-1">
+                <span className="material-symbols-outlined text-[16px]">filter_alt</span>
+                Filtres :
+              </span>
+
+              {/* Catégorie */}
+              <div className="flex items-center gap-1">
+                <label className="text-[11px] font-semibold text-slate-500">Catégorie :</label>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="text-xs font-medium bg-surface-container-low border border-outline-variant/60 rounded-lg px-2 py-1 text-on-surface focus:outline-none focus:border-primary"
+                >
+                  <option value="all">Toutes les catégories</option>
+                  {categoriesList.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Produit */}
+              <div className="flex items-center gap-1">
+                <label className="text-[11px] font-semibold text-slate-500">Produit :</label>
+                <select
+                  value={productFilter}
+                  onChange={(e) => setProductFilter(e.target.value)}
+                  className="text-xs font-medium bg-surface-container-low border border-outline-variant/60 rounded-lg px-2 py-1 text-on-surface focus:outline-none focus:border-primary max-w-[200px] truncate"
+                >
+                  <option value="all">Tous les produits</option>
+                  {articlesToShow.map(art => (
+                    <option key={art.id} value={art.id}>{art.designation}</option>
+                  ))}
+                </select>
+              </div>
+
+              {(categoryFilter !== 'all' || productFilter !== 'all' || statusFilter !== 'all' || searchTerm !== '') && (
+                <button
+                  onClick={() => {
+                    setCategoryFilter('all');
+                    setProductFilter('all');
+                    setStatusFilter('all');
+                    setSearchTerm('');
+                  }}
+                  className="text-xs font-bold text-error hover:underline ml-auto flex items-center gap-0.5"
+                >
+                  <span className="material-symbols-outlined text-[14px]">close</span>
+                  Réinitialiser
+                </button>
+              )}
             </div>
           </div>
 
@@ -344,7 +529,7 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                 <tbody className="divide-y divide-outline-variant/50">
                   {filteredArticles.map((article) => {
                     const maxStock = 200; // Arbitrary max stock for progress bar calc
-                    const percentage = Math.min((article.stock / maxStock) * 100, 100);
+                    const percentage = Math.min((getArticleStock(article, selectedProjectId) / maxStock) * 100, 100);
                     
                     return (
                       <tr key={article.id} className="hover:bg-surface-container-low/50 transition-colors group">
@@ -367,15 +552,25 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                         <td className="px-6 py-4">
                           <div className="flex flex-col gap-1.5">
                             <div className="flex justify-between items-end">
-                              <span className="font-black text-lg text-on-surface leading-none">{article.stock}</span>
+                              {selectedProjectId !== 'all' ? (
+  <span className="font-black text-lg text-on-surface leading-none">{getArticleStock(article, selectedProjectId)}</span>
+) : (
+  <div className="flex flex-col gap-1 text-right">
+    <span className="font-black text-lg text-on-surface leading-none mb-1">{getArticleStock(article, 'all')} <span className="text-xs text-on-surface-variant font-normal">total</span></span>
+    {Object.entries(article.stocks || {}).map(([pId, qty]) => {
+      const pName = projets.find(p => p.id === pId)?.nom || pId;
+      return <span key={pId} className="text-[10px] text-on-surface-variant bg-surface-container-low px-1.5 py-0.5 rounded-sm">{pName.replace('Boutique ', '')} : {qty}</span>;
+    })}
+  </div>
+)}
                               <span className="text-[10px] font-bold text-on-surface-variant">/ {maxStock}</span>
                             </div>
                             {/* Health Bar */}
                             <div className="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
                               <div 
                                 className={`h-full rounded-full transition-all duration-1000 ${
-                                  article.stock === 0 ? 'bg-error' : 
-                                  article.stock < 15 ? 'bg-orange-500' : 'bg-green-500'
+                                  getArticleStock(article, selectedProjectId) === 0 ? 'bg-error' : 
+                                  getArticleStock(article, selectedProjectId) < 15 ? 'bg-orange-500' : 'bg-green-500'
                                 }`}
                                 style={{ width: `${percentage}%` }}
                               ></div>
@@ -387,18 +582,18 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                             type="button"
                             onClick={() => setSelectedArticleForBoutiqueModal(article)}
                             className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold border border-blue-200 transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                            title="Voir la répartition du stock par boutique (BF-PROD-007)"
+                            title="Voir la répartition du stock par boutique"
                           >
                             <span className="material-symbols-outlined text-[16px]">storefront</span>
                             Boutiques
                           </button>
                         </td>
                         <td className="px-6 py-4 text-center">
-                          {article.stock === 0 ? (
+                          {getArticleStock(article, selectedProjectId) === 0 ? (
                             <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black uppercase bg-error/10 text-error border border-error/20">
                               Rupture
                             </span>
-                          ) : article.stock < 15 ? (
+                          ) : getArticleStock(article, selectedProjectId) < 15 ? (
                             <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black uppercase bg-orange-500/10 text-orange-700 border border-orange-500/20">
                               En Alerte
                             </span>
@@ -409,22 +604,29 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                           )}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button 
-                              onClick={() => handleOpenModal('Sortie', article.id)}
-                              className="w-8 h-8 rounded-lg bg-surface-container hover:bg-error/10 hover:text-error text-on-surface flex items-center justify-center transition-colors tooltip-trigger"
-                              title="Déduire (Sortie)"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">remove</span>
-                            </button>
-                            <button 
-                              onClick={() => handleOpenModal('Entrée', article.id)}
-                              className="w-8 h-8 rounded-lg bg-surface-container hover:bg-green-500/10 hover:text-green-700 text-on-surface flex items-center justify-center transition-colors tooltip-trigger"
-                              title="Ajouter (Entrée)"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">add</span>
-                            </button>
-                          </div>
+                          {canManualEntree || canManualSortie ? (
+                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button 
+                                onClick={() => handleOpenModal('Sortie', article.id)}
+                                className="w-8 h-8 rounded-lg bg-surface-container hover:bg-error/10 hover:text-error text-on-surface flex items-center justify-center transition-colors tooltip-trigger"
+                                title="Déduire (Sortie)"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">remove</span>
+                              </button>
+                              <button 
+                                onClick={() => handleOpenModal('Entrée', article.id)}
+                                className="w-8 h-8 rounded-lg bg-surface-container hover:bg-green-500/10 hover:text-green-700 text-on-surface flex items-center justify-center transition-colors tooltip-trigger"
+                                title="Ajouter (Entrée)"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">add</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1 text-slate-400 text-xs font-medium">
+                              <span className="material-symbols-outlined text-[16px]">lock</span>
+                              <span className="text-[10px] uppercase font-mono">Lecture seule</span>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -469,22 +671,37 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                       </span>
                     </div>
                     
-                    <div className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow group-hover:border-outline-variant">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold text-sm text-on-surface truncate pr-2">
-                          {article?.designation || 'Article Inconnu'}
-                        </p>
-                        <span className={`text-sm font-black whitespace-nowrap px-2 py-0.5 rounded-lg ${isEntree ? 'bg-green-500/10 text-green-700' : 'bg-error/10 text-error'}`}>
-                          {isEntree ? '+' : '-'}{mvt.quantite}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-1.5 text-on-surface-variant">
-                          <span className="material-symbols-outlined text-[14px]">edit_note</span>
-                          <p className="text-[11px] font-medium truncate max-w-[150px]">{mvt.motif}</p>
+                    <div className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow group-hover:border-outline-variant space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <p className="font-bold text-sm text-on-surface">
+                            {mvt.designation || article?.designation || 'Article Inconnu'}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] font-bold uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                              📍 {mvt.boutique || projets.find(p => p.id === mvt.projetId)?.nom || 'Sfax Centre'}
+                            </span>
+                            {mvt.stockAvant !== undefined && mvt.stockApres !== undefined && (
+                              <span className="text-[10px] font-mono font-bold bg-amber-50 text-amber-800 px-2 py-0.5 rounded border border-amber-200">
+                                Stock : {mvt.stockAvant} ➔ {mvt.stockApres}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-[10px] font-bold text-on-surface-variant bg-surface-container-low px-2 py-1 rounded-md">
-                          {new Date(mvt.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+                        <div className="text-right shrink-0">
+                          <span className={`text-xs font-black whitespace-nowrap px-2.5 py-1 rounded-lg uppercase inline-block ${isEntree ? 'bg-green-500/10 text-green-700 border border-green-500/20' : 'bg-rose-500/10 text-rose-700 border border-rose-500/20'}`}>
+                            {mvt.type} : {isEntree ? '+' : '-'}{mvt.quantite}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center pt-1 border-t border-slate-100 text-xs">
+                        <div className="flex items-center gap-1.5 text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[15px] text-primary">receipt</span>
+                          <p className="text-[11px] font-semibold text-slate-800">{mvt.motif}</p>
+                        </div>
+                        <p className="text-[10px] font-bold text-on-surface-variant bg-surface-container-low px-2 py-0.5 rounded-md">
+                          {mvt.date}
                         </p>
                       </div>
                     </div>
@@ -585,8 +802,8 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className={`text-lg font-black ${a.stock === 0 ? 'text-error' : a.stock < 15 ? 'text-orange-500' : 'text-green-600'}`}>
-                              {a.stock}
+                            <p className={`text-lg font-black ${getArticleStock(a, selectedProjectId) === 0 ? 'text-error' : getArticleStock(a, selectedProjectId) < 15 ? 'text-orange-500' : 'text-green-600'}`}>
+                              {getArticleStock(a, selectedProjectId)}
                             </p>
                             <p className="text-[10px] text-on-surface-variant font-bold uppercase">En Stock</p>
                           </div>
@@ -605,7 +822,7 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                     {formData.lignes.map((ligne) => {
                       const article = articles.find(a => a.id === ligne.articleId);
                       if (!article) return null;
-                      const isError = modalType === 'Sortie' && article.stock < ligne.quantite;
+                      const isError = modalType === 'Sortie' && getArticleStock(article, selectedProjectId) < ligne.quantite;
 
                       return (
                         <div key={ligne.articleId} className={`p-3 rounded-2xl border ${isError ? 'border-error bg-error/5' : 'border-outline-variant bg-surface-container-lowest'} flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm relative group transition-colors`}>
@@ -613,8 +830,8 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                             <p className="font-bold text-on-surface text-sm truncate">{article.designation}</p>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded uppercase">{article.code}</span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${article.stock === 0 ? 'bg-error/10 text-error' : article.stock < 15 ? 'bg-orange-500/10 text-orange-600' : 'bg-green-500/10 text-green-700'}`}>
-                                En stock: {article.stock}
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${getArticleStock(article, selectedProjectId) === 0 ? 'bg-error/10 text-error' : getArticleStock(article, selectedProjectId) < 15 ? 'bg-orange-500/10 text-orange-600' : 'bg-green-500/10 text-green-700'}`}>
+                                En stock: {getArticleStock(article, selectedProjectId)}
                               </span>
                             </div>
                           </div>
@@ -653,7 +870,7 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                                  type="button"
                                  onClick={() => setFormData(prev => ({
                                    ...prev,
-                                   lignes: prev.lignes.map(l => l.articleId === ligne.articleId ? { ...l, quantite: article.stock } : l)
+                                   lignes: prev.lignes.map(l => l.articleId === ligne.articleId ? { ...l, quantite: getArticleStock(article, selectedProjectId) } : l)
                                  }))}
                                  className="text-[10px] font-bold text-primary hover:bg-primary/10 rounded-lg px-2 h-9 transition-colors flex items-center"
                                >
@@ -787,7 +1004,7 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-base font-black tracking-tight text-white">
-                      Disponibilité Multi-Boutiques (BF-PROD-007)
+                      Disponibilité Multi-Boutiques
                     </h3>
                   </div>
                   <p className="text-xs text-blue-200 mt-0.5 font-medium">
@@ -899,6 +1116,8 @@ export function Stock({ currentUser, selectedProjectId, articles, onArticlesChan
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

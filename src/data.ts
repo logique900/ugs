@@ -1,10 +1,55 @@
 import { Article, AuditLog, Client, Fournisseur, Projet, Utilisateur } from './types';
 
 export const mockUsers: Utilisateur[] = [
-  { id: 'u1', nom: 'Super Admin', email: 'admin@entreprise.com', motDePasse: 'admin123', role: 'admin', statut: 'Actif', projetsAffectes: ['1', '2', '3'] },
-  { id: 'u2', nom: 'Comptable Central', email: 'comptable@entreprise.com', motDePasse: 'comptable123', role: 'comptable', statut: 'Actif', projetsAffectes: ['1', '2'] },
-  { id: 'u3', nom: 'Ahmed (Sfax Centre)', email: 'ahmed@ugs.tn', motDePasse: 'ahmed123', role: 'caissier', statut: 'Actif', projetId: '1', projetsAffectes: ['1'] },
-  { id: 'u4', nom: 'Karim (Multi-boutiques)', email: 'karim@ugs.tn', motDePasse: 'karim123', role: 'caissier', statut: 'Actif', projetId: '1', projetsAffectes: ['1', '2'] },
+  { 
+    id: 'demo-super-admin', 
+    nom: 'Demo Super Admin', 
+    email: 'superadmin@ugs.tn', 
+    motDePasse: 'demo123', 
+    role: 'super_admin', 
+    statut: 'Actif', 
+    projetsAffectes: ['1', '2', '3'] 
+  },
+  { 
+    id: 'demo-admin', 
+    nom: 'Demo Admin UGS', 
+    email: 'admin@ugs.tn', 
+    motDePasse: 'demo123', 
+    role: 'admin', 
+    statut: 'Actif', 
+    projetsAffectes: ['1', '2', '3'] 
+  },
+  { 
+    id: 'demo-comptable', 
+    nom: 'Demo Comptable', 
+    email: 'comptable@ugs.tn', 
+    motDePasse: 'demo123', 
+    role: 'comptable', 
+    statut: 'Actif', 
+    projetsAffectes: ['1', '2', '3'] 
+  },
+  { 
+    id: 'demo-caissier', 
+    nom: 'Demo Caissier', 
+    email: 'caissier@ugs.tn', 
+    motDePasse: 'demo123', 
+    role: 'caissier', 
+    statut: 'Actif', 
+    projetId: '1', 
+    projetsAffectes: ['1'] 
+  },
+  { 
+    id: 'demo-caissier-scolaire', 
+    nom: 'Demo Caissier Scolaire', 
+    email: 'caissier.scolaire@ugs.tn', 
+    motDePasse: 'demo123', 
+    role: 'caissier', 
+    statut: 'Actif', 
+    projetId: '2', 
+    projetsAffectes: ['2'] 
+  },
+  { id: 'u1', nom: 'Chef de Groupe', email: 'admin@entreprise.com', motDePasse: 'admin123', role: 'super_admin', statut: 'Actif', projetsAffectes: ['1', '2', '3'] },
+  { id: 'u7', nom: 'Sarah (Agent Commercial)', email: 'agent@entreprise.com', motDePasse: 'agent123', role: 'agent', statut: 'Actif', projetId: '1', projetsAffectes: ['1'] },
 ];
 
 export const mockAuditLogs: AuditLog[] = [
@@ -19,12 +64,66 @@ export const mockAuditLogs: AuditLog[] = [
 ];
 
 export const mockProjets: Projet[] = [
-  { id: '1', nom: 'Boutique Sfax Centre', codeBoutique: 'SF-CENTRE-001', adresse: 'Avenue Habib Bourguiba', ville: 'Sfax', gouvernorat: 'Sfax', telephone: '74 000 001', email: 'contact@sfaxtcentre.tn', statut: 'Active', description: 'Boutique principale - Centre ville', dateCreation: '2023-01-15', responsable: 'Mohamed Ali' },
-  { id: '2', nom: 'Boutique Sfax Nord', codeBoutique: 'SF-NORD-002', adresse: 'Route de Tunis km 5', ville: 'Sfax', gouvernorat: 'Sfax', telephone: '74 000 002', email: 'nord@ugs.tn', statut: 'Active', description: 'Succursale Sfax Nord', dateCreation: '2023-06-20', responsable: 'Sami Ben Ali' },
-  { id: '3', nom: 'Boutique Gabès', codeBoutique: 'GB-SUD-001', adresse: 'Avenue de la République', ville: 'Gabès', gouvernorat: 'Gabès', telephone: '75 000 001', email: 'gabes@ugs.tn', statut: 'Inactive', description: 'Succursale Sud', dateCreation: '2022-11-05', responsable: 'Fatma Zahra' },
+  { id: '1', nom: 'Société UGS - Stock Central', codeBoutique: 'UGS-CENTRALE', adresse: 'Zone Industrielle & Logistique - Avenue Habib Bourguiba', ville: 'Sfax', gouvernorat: 'Sfax', telephone: '+216 74 000 001', email: 'centrale@ugs.tn', statut: 'Active', description: 'Siège Social, Dépôt Central & Entrepôt Principal de Distribution UGS', dateCreation: '2023-01-15', responsable: 'Mohamed Ali (Responsable Logistique & Stock Central)' },
+  { id: '2', nom: 'UGS - Scolaire Plus', codeBoutique: 'SCOL-001', adresse: 'Route de Tunis km 5', ville: 'Sfax', gouvernorat: 'Sfax', telephone: '+216 74 000 002', email: 'scolaire@ugs.tn', statut: 'Active', description: 'Point de vente spécialisé distribution Scolaire', dateCreation: '2023-06-20', responsable: 'Sami Ben Ali' },
+  { id: '3', nom: 'UGS - Boutique Gabès', codeBoutique: 'GB-SUD-001', adresse: 'Avenue de la République', ville: 'Gabès', gouvernorat: 'Gabès', telephone: '+216 75 000 001', email: 'gabes@ugs.tn', statut: 'Inactive', description: 'Succursale de distribution Sud', dateCreation: '2022-11-05', responsable: 'Fatma Zahra' },
 ];
 
 export const mockArticles: Article[] = [
+  { 
+    id: 'mo-install', 
+    projetId: '1', 
+    code: 'SRV-MAIN-OEUVRE', 
+    typeArticle: 'Service',
+    designation: 'Main d\'œuvre (Installation & Service)', 
+    famille: 'Prestation', 
+    prixAchatHT: 0, 
+    prixVenteHT: 50, 
+    stocks: {}, 
+    statut: 'Actif', 
+    description: 'Frais de main d\'œuvre et d\'installation (Prix ajustable lors de la vente)' 
+  },
+  { 
+    id: 'cahier-spirale', 
+    projetId: '2', 
+    code: 'SCOL-CAH-SP200', 
+    typeArticle: 'Produit',
+    designation: 'Cahier Spirale 200 pages', 
+    famille: 'Fournitures', 
+    prixAchatHT: 3.5, 
+    prixVenteHT: 5.2, 
+    margeBeneficiaire: 48.57,
+    stocks: { '2': 150 }, 
+    statut: 'Actif', 
+    description: 'Cahier spirale grand format' 
+  },
+  { 
+    id: 'stylo-bleu', 
+    projetId: '2', 
+    code: 'SCOL-STY-BLU', 
+    typeArticle: 'Produit',
+    designation: 'Stylo à bille Bleu', 
+    famille: 'Fournitures', 
+    prixAchatHT: 0.4, 
+    prixVenteHT: 0.8, 
+    margeBeneficiaire: 100,
+    stocks: { '2': 500 }, 
+    statut: 'Actif', 
+    description: 'Stylo à bille classique bleu' 
+  },
+  { 
+    id: 'impression-doc', 
+    projetId: '2', 
+    code: 'SRV-IMPRESSION', 
+    typeArticle: 'Service',
+    designation: 'Impression Document (N&B)', 
+    famille: 'Reprographie', 
+    prixAchatHT: 0, 
+    prixVenteHT: 0.1, 
+    stocks: {}, 
+    statut: 'Actif', 
+    description: 'Impression noir et blanc A4' 
+  },
   { 
     id: 'samsung-a52', 
     projetId: '1', 
@@ -34,9 +133,9 @@ export const mockArticles: Article[] = [
     codeBarres: ['8806090123456'], 
     prixAchatHT: 550, 
     prixVenteHT: 780, 
-    stock: 0, 
+    stocks: { '1': 0 }, 
     statut: 'Inactif', 
-    description: 'Ancien modèle Samsung Galaxy A52 - Statut INACTIF (Historique conservé - BF-PROD-008)' 
+    description: 'Ancien modèle Samsung Galaxy A52' 
   },
   { 
     id: 'clavier-k120', 
@@ -47,14 +146,9 @@ export const mockArticles: Article[] = [
     codeBarres: ['5099206020719'], 
     prixAchatHT: 28, 
     prixVenteHT: 45, 
-    stock: 25, 
-    stockParDepot: [
-      { depotId: '1', nom: 'Boutique Sfax Centre', quantite: 25, emplacement: 'Aisle-A1' },
-      { depotId: '2', nom: 'Boutique Sfax Nord', quantite: 10, emplacement: 'Aisle-B2' },
-      { depotId: '3', nom: 'Boutique Gabès', quantite: 5, emplacement: 'Reserve-Sud' }
-    ],
+    stocks: { '1': 25, '2': 10, '3': 5 }, 
     statut: 'Actif', 
-    description: 'Clavier USB filaire Logitech K120 confortable et résistant (BF-PROD-006 & BF-PROD-007)' 
+    description: 'Clavier USB filaire Logitech K120 confortable et résistant' 
   },
   { 
     id: 'laptop-15', 
@@ -67,14 +161,9 @@ export const mockArticles: Article[] = [
     codeBarres: ['6191234567890'], 
     prixAchatHT: 1850, 
     prixVenteHT: 2200, 
-    stock: 15, 
-    stockParDepot: [
-      { depotId: '1', nom: 'Boutique Sfax Centre', quantite: 15, emplacement: 'Vitrine 01' },
-      { depotId: '2', nom: 'Boutique Sfax Nord', quantite: 7, emplacement: 'Rayon Informatique' },
-      { depotId: '3', nom: 'Boutique Gabès', quantite: 12, emplacement: 'Stockage Principal' }
-    ],
+    stocks: { '1': 15, '2': 7, '3': 12 }, 
     statut: 'Actif', 
-    description: 'Ordinateur portable HP 15 pouces haute performance - Stock disponible multi-boutiques (BF-PROD-007, BF-PROD-011 & BF-PROD-012)',
+    description: 'Ordinateur portable HP 15 pouces haute performance avec écran Full HD',
     historiqueModifications: [
       {
         id: 'hist-mod-1',
@@ -84,7 +173,7 @@ export const mockArticles: Article[] = [
         champModifie: "Prix de vente",
         ancienneValeur: '2200 DT',
         nouvelleValeur: '2150 DT',
-        remarque: 'Ajustement tarifique pour offre promotionnelle (BF-PROD-009)'
+        remarque: 'Ajustement tarifique pour offre promotionnelle'
       },
       {
         id: 'hist-mod-2',
@@ -94,7 +183,7 @@ export const mockArticles: Article[] = [
         champModifie: "Catégorie",
         ancienneValeur: 'Informatique',
         nouvelleValeur: 'Ordinateurs portables',
-        remarque: 'Reclassification de la catégorie (BF-PROD-009)'
+        remarque: 'Reclassification de la catégorie'
       }
     ]
   },
@@ -108,9 +197,9 @@ export const mockArticles: Article[] = [
     codeBarres: ['8806090998877'], 
     prixAchatHT: 920, 
     prixVenteHT: 1150, 
-    stock: 8, 
+    stocks: { '1': 8 }, 
     statut: 'Actif', 
-    description: 'Smartphone Samsung Galaxy A55 5G - Catalogue BF-PROD-011' 
+    description: 'Smartphone Samsung Galaxy A55 5G' 
   },
   { 
     id: 'hp-lj-001', 
@@ -122,9 +211,9 @@ export const mockArticles: Article[] = [
     codeBarres: ['193905443210'], 
     prixAchatHT: 480, 
     prixVenteHT: 650, 
-    stock: 0, 
+    stocks: { '1': 0 }, 
     statut: 'Inactif', 
-    description: 'Imprimante HP LaserJet Professionnelle (BF-PROD-011)' 
+    description: 'Imprimante HP LaserJet Professionnelle monochrome' 
   },
   { 
     id: 'dell-lat-01', 
@@ -136,9 +225,9 @@ export const mockArticles: Article[] = [
     codeBarres: ['5397184123456'], 
     prixAchatHT: 1950, 
     prixVenteHT: 2450, 
-    stock: 10, 
+    stocks: { '1': 10 }, 
     statut: 'Actif', 
-    description: 'Ordinateur portable professionnel Dell Latitude (BF-PROD-012 Exemple "ordinateur")' 
+    description: 'Ordinateur portable professionnel Dell Latitude' 
   },
   { 
     id: 'hp-probook-02', 
@@ -150,9 +239,9 @@ export const mockArticles: Article[] = [
     codeBarres: ['193905987654'], 
     prixAchatHT: 1720, 
     prixVenteHT: 2100, 
-    stock: 6, 
+    stocks: { '1': 6 }, 
     statut: 'Actif', 
-    description: 'Ordinateur portable HP ProBook (BF-PROD-012 Exemple "ordinateur")' 
+    description: 'Ordinateur portable HP ProBook' 
   },
   { 
     id: 'lenovo-tp-03', 
@@ -164,9 +253,9 @@ export const mockArticles: Article[] = [
     codeBarres: ['4580550123456'], 
     prixAchatHT: 2300, 
     prixVenteHT: 2890, 
-    stock: 4, 
+    stocks: { "1": 4 }, 
     statut: 'Actif', 
-    description: 'Ordinateur portable Lenovo ThinkPad (BF-PROD-012 Exemple "ordinateur")' 
+    description: 'Ordinateur portable Lenovo ThinkPad' 
   },
   { 
     id: 'iphone-13', 
@@ -177,25 +266,22 @@ export const mockArticles: Article[] = [
     codeBarres: ['194252707203'], 
     prixAchatHT: 2100, 
     prixVenteHT: 2690, 
-    stock: 8, 
-    stockParDepot: [
-      { depotId: '1', nom: 'Boutique Sfax Centre', quantite: 5, emplacement: 'Coffre-fort A1' },
-      { depotId: '2', nom: 'Boutique Sfax Nord', quantite: 3, emplacement: 'Vitrine VIP' }
-    ],
+    stocks: { "1": 8 }, 
+    
     statut: 'Actif', 
-    description: 'Smartphone Apple iPhone 13 128Go - Produit avec historique commercial (BF-PROD-010)',
+    description: 'Smartphone Apple iPhone 13 128Go',
     statsCommerciales: {
       ventesCount: 250,
       facturesCount: 15,
       devisCount: 8
     }
   },
-  { id: '1', projetId: '1', code: 'ART001', designation: 'Ciment Haute Résistance 50kg', famille: 'Matériaux BTP', prixAchatHT: 12, prixVenteHT: 18, stock: 120, statut: 'Actif' },
-  { id: '2', projetId: '1', code: 'ART002', designation: 'Poutre Acier IPN 200', famille: 'Structure & Gros Œuvre', prixAchatHT: 140, prixVenteHT: 210, stock: 35, statut: 'Actif' },
-  { id: '3', projetId: '2', code: 'ART003', designation: 'Peinture Murale Écologique 10L', famille: 'Finition & Rénovation', prixAchatHT: 45, prixVenteHT: 78, stock: 65, statut: 'Actif' },
-  { id: '4', projetId: '2', code: 'ART004', designation: 'Parquet Chêne Massif m²', famille: 'Sols & Revêtements', prixAchatHT: 35, prixVenteHT: 62, stock: 140, statut: 'Actif' },
-  { id: '5', projetId: '3', code: 'ART005', designation: 'Câble Fibre Optique Armé 100m', famille: 'Câblage & Réseaux', prixAchatHT: 180, prixVenteHT: 290, stock: 15, statut: 'Actif' },
-  { id: '6', projetId: '3', code: 'ART006', designation: 'Armoire Réseau Informatique 42U', famille: 'Equipement Lourd', prixAchatHT: 450, prixVenteHT: 720, stock: 6, statut: 'Actif' },
+  { id: '1', projetId: '1', code: 'ART001', designation: 'Ciment Haute Résistance 50kg', famille: 'Matériaux BTP', prixAchatHT: 12, prixVenteHT: 18, stocks: { "1": 120 }, statut: 'Actif' },
+  { id: '2', projetId: '1', code: 'ART002', designation: 'Poutre Acier IPN 200', famille: 'Structure & Gros Œuvre', prixAchatHT: 140, prixVenteHT: 210, stocks: { "1": 35 }, statut: 'Actif' },
+  { id: '3', projetId: '2', code: 'ART003', designation: 'Peinture Murale Écologique 10L', famille: 'Finition & Rénovation', prixAchatHT: 45, prixVenteHT: 78, stocks: { "1": 65 }, statut: 'Actif' },
+  { id: '4', projetId: '2', code: 'ART004', designation: 'Parquet Chêne Massif m²', famille: 'Sols & Revêtements', prixAchatHT: 35, prixVenteHT: 62, stocks: { "1": 140 }, statut: 'Actif' },
+  { id: '5', projetId: '3', code: 'ART005', designation: 'Câble Fibre Optique Armé 100m', famille: 'Câblage & Réseaux', prixAchatHT: 180, prixVenteHT: 290, stocks: { "1": 15 }, statut: 'Actif' },
+  { id: '6', projetId: '3', code: 'ART006', designation: 'Armoire Réseau Informatique 42U', famille: 'Equipement Lourd', prixAchatHT: 450, prixVenteHT: 720, stocks: { "1": 6 }, statut: 'Actif' },
 ];
 
 export const mockClients: Client[] = [
@@ -409,7 +495,7 @@ export const mockVentes = [
     lignes: [
       { articleId: 'samsung-a52', code: 'TEL-SAM-A52', designation: 'Ancien modèle Samsung A52', quantite: 2, prixUnitaireHT: 780, remise: 0, tva: 19, totalHT: 1560, totalTTC: 1856.4 }
     ],
-    notes: 'Facture historique - Contient le produit Samsung A52 désormais INACTIF (BF-PROD-008)'
+    notes: 'Facture archivée'
   },
   { 
     id: '1', 
@@ -772,3 +858,477 @@ export const mockMonthlyData: Record<string, Array<{ mois: string; ventes: numbe
     { mois: 'Déc', ventes: 2800, achats: 1700 },
   ]
 };
+
+export const mockObjectifs: any[] = [
+  {
+    id: 'obj-1',
+    type: 'Boutique',
+    cibleId: '1',
+    cibleNom: 'Sfax Centre',
+    periode: '2026-08',
+    montantCible: 50000,
+  },
+  {
+    id: 'obj-2',
+    type: 'Caissier',
+    cibleId: '2',
+    cibleNom: 'Ahmed',
+    periode: '2026-08',
+    montantCible: 15000,
+  }
+];
+
+export const mockBonsDeLivraison: any[] = [
+  {
+    id: 'bl-101',
+    numero: 'BL-2026-000125',
+    projetId: '1',
+    boutiqueNom: 'Société UGS - Stock Central',
+    dateCreation: '2026-08-28',
+    dateLivraison: '2026-08-30',
+    dateExpedition: '2026-08-29',
+    statut: 'Livré',
+    commandeRef: 'CMD-2026-000087',
+    factureRef: 'FAC-2026-000098',
+    clientId: '1',
+    clientNom: 'Bâtiment & Travaux Alpha SAS',
+    matriculeFiscalClient: '1234567/M/A/M/000',
+    adresseFacturation: 'Zone Industrielle Voie 4, Tunis',
+    adresseLivraison: 'Chantier Principal Voie 4 - Hangar B, Tunis',
+    telephoneClient: '+216 71 234 567',
+    emailClient: 'contact@btp-alpha.fr',
+    transporteur: 'UGS Express Logistics',
+    chauffeur: 'Slim Amara',
+    immatriculation: '210 TN 4589',
+    fraisLivraison: 45,
+    notes: 'Livraison prioritaire avec déchargement grue.',
+    entrepôtSource: 'Dépôt Central Sfax',
+    signatureReception: 'Signé par K. Mansour',
+    nomReceptionnaire: 'Karim Mansour',
+    dateReception: '2026-08-30 10:15',
+    stockOperationId: 'OUT-2026-000087',
+    isStockDecremented: true,
+    lignes: [
+      {
+        id: 'lbl-1',
+        articleId: '1',
+        code: 'ART001',
+        designation: 'Ciment Haute Résistance 50kg',
+        unite: 'Sac 50kg',
+        qteCommandee: 100,
+        qteDejaLivree: 0,
+        qteALivrer: 100,
+        qteLivree: 100,
+        prixUnitaireHT: 18,
+        tauxTVA: 19,
+        totalHT: 1800,
+        totalTTC: 2142
+      },
+      {
+        id: 'lbl-2',
+        articleId: '2',
+        code: 'ART002',
+        designation: 'Poutre Acier IPN 200',
+        unite: 'Unité 6m',
+        qteCommandee: 10,
+        qteDejaLivree: 0,
+        qteALivrer: 10,
+        qteLivree: 10,
+        prixUnitaireHT: 210,
+        tauxTVA: 19,
+        totalHT: 2100,
+        totalTTC: 2499
+      }
+    ],
+    montantHT: 3900,
+    montantTVA: 741,
+    montantTTC: 4641,
+    auteurNom: 'Ahmed (Magasinier Central)',
+    historiqueStatuts: [
+      { statut: 'Brouillon', date: '2026-08-28 08:30', utilisateur: 'Ahmed' },
+      { statut: 'Validé', date: '2026-08-28 09:10', utilisateur: 'Ahmed', commentaire: 'Validation commande et réservation stock' },
+      { statut: 'En préparation', date: '2026-08-28 14:00', utilisateur: 'Magasin Sfax' },
+      { statut: 'Expédié', date: '2026-08-29 08:00', utilisateur: 'Slim Amara (Chauffeur)' },
+      { statut: 'Livré', date: '2026-08-30 10:15', utilisateur: 'Slim Amara', commentaire: 'Reçu et conforme' }
+    ]
+  },
+  {
+    id: 'bl-102',
+    numero: 'BL-2026-000126',
+    projetId: '1',
+    boutiqueNom: 'Société UGS - Stock Central',
+    dateCreation: '2026-08-29',
+    dateLivraison: '2026-08-31',
+    statut: 'Livraison partielle',
+    commandeRef: 'CMD-2026-000092',
+    clientId: '2',
+    clientNom: 'RénovImmox Lyon SARL',
+    matriculeFiscalClient: '9876543/B/N/C/000',
+    adresseFacturation: '32 rue Garibaldi, Lyon',
+    adresseLivraison: 'Chantier Rénovation Bat A, Tunis',
+    telephoneClient: '+33 4 78 90 12 34',
+    emailClient: 'achats@renovimmox.fr',
+    transporteur: 'Société Rapide Transport',
+    chauffeur: 'Mohamed Tounsi',
+    immatriculation: '198 TN 7712',
+    notes: 'Livraison partielle (Reste 40m² de Parquet à expédier la semaine prochaine).',
+    stockOperationId: 'OUT-2026-000092',
+    isStockDecremented: true,
+    lignes: [
+      {
+        id: 'lbl-3',
+        articleId: '3',
+        code: 'ART003',
+        designation: 'Peinture Murale Écologique 10L',
+        unite: 'Pot 10L',
+        qteCommandee: 50,
+        qteDejaLivree: 0,
+        qteALivrer: 50,
+        qteLivree: 50,
+        prixUnitaireHT: 78,
+        tauxTVA: 19,
+        totalHT: 3900,
+        totalTTC: 4641
+      },
+      {
+        id: 'lbl-4',
+        articleId: '4',
+        code: 'ART004',
+        designation: 'Parquet Chêne Massif m²',
+        unite: 'm²',
+        qteCommandee: 100,
+        qteDejaLivree: 0,
+        qteALivrer: 100,
+        qteLivree: 60, // Livré partiellement 60 / 100
+        prixUnitaireHT: 62,
+        tauxTVA: 19,
+        totalHT: 3720,
+        totalTTC: 4426.8
+      }
+    ],
+    montantHT: 7620,
+    montantTVA: 1447.8,
+    montantTTC: 9067.8,
+    auteurNom: 'Sarah (Agent Commercial)'
+  },
+  {
+    id: 'bl-103',
+    numero: 'BL-2026-000127',
+    projetId: '2',
+    boutiqueNom: 'UGS - Scolaire Plus',
+    dateCreation: '2026-08-30',
+    dateLivraison: '2026-08-30',
+    statut: 'En préparation',
+    commandeRef: 'CMD-2026-000099',
+    clientId: '4',
+    clientNom: 'Dr. Mehdi Ben Salah (Villa Privée)',
+    adresseLivraison: 'Résidence Les Jasmins, Gammarth',
+    telephoneClient: '+216 22 345 678',
+    emailClient: 'm.bensalah@medecin.tn',
+    notes: 'Colis fragile - Matériel informatique & fournitures.',
+    stockOperationId: 'OUT-2026-000099',
+    isStockDecremented: true,
+    lignes: [
+      {
+        id: 'lbl-5',
+        articleId: 'clavier-k120',
+        code: 'LOG-K120',
+        designation: 'Clavier Logitech K120',
+        unite: 'Pièce',
+        qteCommandee: 5,
+        qteDejaLivree: 0,
+        qteALivrer: 5,
+        qteLivree: 5,
+        prixUnitaireHT: 45,
+        tauxTVA: 19,
+        totalHT: 225,
+        totalTTC: 267.75
+      }
+    ],
+    montantHT: 225,
+    montantTVA: 42.75,
+    montantTTC: 267.75,
+    auteurNom: 'Chef de Groupe'
+  }
+];
+
+export const mockStockOperations: any[] = [
+  {
+    id: 'so-1',
+    operationNumber: 'OUT-2026-000087',
+    type: 'SORTIE',
+    projetId: '1',
+    warehouseId: 'Dépôt Central Sfax',
+    referenceType: 'BL',
+    referenceId: 'bl-101',
+    referenceNumero: 'BL-2026-000125',
+    status: 'EFFECTUE',
+    createdAt: '2026-08-28 09:10',
+    createdBy: 'u1',
+    createdByName: 'Ahmed (Magasinier)',
+    lignes: [
+      { articleId: '1', articleNom: 'Ciment Haute Résistance 50kg', articleCode: 'ART001', quantite: 100 },
+      { articleId: '2', articleNom: 'Poutre Acier IPN 200', articleCode: 'ART002', quantite: 10 }
+    ],
+    motif: 'Sortie de stock contrôlée pour Bon de Livraison BL-2026-000125'
+  },
+  {
+    id: 'so-2',
+    operationNumber: 'OUT-2026-000092',
+    type: 'SORTIE',
+    projetId: '1',
+    warehouseId: 'Dépôt Central Sfax',
+    referenceType: 'BL',
+    referenceId: 'bl-102',
+    referenceNumero: 'BL-2026-000126',
+    status: 'EFFECTUE',
+    createdAt: '2026-08-29 11:20',
+    createdBy: 'u7',
+    createdByName: 'Sarah',
+    lignes: [
+      { articleId: '3', articleNom: 'Peinture Murale Écologique 10L', articleCode: 'ART003', quantite: 50 },
+      { articleId: '4', articleNom: 'Parquet Chêne Massif m²', articleCode: 'ART004', quantite: 60 }
+    ],
+    motif: 'Sortie partielle pour Bon de Livraison BL-2026-000126'
+  }
+];
+
+export const mockRetoursMarchandise: any[] = [
+  {
+    id: 'ret-1',
+    numero: 'RET-2026-000001',
+    blId: 'bl-101',
+    blNumero: 'BL-2026-000125',
+    clientId: '1',
+    clientNom: 'Bâtiment & Travaux Alpha SAS',
+    projetId: '1',
+    date: '2026-08-30 11:00',
+    motifGeneral: 'Poche de ciment légèrement mouillée lors du chargement',
+    lignes: [
+      {
+        articleId: '1',
+        designation: 'Ciment Haute Résistance 50kg',
+        qteLivree: 100,
+        qteRetournee: 2,
+        prixUnitaireHT: 18,
+        totalHT: 36,
+        motifSpecifique: 'Sac endommagé'
+      }
+    ],
+    stockOperationId: 'IN-2026-000001',
+    statut: 'Validé',
+    auteurNom: 'Ahmed'
+  }
+];
+
+export const mockBonsDAchat: any[] = [
+  {
+    id: 'ba-201',
+    numero: 'BA-2026-000045',
+    projetId: '1',
+    boutiqueNom: 'Société UGS - Stock Central',
+    fournisseurId: 'f1',
+    fournisseurNom: 'Cimenterie Nationale de Tunisie (CNT)',
+    matriculeFiscalFournisseur: '0894562/A/M/000',
+    telephoneFournisseur: '+216 71 888 999',
+    emailFournisseur: 'commandes@cnt.tn',
+    adresseFournisseur: 'Zone Industrielle Gabès, Tunisie',
+    contactFournisseur: 'M. Slim Ben Amor',
+    dateCreation: '2026-08-25',
+    datePrevueReception: '2026-08-30',
+    statut: 'RÉCEPTION PARTIELLE',
+    auteurId: 'u1',
+    auteurNom: 'Mohamed Ali (Chef Achats UGS)',
+    conditionsAchat: 'Paiement à 30 jours fin de mois après livraison conforme',
+    remiseGlobalHT: 0,
+    fraisAnnexes: 120,
+    observations: 'Livraison par camion plateau à décharger au Quai A du Dépôt Central UGS.',
+    lignes: [
+      {
+        id: 'lba-1',
+        articleId: '1',
+        code: 'ART001',
+        designation: 'Ciment Haute Résistance 50kg',
+        unite: 'Sac',
+        qteCommandee: 500,
+        qteDejaRecue: 300,
+        qteARecevoir: 200,
+        qteRecue: 300,
+        prixUnitaireHT: 16.5,
+        tauxTVA: 19,
+        totalHT: 8250,
+        totalTTC: 9817.5
+      },
+      {
+        id: 'lba-2',
+        articleId: '2',
+        code: 'ART002',
+        designation: 'Poutre Acier IPN 200',
+        unite: 'Pièce',
+        qteCommandee: 40,
+        qteDejaRecue: 40,
+        qteARecevoir: 0,
+        qteRecue: 40,
+        prixUnitaireHT: 180,
+        tauxTVA: 19,
+        totalHT: 7200,
+        totalTTC: 8568
+      }
+    ],
+    receptions: [
+      {
+        id: 'rec-1',
+        date: '2026-08-28 14:30',
+        stockOperationId: 'IN-2026-000087',
+        auteurNom: 'Ahmed (Magasinier)',
+        lignes: [
+          { articleId: '1', designation: 'Ciment Haute Résistance 50kg', qteRecue: 300 },
+          { articleId: '2', designation: 'Poutre Acier IPN 200', qteRecue: 40 }
+        ],
+        notes: 'Première tranche reçue conforme. Reste 200 sacs de ciment.'
+      }
+    ],
+    montantHT: 15450,
+    montantTVA: 2935.5,
+    montantTTC: 18385.5,
+    isStockIncremented: true,
+    stockOperationId: 'IN-2026-000087',
+    historiqueStatuts: [
+      { statut: 'BROUILLON', date: '2026-08-25 09:00', utilisateur: 'Mohamed Ali' },
+      { statut: 'APPROUVÉ', date: '2026-08-25 11:30', utilisateur: 'Directeur UGS' },
+      { statut: 'COMMANDÉ', date: '2026-08-25 14:00', utilisateur: 'Mohamed Ali' },
+      { statut: 'RÉCEPTION PARTIELLE', date: '2026-08-28 14:30', utilisateur: 'Ahmed (Magasinier)' }
+    ]
+  },
+  {
+    id: 'ba-202',
+    numero: 'BA-2026-000046',
+    projetId: '1',
+    boutiqueNom: 'Société UGS - Stock Central',
+    fournisseurId: 'f2',
+    fournisseurNom: 'Aciérie & Métal du Sud',
+    matriculeFiscalFournisseur: '0123456/B/M/000',
+    telephoneFournisseur: '+216 74 444 555',
+    emailFournisseur: 'contact@acierie-sud.tn',
+    adresseFournisseur: 'Route de Gabès km 3, Sfax',
+    contactFournisseur: 'Mme. Houda Karray',
+    dateCreation: '2026-08-29',
+    datePrevueReception: '2026-09-02',
+    statut: 'COMMANDÉ',
+    auteurId: 'u1',
+    auteurNom: 'Mohamed Ali (Chef Achats UGS)',
+    conditionsAchat: 'Règlement au comptoir à la récepton',
+    remiseGlobalHT: 150,
+    fraisAnnexes: 0,
+    observations: 'Commande urgente pour réapprovisionnement peinture et quincaillerie.',
+    lignes: [
+      {
+        id: 'lba-3',
+        articleId: '3',
+        code: 'ART003',
+        designation: 'Peinture Murale Écologique 10L',
+        unite: 'Bidon',
+        qteCommandee: 120,
+        qteDejaRecue: 0,
+        qteARecevoir: 120,
+        qteRecue: 0,
+        prixUnitaireHT: 42,
+        tauxTVA: 19,
+        totalHT: 5040,
+        totalTTC: 5997.6
+      }
+    ],
+    receptions: [],
+    montantHT: 4890,
+    montantTVA: 929.1,
+    montantTTC: 5819.1,
+    isStockIncremented: false,
+    historiqueStatuts: [
+      { statut: 'BROUILLON', date: '2026-08-29 10:00', utilisateur: 'Mohamed Ali' },
+      { statut: 'APPROUVÉ', date: '2026-08-29 11:00', utilisateur: 'Directeur UGS' },
+      { statut: 'COMMANDÉ', date: '2026-08-29 11:15', utilisateur: 'Mohamed Ali' }
+    ]
+  }
+];
+
+export const mockBonsDeSortie: any[] = [
+  {
+    id: 'bs-301',
+    numero: 'BS-2026-000032',
+    projetId: '1',
+    boutiqueNom: 'Société UGS - Stock Central',
+    dateCreation: '2026-08-29',
+    heureCreation: '10:15',
+    statut: 'SORTIE EFFECTUÉE',
+    auteurId: 'u1',
+    auteurNom: 'Mohamed Ali',
+    demandeur: 'Sami Ben Amor',
+    serviceDepartement: 'Maintenance & Service Technique',
+    responsableValidation: 'M. Kamel (Chef Service)',
+    motif: 'Consommation interne',
+    motifJustification: 'Utilisation pour réfection et travaux dans l\'entrepôt B',
+    entrepotSource: 'Dépôt Central UGS - Sfax',
+    lignes: [
+      {
+        id: 'lbs-1',
+        articleId: '3',
+        code: 'ART003',
+        designation: 'Peinture Murale Écologique 10L',
+        unite: 'Bidon',
+        stockDisponible: 85,
+        qteDemandee: 5,
+        qteSortie: 5,
+        stockApres: 80,
+        prixUnitaireHT: 45,
+        totalHT: 225
+      }
+    ],
+    observations: 'Sortie validée par le chef de dépôt.',
+    isStockDecremented: true,
+    stockOperationId: 'OUT-2026-000099',
+    historiqueStatuts: [
+      { statut: 'BROUILLON', date: '2026-08-29 10:15', utilisateur: 'Sami' },
+      { statut: 'VALIDÉ', date: '2026-08-29 10:30', utilisateur: 'Mohamed Ali' },
+      { statut: 'SORTIE EFFECTUÉE', date: '2026-08-29 10:45', utilisateur: 'Ahmed (Magasinier)' }
+    ]
+  },
+  {
+    id: 'bs-302',
+    numero: 'BS-2026-000033',
+    projetId: '1',
+    boutiqueNom: 'Société UGS - Stock Central',
+    dateCreation: '2026-08-30',
+    heureCreation: '08:45',
+    statut: 'EN ATTENTE',
+    auteurId: 'u7',
+    auteurNom: 'Sarah',
+    demandeur: 'Service Commercial UGS',
+    serviceDepartement: 'Marketing & Échantillons Client',
+    responsableValidation: 'Mme. Hela (Responsable Ventes)',
+    motif: 'Échantillon',
+    motifJustification: 'Mise à disposition pour démonstration lors du salon BTP Sfax',
+    entrepotSource: 'Dépôt Central UGS',
+    lignes: [
+      {
+        id: 'lbs-2',
+        articleId: '4',
+        code: 'ART004',
+        designation: 'Parquet Chêne Massif m²',
+        unite: 'm²',
+        stockDisponible: 120,
+        qteDemandee: 10,
+        qteSortie: 10,
+        stockApres: 110,
+        prixUnitaireHT: 85,
+        totalHT: 850
+      }
+    ],
+    observations: 'Échantillons à retourner ou passer en perte si découpés.',
+    isStockDecremented: false,
+    historiqueStatuts: [
+      { statut: 'BROUILLON', date: '2026-08-30 08:45', utilisateur: 'Sarah' },
+      { statut: 'EN ATTENTE', date: '2026-08-30 09:00', utilisateur: 'Sarah' }
+    ]
+  }
+];
+

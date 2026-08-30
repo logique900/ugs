@@ -684,15 +684,19 @@ export function Clients({ currentUser,
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-display-md text-display-md text-on-surface">Clients & Tiers</h1>
+            <h1 className="font-display-md text-display-md text-on-surface">
+              {selectedProjectId === '2' ? 'Parents & Élèves' : 'Clients & Tiers'}
+            </h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
-              {filteredClients.length} tiers
+              {filteredClients.length} {selectedProjectId === '2' ? 'comptes' : 'tiers'}
             </span>
           </div>
           <p className="font-body-md text-body-md text-on-surface-variant mt-1">
             {isGlobal 
               ? "Supervision complète du portefeuille clients, encours et gestion des risques de crédit."
-              : `Gestion commerciale et suivi des clients du projet ${currentProject?.nom || ''}.`}
+              : selectedProjectId === '2'
+                ? `Liste des parents et élèves de la boutique ${currentProject?.nom || ''}.`
+                : `Gestion commerciale et suivi des clients du projet ${currentProject?.nom || ''}.`}
           </p>
         </div>
 

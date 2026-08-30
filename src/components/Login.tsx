@@ -15,18 +15,28 @@ export function Login({ onLogin }: LoginProps) {
     e.preventDefault();
     
     // Simulation d'authentification basée sur l'email
-    const user = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const user = mockUsers.find(u => u.email.toLowerCase() === email.trim().toLowerCase());
     
     if (user) {
       setError('');
       onLogin(user);
     } else {
-      setError('Utilisateur non trouvé. Essayez admin@ugs-distribution.com ou jean.dupont@ugs-distribution.com');
+      setError('Utilisateur non trouvé. Comptes disponibles : admin@entreprise.com, comptable@ugs.tn, caissier.ugs@entreprise.com, caissier.scolaire@entreprise.com');
+    }
+  };
+
+  const handleQuickLogin = (demoUserEmail: string, demoUserPass: string) => {
+    setEmail(demoUserEmail);
+    setPassword(demoUserPass);
+    const user = mockUsers.find(u => u.email.toLowerCase() === demoUserEmail.toLowerCase());
+    if (user) {
+      setError('');
+      onLogin(user);
     }
   };
 
   return (
-    <div className="flex h-screen w-full bg-slate-50 overflow-hidden">
+    <div className="flex flex-col lg:flex-row min-h-screen lg:h-screen w-full bg-slate-50 overflow-y-auto lg:overflow-hidden">
       {/* Left Panel - Branding / Welcome Message (Hidden on mobile) */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 bg-slate-900 p-12 text-white relative overflow-hidden">
         <div className="relative z-10">
@@ -34,15 +44,18 @@ export function Login({ onLogin }: LoginProps) {
             <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center font-black text-white shadow-lg shadow-indigo-500/30">
               <span className="material-symbols-outlined text-[24px]">domain</span>
             </div>
-            <span className="text-xl font-bold tracking-tight">Portail ERP</span>
+            <div>
+              <span className="text-xl font-bold tracking-tight block">Société UGS</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">Siège Central</span>
+            </div>
           </div>
 
           <h1 className="text-[44px] leading-tight font-black mb-6 mt-16 tracking-tight">
-            Ravi de vous revoir.<br/>
-            <span className="text-indigo-400">Connectez-vous à votre espace.</span>
+            Société UGS.<br/>
+            <span className="text-indigo-400">Siège Central</span>
           </h1>
           <p className="text-lg text-slate-300 max-w-md leading-relaxed font-medium">
-            Bienvenue sur votre portail de gestion ERP. Supervisez vos stocks, analysez vos ventes et pilotez vos activités depuis une interface unifiée et sécurisée.
+            Bienvenue sur la plateforme centrale de pilotage du groupe UGS. Supervisez vos stocks, analysez vos distributions et pilotez l'ensemble de vos boutiques depuis une interface unifiée.
           </p>
         </div>
         
@@ -53,15 +66,15 @@ export function Login({ onLogin }: LoginProps) {
       </div>
 
       {/* Right Panel - Authentication Form */}
-      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-4 sm:p-8 md:p-12 bg-white relative z-10 shadow-2xl lg:shadow-none lg:rounded-none rounded-t-3xl mt-4 lg:mt-0">
+      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-4 sm:p-8 md:p-12 bg-white relative z-10 shadow-2xl lg:shadow-none min-h-screen lg:min-h-0 my-auto">
         <div className="w-full max-w-md">
           {/* Bienvenue pour vue mobile */}
           <div className="lg:hidden mb-10 flex flex-col items-center justify-center">
             <div className="w-12 h-12 rounded-xl bg-indigo-500 flex items-center justify-center font-black text-white shadow-lg shadow-indigo-500/30 mb-4">
               <span className="material-symbols-outlined text-[28px]">domain</span>
             </div>
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Bienvenue !</h2>
-            <p className="text-slate-500 text-center mt-2 text-sm">Connectez-vous pour accéder à votre espace.</p>
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight text-center">Société UGS</h2>
+            <p className="text-slate-500 text-center mt-2 text-sm font-medium uppercase tracking-widest">Siège Central</p>
           </div>
 
           <div className="hidden lg:block mb-10">
@@ -126,38 +139,69 @@ export function Login({ onLogin }: LoginProps) {
           </form>
 
           {/* Quick Demo Access Section */}
-          <div className="mt-10 pt-8 border-t border-slate-100">
-            <p className="text-[11px] font-bold text-slate-400 mb-4 uppercase tracking-widest text-center">Accès de démonstration</p>
-            <div className="grid grid-cols-3 gap-3">
+          <div className="mt-8 pt-6 border-t border-slate-100">
+            <p className="text-[11px] font-bold text-slate-400 mb-4 uppercase tracking-[0.15em] text-center">
+              Comptes de Démonstration (1-clic)
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setEmail('admin@entreprise.com');
-                  setPassword('admin123');
-                }}
-                className="flex flex-col items-center justify-center p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all text-center shadow-sm hover:shadow-md group cursor-pointer active:scale-[0.98]"
+                onClick={() => handleQuickLogin('superadmin@ugs.tn', 'demo123')}
+                className="flex flex-col items-center justify-center p-3 bg-white hover:bg-indigo-50/50 border border-slate-100 hover:border-indigo-200 rounded-2xl transition-all text-center shadow-sm hover:shadow-md group cursor-pointer active:scale-[0.98]"
               >
-                <span className="text-xs text-slate-900 font-bold">Admin</span>
+                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform ring-4 ring-white">
+                  <span className="material-symbols-outlined text-[22px] text-indigo-700">verified_user</span>
+                </div>
+                <span className="text-[12px] text-slate-900 font-black">Super Admin</span>
+                <span className="text-[9px] text-slate-400 font-medium whitespace-nowrap">Contrôle Total</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => {
-                  setEmail('comptable@entreprise.com');
-                  setPassword('comptable123');
-                }}
-                className="flex flex-col items-center justify-center p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all text-center shadow-sm hover:shadow-md group cursor-pointer active:scale-[0.98]"
+                onClick={() => handleQuickLogin('admin@ugs.tn', 'demo123')}
+                className="flex flex-col items-center justify-center p-3 bg-white hover:bg-red-50/50 border border-slate-100 hover:border-red-200 rounded-2xl transition-all text-center shadow-sm hover:shadow-md group cursor-pointer active:scale-[0.98]"
               >
-                <span className="text-xs text-slate-900 font-bold">Comptable</span>
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                  <span className="material-symbols-outlined text-[22px] text-red-600">admin_panel_settings</span>
+                </div>
+                <span className="text-[12px] text-slate-900 font-black">Admin</span>
+                <span className="text-[9px] text-slate-400 font-medium whitespace-nowrap">Boutiques & Flux</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => {
-                  setEmail('caissier.a@entreprise.com');
-                  setPassword('caissier123');
-                }}
-                className="flex flex-col items-center justify-center p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all text-center shadow-sm hover:shadow-md group cursor-pointer active:scale-[0.98]"
+                onClick={() => handleQuickLogin('comptable@ugs.tn', 'demo123')}
+                className="flex flex-col items-center justify-center p-3 bg-white hover:bg-emerald-50/50 border border-slate-100 hover:border-emerald-200 rounded-2xl transition-all text-center shadow-sm hover:shadow-md group cursor-pointer active:scale-[0.98]"
               >
-                <span className="text-xs text-slate-900 font-bold">Caissier A</span>
+                <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                  <span className="material-symbols-outlined text-[22px] text-emerald-600">account_balance</span>
+                </div>
+                <span className="text-[12px] text-slate-900 font-black">Comptable</span>
+                <span className="text-[9px] text-slate-400 font-medium whitespace-nowrap">Finances & KPI</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('caissier@ugs.tn', 'demo123')}
+                className="flex flex-col items-center justify-center p-3 bg-white hover:bg-amber-50/50 border border-slate-100 hover:border-amber-200 rounded-2xl transition-all text-center shadow-sm hover:shadow-md group cursor-pointer active:scale-[0.98]"
+              >
+                <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                  <span className="material-symbols-outlined text-[22px] text-amber-600">point_of_sale</span>
+                </div>
+                <span className="text-[12px] text-slate-900 font-black">Caissier UGS</span>
+                <span className="text-[9px] text-slate-400 font-medium whitespace-nowrap">Siège Sfax</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('caissier.scolaire@ugs.tn', 'demo123')}
+                className="flex flex-col items-center justify-center p-3 bg-white hover:bg-blue-50/50 border border-slate-100 hover:border-blue-200 rounded-2xl transition-all text-center shadow-sm hover:shadow-md group cursor-pointer active:scale-[0.98]"
+              >
+                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                  <span className="material-symbols-outlined text-[22px] text-blue-600">storefront</span>
+                </div>
+                <span className="text-[12px] text-slate-900 font-black">Caissier S.</span>
+                <span className="text-[9px] text-slate-400 font-medium whitespace-nowrap">Scolaire Plus</span>
               </button>
             </div>
           </div>

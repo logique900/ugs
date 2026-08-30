@@ -46,7 +46,7 @@ export function AdminProjectDetails({
   const produitsFaible = projectArticles.filter(a => a.stock > 0 && a.stock <= (a.stockMinimum || 5)).length;
 
   // Utilisateurs
-  const nbAdmins = projectUsers.filter(u => u.role === 'admin' || u.role === 'chef_projet' || u.role === 'directeur').length;
+  const nbAdmins = projectUsers.filter(u => u.role === 'super_admin' || u.role === 'admin' || u.role === 'chef_projet' || u.role === 'directeur').length;
   const nbComptables = projectUsers.filter(u => u.role === 'comptable').length;
   const nbCaissiers = projectUsers.filter(u => u.role === 'caissier' || u.role === 'agent').length;
 

@@ -13,7 +13,17 @@ import { Achats } from './components/Achats';
 import { Caisse } from './components/Caisse';
 import { Credits } from './components/Credits';
 import { Login } from './components/Login';
-import { ProjectPortal } from './components/ProjectPortal';
+import { AdminUsers } from './components/AdminUsers';
+import { AdminStatistics } from './components/AdminStatistics';
+import { AdminAuditLogs } from './components/AdminAuditLogs';
+import { GlobalSearch } from './components/GlobalSearch';
+import { Rapports } from './components/Rapports';
+import { PredictiveAnalytics } from './components/PredictiveAnalytics';
+import { Objectifs } from './components/Objectifs';
+import { NotificationsPanel } from './components/NotificationsPanel';
+import BonsDeLivraison from './components/BonsDeLivraison';
+import BonsDAchat from './components/BonsDAchat';
+import BonsDeSortie from './components/BonsDeSortie';
 import { 
   mockProjets as initialProjets, 
   mockArticles as initialArticles, 
@@ -23,7 +33,14 @@ import {
   mockVentes as initialVentes,
   mockAchats as initialAchats,
   mockReglements as initialReglements,
-  mockRelances as initialRelances
+  mockRelances as initialRelances,
+  mockObjectifs as initialObjectifs,
+  mockBonsDeLivraison as initialBonsDeLivraison,
+  mockStockOperations as initialStockOperations,
+  mockRetoursMarchandise as initialRetoursMarchandise,
+  mockBonsDAchat as initialBonsDAchat,
+  mockBonsDeSortie as initialBonsDeSortie,
+  mockUsers
 } from './data';
 import { 
   Projet, 
@@ -35,13 +52,20 @@ import {
   Achat, 
   Reglement, 
   RelanceClient, 
+  SessionActionLog,
+  SessionCaisse,
+  BonDeLivraison,
+  StockOperation,
+  RetourMarchandise,
+  BonDAchat,
+  BonDeSortie,
+  AuditLog,
   TabType, 
   Utilisateur 
 } from './types';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<Utilisateur | null>(null);
-  const [showPortal, setShowPortal] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -56,6 +80,18 @@ export default function App() {
   const [achats, setAchats] = useState<Achat[]>(initialAchats);
   const [reglements, setReglements] = useState<Reglement[]>(initialReglements);
   const [relances, setRelances] = useState<RelanceClient[]>(initialRelances);
+  const [objectifs, setObjectifs] = useState<any[]>(initialObjectifs);
+  const [utilisateurs, setUtilisateurs] = useState<any[]>(mockUsers);
+  const [sessions, setSessions] = useState<SessionCaisse[]>([]);
+  const [actionLogs, setActionLogs] = useState<SessionActionLog[]>([]);
+
+  // Bon de Livraison (BL), Bon d'Achat (BA), Bon de Sortie (BS) States
+  const [bonsDeLivraison, setBonsDeLivraison] = useState<BonDeLivraison[]>(initialBonsDeLivraison);
+  const [bonsDAchat, setBonsDAchat] = useState<BonDAchat[]>(initialBonsDAchat);
+  const [bonsDeSortie, setBonsDeSortie] = useState<BonDeSortie[]>(initialBonsDeSortie);
+  const [stockOperations, setStockOperations] = useState<StockOperation[]>(initialStockOperations);
+  const [retoursMarchandise, setRetoursMarchandise] = useState<RetourMarchandise[]>(initialRetoursMarchandise);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   const handleLogout = () => {
     setCurrentUser(null);
@@ -66,42 +102,25 @@ export default function App() {
     
     const affectations = user.projetsAffectes || [];
     
-    if (user.role === 'admin' || user.role === 'directeur') {
-      setShowPortal(true);
+    if (user.role === 'super_admin' || user.role === 'admin' || user.role === 'directeur') {
       setSelectedProjectId('all');
       setActiveTab('dashboard');
-    } else if (affectations.length > 1) {
-      // User has multiple assigned boutiques, must choose one
-      setShowPortal(true);
+    } else if (user.role === 'comptable') {
       setSelectedProjectId('all');
-      setActiveTab(user.role === 'comptable' ? 'dashboard' : 'ventes');
-    } else {
-      // Single boutique or no specific assignment
-      setShowPortal(false);
+      setActiveTab('dashboard');
+    } else if (user.role === 'caissier') {
+      // Le caissier accède directement à l'espace Caisse / Terminal POS
       setSelectedProjectId(affectations[0] || user.projetId || '1');
-      setActiveTab(user.role === 'comptable' ? 'dashboard' : 'ventes');
+      setActiveTab('caisse');
+    } else {
+      // Agent commercial
+      setSelectedProjectId(affectations[0] || user.projetId || '1');
+      setActiveTab('ventes');
     }
   };
 
   if (!currentUser) {
     return <Login onLogin={handleLogin} />;
-  }
-
-  if (showPortal) {
-    // Only admins or multi-boutique users see the portal
-    return (
-      <ProjectPortal 
-        currentUser={currentUser}
-        onLogout={handleLogout} 
-        projets={projets}
-        onProjetsChange={setProjets}
-        onSelectProject={(id) => {
-          setSelectedProjectId(id);
-          setActiveTab(currentUser.role === 'comptable' || currentUser.role === 'admin' ? 'dashboard' : 'ventes');
-          setShowPortal(false);
-        }} 
-      />
-    );
   }
 
   const renderContent = () => {
@@ -128,14 +147,66 @@ export default function App() {
             onMouvementsChange={setMouvements}
           />
         );
+      case 'admin':
       case 'projets':
+        if (currentUser?.role !== 'super_admin') {
+          return (
+            <div className="p-8 text-center bg-white rounded-2xl shadow-sm border border-slate-200 m-6 max-w-2xl mx-auto">
+              <span className="material-symbols-outlined text-5xl text-amber-500 mb-3">lock</span>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Accès Réseau & Système Restreint</h3>
+              <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                L'administrateur de la société UGS n'a pas accès au module Réseau & Système (Gestion des boutiques et points de vente du réseau). Cet accès est strictement réservé au Super Administrateur du groupe.
+              </p>
+              <button 
+                onClick={() => setActiveTab('dashboard')}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold transition-all cursor-pointer"
+              >
+                Retour au Tableau de bord
+              </button>
+            </div>
+          );
+        }
         return (
           <Projets 
             projets={projets}
- 
             onProjetsChange={setProjets} 
+            currentUser={currentUser}
             onSelectProject={(id) => { setSelectedProjectId(id); setActiveTab('dashboard'); }} 
+            ventes={ventes}
+            achats={achats}
+            articles={articles}
+            clients={clients}
+            utilisateurs={utilisateurs}
           />
+        );
+      case 'utilisateurs':
+        if (currentUser?.role !== 'super_admin') {
+          return (
+            <div className="p-8 text-center bg-white rounded-2xl shadow-sm border border-slate-200 m-6 max-w-2xl mx-auto">
+              <span className="material-symbols-outlined text-5xl text-amber-500 mb-3">lock</span>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Accès Réseau & Système Restreint</h3>
+              <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                L'administrateur de la société UGS n'a pas accès à la gestion des équipes, comptes d'accès et droits système. Cette fonction est réservée exclusivement au Super Administrateur.
+              </p>
+              <button 
+                onClick={() => setActiveTab('dashboard')}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold transition-all cursor-pointer"
+              >
+                Retour au Tableau de bord
+              </button>
+            </div>
+          );
+        }
+        return (
+          <AdminUsers projets={projets} />
+        );
+      case 'statistiques':
+        return (
+          <AdminStatistics projets={projets} />
+        );
+      case 'audit':
+        return (
+          <AdminAuditLogs projets={projets} />
         );
       case 'articles':
         return (
@@ -171,14 +242,18 @@ export default function App() {
         );
       case 'stock':
         return (
-          <Stock currentUser={currentUser} articles={articles} 
+          <Stock 
+            currentUser={currentUser} 
+            articles={articles} 
             selectedProjectId={selectedProjectId} 
-    
             onArticlesChange={setArticles}
             mouvements={mouvements}
             onMouvementsChange={setMouvements}
             projets={projets}
-
+            ventes={ventes}
+            fournisseurs={fournisseurs}
+            onGenerateAchat={(nouvelAchat) => setAchats(prev => [nouvelAchat as Achat, ...prev])}
+            onNavigate={setActiveTab}
           />
         );
       case 'fournisseurs':
@@ -197,19 +272,56 @@ export default function App() {
             onTabChange={setActiveTab}
           />
         );
+      case 'rapports':
+        return (
+          <Rapports 
+            ventes={ventes}
+            projets={projets}
+            articles={articles}
+            clients={clients}
+            selectedProjectId={selectedProjectId}
+            sessions={sessions}
+            actionLogs={actionLogs}
+          />
+        );
+      case 'predictive':
+        return (
+          <PredictiveAnalytics
+            articles={articles}
+            ventes={ventes}
+            projets={projets}
+            fournisseurs={fournisseurs}
+            selectedProjectId={selectedProjectId}
+            onNavigate={setActiveTab}
+            onGenerateAchat={(nouvelAchat) => {
+              setAchats(prev => [nouvelAchat as Achat, ...prev]);
+            }}
+          />
+        );
+      case 'objectifs':
+        return (
+          <Objectifs 
+            objectifs={objectifs}
+            setObjectifs={setObjectifs}
+            ventes={ventes}
+            projets={projets}
+            utilisateurs={utilisateurs}
+          />
+        );
       case 'ventes':
         return (
           <Ventes currentUser={currentUser} articles={articles} 
             selectedProjectId={selectedProjectId}
             ventes={ventes}
             clients={clients}
-    
             projets={projets}
-
             reglements={reglements}
+            mouvements={mouvements}
             onVentesChange={setVentes}
             onReglementsChange={setReglements}
             onClientsChange={setClients}
+            onArticlesChange={setArticles}
+            onMouvementsChange={setMouvements}
           />
         );
       case 'achats':
@@ -218,12 +330,13 @@ export default function App() {
             selectedProjectId={selectedProjectId}
             achats={achats}
             fournisseurs={fournisseurs}
-    
             projets={projets}
-
             reglements={reglements}
             onAchatsChange={setAchats}
             onReglementsChange={setReglements}
+            onArticlesChange={setArticles}
+            mouvements={mouvements}
+            onMouvementsChange={setMouvements}
           />
         );
       case 'credits':
@@ -235,7 +348,6 @@ export default function App() {
             reglements={reglements}
             relances={relances}
             projets={projets}
-
             onVentesChange={setVentes}
             onReglementsChange={setReglements}
             onRelancesChange={setRelances}
@@ -245,14 +357,80 @@ export default function App() {
       case 'caisse':
         return (
           <Caisse currentUser={currentUser} selectedProjectId={selectedProjectId}
+            onSelectProject={setSelectedProjectId}
             reglements={reglements}
             projets={projets}
-
             ventes={ventes}
             achats={achats}
             clients={clients}
             fournisseurs={fournisseurs}
+            articles={articles}
+            mouvements={mouvements}
+            sessions={sessions}
+            actionLogs={actionLogs}
             onReglementsChange={setReglements}
+            onVentesChange={setVentes}
+            onArticlesChange={setArticles}
+            onClientsChange={setClients}
+            onMouvementsChange={setMouvements}
+            onSessionsChange={setSessions}
+            onActionLogsChange={setActionLogs}
+          />
+        );
+      case 'livraisons':
+        return (
+          <BonsDeLivraison
+            bonsDeLivraison={bonsDeLivraison}
+            setBonsDeLivraison={setBonsDeLivraison}
+            clients={clients}
+            articles={articles}
+            setArticles={setArticles}
+            ventes={ventes}
+            setVentes={setVentes}
+            stockOperations={stockOperations}
+            setStockOperations={setStockOperations}
+            retoursMarchandise={retoursMarchandise}
+            setRetoursMarchandise={setRetoursMarchandise}
+            projets={projets}
+            selectedProjectId={selectedProjectId}
+            currentUser={currentUser}
+            auditLogs={auditLogs}
+            setAuditLogs={setAuditLogs}
+            onNavigateToInvoice={() => setActiveTab('ventes')}
+          />
+        );
+      case 'bons_achat':
+        return (
+          <BonsDAchat
+            bonsDAchat={bonsDAchat}
+            setBonsDAchat={setBonsDAchat}
+            fournisseurs={fournisseurs}
+            articles={articles}
+            setArticles={setArticles}
+            stockOperations={stockOperations}
+            setStockOperations={setStockOperations}
+            projets={projets}
+            selectedProjectId={selectedProjectId}
+            currentUser={currentUser}
+            auditLogs={auditLogs}
+            setAuditLogs={setAuditLogs}
+            onNavigateToAchats={() => setActiveTab('achats')}
+          />
+        );
+      case 'bons_sortie':
+        return (
+          <BonsDeSortie
+            bonsDeSortie={bonsDeSortie}
+            setBonsDeSortie={setBonsDeSortie}
+            articles={articles}
+            setArticles={setArticles}
+            stockOperations={stockOperations}
+            setStockOperations={setStockOperations}
+            projets={projets}
+            selectedProjectId={selectedProjectId}
+            currentUser={currentUser}
+            auditLogs={auditLogs}
+            setAuditLogs={setAuditLogs}
           />
         );
       default:
@@ -282,8 +460,16 @@ export default function App() {
 
   return (
     <div className="flex w-full h-screen overflow-hidden bg-background">
+      <GlobalSearch 
+        articles={articles} 
+        clients={clients} 
+        ventes={ventes} 
+        projets={projets} 
+        onNavigate={setActiveTab} 
+      />
       {/* Sidebar Pro per Project Workspace */}
-      <Sidebar activeTab={activeTab}
+      <Sidebar 
+        activeTab={activeTab}
         onTabChange={setActiveTab}
         selectedProjectId={selectedProjectId}
         onSelectProject={(id) => {
@@ -291,8 +477,8 @@ export default function App() {
           setActiveTab('dashboard');
         }}
         projets={projets}
-
-        currentUser={currentUser} onReturnToPortal={() => setShowPortal(true)}
+        articles={articles}
+        currentUser={currentUser}
         onLogout={handleLogout}
         isMobileOpen={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
@@ -318,13 +504,34 @@ export default function App() {
               </span>
               <span className="font-bold text-sm text-on-surface">
                 {selectedProjectId === 'all' 
-                  ? 'Système Central ERP' 
+                  ? 'Société UGS - Siège Central' 
                   : projets.find(p => p.id === selectedProjectId)?.nom || 'Projet'}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
+              className="flex items-center gap-2 px-3 py-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface-variant rounded-lg border border-outline-variant/50 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">search</span>
+              <span className="text-xs font-bold hidden sm:inline">Rechercher</span>
+              <kbd className="hidden sm:inline-flex items-center gap-1 px-1.5 rounded bg-surface border border-outline-variant text-[10px] font-mono text-on-surface-variant">
+                <span className="text-xs">⌘</span>K
+              </kbd>
+            </button>
+            <NotificationsPanel 
+              articles={articles} 
+              ventes={ventes} 
+              achats={achats} 
+              objectifs={objectifs} 
+              projets={projets} 
+              bonsDeLivraison={bonsDeLivraison}
+              bonsDeSortie={bonsDeSortie}
+              currentUser={currentUser}
+              onNavigate={setActiveTab} 
+            />
             <div className="flex items-center gap-2 pl-2 border-l border-outline-variant ml-2">
               <div className="w-7 h-7 rounded-full bg-primary text-white font-bold text-xs flex items-center justify-center border border-outline-variant shadow-xs">
                 {currentUser?.nom?.charAt(0) || 'U'}
@@ -341,9 +548,167 @@ export default function App() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-surface-container-lowest/50">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8 pb-24 md:pb-8 bg-surface-container-lowest/50">
           {renderContent()}
         </main>
+
+        {/* Mobile Ergonomic Bottom Navigation Bar (md:hidden) */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 px-2 py-1.5 flex items-center justify-around shadow-2xl">
+          {currentUser?.role === 'caissier' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveTab('caisse')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'caisse' ? 'text-purple-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">point_of_sale</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Caisse</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('ventes')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'ventes' ? 'text-indigo-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">receipt_long</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Ventes</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('stock')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'stock' ? 'text-indigo-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">inventory_2</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Stock</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('articles')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'articles' ? 'text-indigo-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">category</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Articles</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[22px]">menu</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Menu</span>
+              </button>
+            </>
+          ) : currentUser?.role === 'comptable' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveTab('dashboard')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'dashboard' ? 'text-indigo-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">dashboard</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Tableau</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('credits')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'credits' ? 'text-indigo-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">account_balance_wallet</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Crédits</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('caisse')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'caisse' ? 'text-purple-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">point_of_sale</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Caisse</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('ventes')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'ventes' ? 'text-indigo-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">receipt_long</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Ventes</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[22px]">menu</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Menu</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveTab('dashboard')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'dashboard' ? 'text-indigo-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">dashboard</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Tableau</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('caisse')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'caisse' ? 'text-purple-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">point_of_sale</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Caisse</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('ventes')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'ventes' ? 'text-indigo-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">receipt_long</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Ventes</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('stock')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'stock' ? 'text-indigo-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[22px]">inventory_2</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Stock</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[22px]">menu</span>
+                <span className="text-[10px] tracking-tight mt-0.5">Plus</span>
+              </button>
+            </>
+          )}
+        </nav>
       </div>
     </div>
   );

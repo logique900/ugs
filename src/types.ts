@@ -1,4 +1,4 @@
-export type TabType = 'dashboard' | 'projets' | 'articles' | 'categories' | 'stock' | 'clients' | 'fournisseurs' | 'achats' | 'ventes' | 'caisse' | 'credits' | 'admin';
+export type TabType = 'dashboard' | 'projets' | 'articles' | 'categories' | 'stock' | 'clients' | 'fournisseurs' | 'achats' | 'bons_achat' | 'bons_sortie' | 'ventes' | 'livraisons' | 'caisse' | 'credits' | 'admin' | 'rapports' | 'objectifs' | 'predictive' | 'utilisateurs' | 'statistiques' | 'audit';
 
 export interface CategorieItem {
   id: string;
@@ -9,11 +9,12 @@ export interface CategorieItem {
   projetId?: string;
 }
 
-export type Role = 'admin' | 'comptable' | 'caissier' | 'agent' | 'chef_projet' | 'directeur';
+export type Role = 'super_admin' | 'admin' | 'comptable' | 'caissier' | 'agent' | 'chef_projet' | 'directeur';
 
 export interface Utilisateur {
   id: string;
   nom: string;
+  prenom?: string;
   email: string;
   motDePasse?: string;
   role: Role;
@@ -93,6 +94,7 @@ export interface StockDepot {
 export interface Article {
   id: string;
   projetId?: string;
+  typeArticle?: 'Produit' | 'Service';
   code: string;
   referenceInterne?: string;
   designation: string;
@@ -104,17 +106,18 @@ export interface Article {
   codeBarres?: string[];
   prixAchatHT: number;
   prixVenteHT: number;
+  margeBeneficiaire?: number; // Marge bénéficiaire en pourcentage (%)
   tva?: number;
   prixPromotionnelHT?: number;
   prixParQuantite?: PrixQuantite[];
   historiquePrix?: HistoriquePrix[];
   historiqueModifications?: HistoriqueModification[];
   
-  stock: number;
-  stockMinimum?: number;
-  stockMaximum?: number;
-  stockSecurite?: number;
-  stockParDepot?: StockDepot[];
+  stocks: Record<string, number>; // Mapping: projetId -> quantité
+  stockMinimums?: Record<string, number>; // Mapping: projetId -> quantité minimale
+  
+  stock?: number; // legacy / helper field
+  stockMinimum?: number; // legacy / helper field
   seuilAlerte?: number; // legacy support
   
   depotPrincipal?: string;
@@ -134,7 +137,7 @@ export interface Client {
   projetId?: string;
   code?: string;
   nom: string;
-  typeTier?: 'Entreprise' | 'Particulier';
+  typeTier?: 'Entreprise' | 'Particulier' | 'Parent/Élève' | 'Institution' | 'Autre';
   matriculeFiscal?: string;
   email: string;
   telephone: string;
@@ -205,12 +208,14 @@ export interface Vente {
   numero: string;
   clientId: string;
   clientNom?: string;
+  auteurId?: string; // ID of the cashier
+  auteurNom?: string; // Name of the cashier
   date: string;
   dateEcheance?: string;
   montantHT: number;
   montantTTC: number;
   montantPaye?: number;
-  statut: 'Devis' | 'Facture' | 'Payée' | 'Annulée';
+  statut: 'Devis' | 'En Négociation' | 'Commande' | 'Facture' | 'Payée' | 'Annulée';
   modePaiement?: 'Espèces' | 'Chèque' | 'Virement' | 'Traite' | 'Crédit';
   lignes?: LigneVente[];
   notes?: string;
@@ -248,15 +253,26 @@ export interface Achat {
 export interface MouvementStock {
   id: string;
   projetId?: string;
+  projetNom?: string;
+  boutiqueNom?: string;
   articleId: string;
+  articleNom?: string;
+  articleCode?: string;
   designation?: string;
-  type: 'Entrée' | 'Sortie';
+  type: 'Entrée' | 'Sortie' | string;
   quantite: number;
   date: string;
+  dateFormatted?: string;
   motif: string;
   reference?: string;
   referencePiece?: string;
   auteur?: string;
+  utilisateurNom?: string;
+  boutique?: string;
+  stockAvant?: number;
+  stockApres?: number;
+  quantiteAvant?: number;
+  quantiteApres?: number;
 }
 
 export interface Reglement {
@@ -306,3 +322,339 @@ export interface CreditEcheance {
   joursRetard: number;
   niveauRelance?: number;
 }
+
+export interface SessionCaisse {
+  id: string;
+  projetId: string;
+  utilisateurId: string;
+  utilisateurNom: string;
+  dateOuverture: string;
+  dateFermeture?: string;
+  soldeInitial: number;
+  soldeFinalTheorique?: number; // Somme des ventes + solde initial
+  soldeFinalReel?: number; // Compté par le caissier
+  ecart?: number;
+  statut: 'Ouverte' | 'Fermee';
+  notes?: string;
+}
+
+export interface SessionActionLog {
+  id: string;
+  sessionId: string;
+  utilisateurId: string;
+  timestamp: string;
+  action: string;
+  details?: string;
+  montant?: number;
+  type: 'Vente' | 'Ajustement' | 'Ouverture' | 'Fermeture' | 'Systeme';
+}
+
+export interface Objectif {
+  id: string;
+  type: 'Boutique' | 'Caissier';
+  cibleId: string;
+  cibleNom?: string;
+  periode: string; // Format: 'YYYY-MM'
+  montantCible: number;
+}
+
+export type StatutBL = 
+  | 'Brouillon' 
+  | 'Validé' 
+  | 'En préparation' 
+  | 'Expédié' 
+  | 'En livraison' 
+  | 'Livré' 
+  | 'Livraison partielle' 
+  | 'Refusé' 
+  | 'Annulé';
+
+export interface LigneBL {
+  id?: string;
+  articleId: string;
+  code?: string;
+  designation: string;
+  unite?: string; // ex: 'Pièce', 'Carton', 'Kg', 'Litre'
+  qteCommandee: number;
+  qteDejaLivree: number;
+  qteALivrer: number;
+  qteLivree: number;
+  prixUnitaireHT: number;
+  tauxTVA?: number;
+  totalHT: number;
+  totalTTC: number;
+}
+
+export interface BonDeLivraison {
+  id: string;
+  numero: string; // Ex: BL-2026-000125
+  projetId: string;
+  boutiqueNom?: string;
+  dateCreation: string;
+  dateLivraison: string;
+  dateExpedition?: string;
+  statut: StatutBL;
+  
+  // Références croisées
+  commandeRef?: string; // Ex: CMD-2026-000087
+  devisRef?: string;
+  factureRef?: string; // Ex: FAC-2026-000098
+  venteSourceId?: string; // ID de la Vente / Commande d'origine
+  
+  // Client & Adresses
+  clientId: string;
+  clientNom: string;
+  matriculeFiscalClient?: string;
+  adresseFacturation?: string;
+  adresseLivraison: string;
+  telephoneClient?: string;
+  emailClient?: string;
+  
+  // Transport & Logistique
+  transporteur?: string;
+  chauffeur?: string;
+  immatriculation?: string;
+  fraisLivraison?: number;
+  notes?: string;
+  entrepôtSource?: string;
+  
+  // Preuve de livraison (POD)
+  signatureReception?: string;
+  nomReceptionnaire?: string;
+  dateReception?: string;
+  reserves?: string;
+  
+  // Idempotence & Stock
+  stockOperationId?: string; // Ex: OUT-2026-000087
+  isStockDecremented: boolean;
+  
+  // Contenu & Totaux
+  lignes: LigneBL[];
+  montantHT: number;
+  montantTVA?: number;
+  montantTTC: number;
+  auteurNom?: string;
+  auteurId?: string;
+  
+  // Historique interne du BL
+  historiqueStatuts?: Array<{
+    statut: StatutBL;
+    date: string;
+    utilisateur: string;
+    commentaire?: string;
+  }>;
+}
+
+export interface StockOperation {
+  id: string;
+  operationNumber: string; // Ex: OUT-2026-000087
+  type: 'SORTIE' | 'ENTREE' | 'AJUSTEMENT';
+  projetId: string;
+  warehouseId?: string;
+  referenceType: 'BL' | 'FACTURE' | 'RETOUR' | 'ENTREE_STOCK' | 'COMMANDE';
+  referenceId: string; // ID du BL, Facture ou Retour
+  referenceNumero?: string;
+  status: 'EFFECTUE' | 'ANNULE';
+  createdAt: string;
+  createdBy: string;
+  createdByName?: string;
+  lignes: Array<{
+    articleId: string;
+    articleNom: string;
+    articleCode?: string;
+    quantite: number;
+  }>;
+  motif: string;
+}
+
+export interface LigneRetour {
+  articleId: string;
+  designation: string;
+  qteLivree: number;
+  qteRetournee: number;
+  prixUnitaireHT: number;
+  totalHT: number;
+  motifSpecifique?: string;
+}
+
+export interface RetourMarchandise {
+  id: string;
+  numero: string; // Ex: RET-2026-000012
+  blId: string;
+  blNumero: string;
+  clientId: string;
+  clientNom: string;
+  projetId: string;
+  date: string;
+  motifGeneral: string;
+  lignes: LigneRetour[];
+  stockOperationId?: string; // Mouvement de stock d'entrée généré
+  statut: 'Validé' | 'En attente' | 'Annulé';
+  auteurNom: string;
+}
+
+// ==========================================
+// TYPES BON D'ACHAT (BA) & BON DE SORTIE (BS)
+// ==========================================
+
+export type StatutBA = 
+  | 'BROUILLON' 
+  | 'EN ATTENTE' 
+  | 'APPROUVÉ' 
+  | 'COMMANDÉ' 
+  | 'RÉCEPTION PARTIELLE' 
+  | 'RÉCEPTIONNÉ' 
+  | 'ANNULÉ' 
+  | 'REFUSÉ';
+
+export interface LigneBA {
+  id?: string;
+  articleId: string;
+  code?: string;
+  designation: string;
+  unite?: string;
+  qteCommandee: number;
+  qteDejaRecue: number;
+  qteARecevoir: number;
+  qteRecue: number;
+  prixUnitaireHT: number;
+  tauxTVA?: number;
+  totalHT: number;
+  totalTTC: number;
+}
+
+export interface ReceptionBA {
+  id: string;
+  date: string;
+  stockOperationId: string; // Ex: IN-2026-000087
+  auteurNom: string;
+  lignes: Array<{
+    articleId: string;
+    designation?: string;
+    qteRecue: number;
+  }>;
+  notes?: string;
+}
+
+export interface BonDAchat {
+  id: string;
+  numero: string; // Ex: BA-2026-000045
+  projetId: string; // Entrepôt de réception / Projet
+  boutiqueNom?: string;
+  fournisseurId: string;
+  fournisseurNom: string;
+  matriculeFiscalFournisseur?: string;
+  telephoneFournisseur?: string;
+  emailFournisseur?: string;
+  adresseFournisseur?: string;
+  contactFournisseur?: string;
+  dateCreation: string;
+  datePrevueReception?: string;
+  statut: StatutBA;
+  auteurId?: string;
+  auteurNom?: string;
+  conditionsAchat?: string;
+  remiseGlobalHT?: number;
+  fraisAnnexes?: number;
+  observations?: string;
+  lignes: LigneBA[];
+  receptions?: ReceptionBA[];
+  montantHT: number;
+  montantTVA?: number;
+  montantTTC: number;
+  factureFournisseurRef?: string;
+  isStockIncremented?: boolean; // Anti-double entrée de stock
+  stockOperationId?: string; // ID unique op stock IN
+  historiqueStatuts?: Array<{
+    statut: StatutBA;
+    date: string;
+    utilisateur: string;
+    commentaire?: string;
+  }>;
+}
+
+export type MotifSortieBS = 
+  | 'Consommation interne' 
+  | 'Échantillon' 
+  | 'Cadeau' 
+  | 'Don' 
+  | 'Casse' 
+  | 'Produit périmé' 
+  | 'Produit endommagé' 
+  | 'Production' 
+  | 'Maintenance' 
+  | 'Démonstration' 
+  | 'Ajustement de stock' 
+  | 'Transfert' 
+  | 'Autre';
+
+export type StatutBS = 
+  | 'BROUILLON' 
+  | 'EN ATTENTE' 
+  | 'VALIDÉ' 
+  | 'EN PRÉPARATION' 
+  | 'SORTIE EFFECTUÉE' 
+  | 'ANNULÉ' 
+  | 'REFUSÉ';
+
+export interface LigneBS {
+  id?: string;
+  articleId: string;
+  code?: string;
+  designation: string;
+  unite?: string;
+  stockDisponible: number;
+  qteDemandee: number;
+  qteSortie: number;
+  stockApres: number;
+  prixUnitaireHT?: number;
+  totalHT?: number;
+}
+
+export interface BonDeSortie {
+  id: string;
+  numero: string; // Ex: BS-2026-000032
+  projetId: string; // Entrepôt / Source store
+  boutiqueNom?: string;
+  dateCreation: string;
+  heureCreation?: string;
+  statut: StatutBS;
+  auteurId?: string;
+  auteurNom?: string;
+  demandeur: string; // Demandeur interne
+  serviceDepartement: string; // Service / Département
+  responsableValidation?: string;
+  motif: MotifSortieBS;
+  motifJustification?: string;
+  entrepotSource?: string;
+  lignes: LigneBS[];
+  observations?: string;
+  piecesJointes?: string[];
+  isStockDecremented: boolean; // Anti-double décrémentation
+  stockOperationId?: string; // Ex: OUT-2026-000099
+  exceptionStockNegatifValidee?: boolean;
+  historiqueStatuts?: Array<{
+    statut: StatutBS;
+    date: string;
+    utilisateur: string;
+    commentaire?: string;
+  }>;
+}
+
+export interface NotificationItem {
+  id: string;
+  titre: string;
+  message: string;
+  type: 'warning' | 'error' | 'info' | 'success';
+  priorite?: 'Haute' | 'Moyenne' | 'Basse';
+  categorie: 'Stock' | 'Ventes' | 'Achats' | 'Caisse' | 'Logistique' | 'Diffusion' | 'Système';
+  destinataireRole?: 'tous' | Role;
+  destinataireProjetId?: 'tous' | string;
+  tabLink?: TabType;
+  date: string;
+  lu: boolean;
+  auteur?: string;
+  systemeGénéré?: boolean;
+}
+
+

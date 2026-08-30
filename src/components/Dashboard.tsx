@@ -133,12 +133,27 @@ export function Dashboard({
   const scopedArticles = useMemo(() => isGlobal ? articles : articles.filter(a => a.projetId === selectedProjectId), [articles, isGlobal, selectedProjectId]);
 
   // Aggregated KPIs
-  const totalFactureTTC = scopedVentes.filter(v => v.statut !== 'Devis' && v.statut !== 'Annulée').reduce((acc, v) => acc + v.montantTTC, 0);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const currentMonthStr = todayStr.substring(0, 7);
+
+  const ventesReelles = scopedVentes.filter(v => v.statut !== 'Devis' && v.statut !== 'Annulée');
+  const devisMois = scopedVentes.filter(v => v.statut === 'Devis');
+
+  const totalFactureTTC = ventesReelles.reduce((acc, v) => acc + v.montantTTC, 0);
   const totalEncaisse = scopedVentes.reduce((acc, v) => acc + (v.montantPaye ?? (v.statut === 'Payée' ? v.montantTTC : 0)), 0);
   const totalCreancesDues = Math.max(0, totalFactureTTC - totalEncaisse);
   const totalAchatsVal = scopedAchats.reduce((acc, a) => acc + a.montantTTC, 0);
   const stockGlobal = scopedArticles.reduce((acc, a) => acc + a.stock, 0);
   const stockValuation = scopedArticles.reduce((acc, a) => acc + (a.stock * (a.prixAchatHT || 0)), 0);
+
+  // New specific KPIs for P1.7
+  const caAujourdhui = ventesReelles.filter(v => v.date.startsWith(todayStr)).reduce((acc, v) => acc + v.montantTTC, 0);
+  const caMois = ventesReelles.filter(v => v.date.startsWith(currentMonthStr)).reduce((acc, v) => acc + v.montantTTC, 0);
+  const nbVentes = ventesReelles.reduce((acc, v) => acc + v.lignes.reduce((sum, l) => sum + l.quantite, 0), 0); // Nombre de produits vendus
+  const nbCommandes = devisMois.length;
+  const nbProduitsFaible = scopedArticles.filter(a => a.stock > 0 && a.stock <= (a.stockMinimum || 5)).length;
+  const nbClients = scopedClients.length;
+  const nbFactures = ventesReelles.length;
 
   // Dynamic Monthly Chart Data
   const chartData = useMemo(() => {
@@ -378,13 +393,15 @@ export function Dashboard({
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-            {isGlobal ? "Supervision Globale • Multi-Boutiques" : `Tableau de Bord : ${currentProject?.nom}`}
+          <h1 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
+            {isGlobal ? "Société UGS • Pilotage Central" : `Boutique : ${currentProject?.nom}`}
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            {isGlobal ? "Centre de pilotage consolidé de l'ensemble des opérations et flux financiers" : "Gestion financière, commerciale et opérationnelle de la boutique active"}
+            {isGlobal 
+              ? "Centrale de distribution : Supervision consolidée des flux, stocks et performances du réseau UGS" 
+              : "Suivi opérationnel et financier de la boutique active."}
           </p>
         </div>
 
@@ -393,7 +410,7 @@ export function Dashboard({
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => setIsReportModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            className="w-full sm:w-auto justify-center flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
             Rapport d'Activité & Bilan PDF
@@ -405,7 +422,7 @@ export function Dashboard({
       {/* ========================================================================= */}
       {/* 🚀 GROUPED QUICK ACTION HUB (CENTRE D'ACTIONS RAPIDES GROUPÉES) */}
       {/* ========================================================================= */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 p-6 rounded-2xl border border-slate-800 text-white shadow-xl space-y-4">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-800 text-white shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">
             <span className="flex h-3 w-3 relative">
@@ -469,7 +486,7 @@ export function Dashboard({
             <div className="w-9 h-9 rounded-lg bg-emerald-500/20 group-hover:bg-white/20 flex items-center justify-center text-emerald-400 group-hover:text-white transition-colors">
               <span className="material-symbols-outlined text-[20px]">payments</span>
             </div>
-            <span className="text-xs font-bold text-emerald-200 group-hover:text-white leading-tight">Bouton Paiement</span>
+            <span className="text-xs font-bold text-emerald-200 group-hover:text-white leading-tight">Encaisser Paiement</span>
           </button>
 
           {currentUser?.role !== 'agent' && (
@@ -482,7 +499,7 @@ export function Dashboard({
                 <div className="w-9 h-9 rounded-lg bg-purple-500/20 group-hover:bg-white/20 flex items-center justify-center text-purple-400 group-hover:text-white transition-colors">
                   <span className="material-symbols-outlined text-[20px]">calendar_month</span>
                 </div>
-                <span className="text-xs font-bold text-purple-200 group-hover:text-white leading-tight">Bouton Crédit</span>
+                <span className="text-xs font-bold text-purple-200 group-hover:text-white leading-tight">Échéancier Crédit</span>
               </button>
 
               {/* Quick PDF: Balance Âgée */}
@@ -531,70 +548,62 @@ export function Dashboard({
 
       {currentUser?.role !== 'agent' && (
         <>
-          {/* KPI Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Total CA */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Chiffre d'Affaires TTC</span>
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                  <span className="material-symbols-outlined text-[20px]">payments</span>
-                </div>
-              </div>
-              <p className="text-2xl font-black text-slate-900 mt-2">
-                {totalFactureTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
+          {/* KPI Cards Grid (P1.7 Admin Dashboard) */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+            
+            {/* CA Aujourd'hui */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">CA Aujourd'hui</span>
+              <p className="text-lg font-black text-slate-900">
+                {caAujourdhui.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-[10px] font-bold text-slate-500">DT</span>
               </p>
-              <div className="flex items-center gap-1 mt-2 text-xs text-emerald-600 font-semibold">
-                <span className="material-symbols-outlined text-[16px]">trending_up</span>
-                <span>+14,5% vs mois précédent</span>
-              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500" />
+            </div>
+
+            {/* CA du mois */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">CA du mois</span>
+              <p className="text-lg font-black text-slate-900">
+                {caMois.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-[10px] font-bold text-slate-500">DT</span>
+              </p>
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500" />
             </div>
 
-            {/* Total Achats */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Achats & Dépenses</span>
-                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                  <span className="material-symbols-outlined text-[20px]">shopping_cart</span>
-                </div>
-              </div>
-              <p className="text-2xl font-black text-slate-900 mt-2">
-                {totalAchatsVal.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
-              </p>
-              <span className="text-xs text-slate-500 mt-2 block">{scopedAchats.length} commandes fournisseurs</span>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500" />
+            {/* Nombre de ventes */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Articles Vendus</span>
+              <p className="text-lg font-black text-slate-900">{nbVentes}</p>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-500" />
             </div>
 
-            {/* Créances Clients */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Créances Clients Dues</span>
-                <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
-                  <span className="material-symbols-outlined text-[20px]">account_balance</span>
-                </div>
-              </div>
-              <p className="text-2xl font-black text-rose-600 mt-2">
-                {totalCreancesDues.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
-              </p>
-              <span className="text-xs text-rose-600 font-semibold mt-2 block">En-cours à recouvrer</span>
+            {/* Nombre de commandes */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Devis / Commandes</span>
+              <p className="text-lg font-black text-slate-900">{nbCommandes}</p>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-purple-500" />
+            </div>
+
+            {/* Stock faible */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Stock faible</span>
+              <p className="text-lg font-black text-rose-600">{nbProduitsFaible} <span className="text-[10px] font-bold text-slate-500">produits</span></p>
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-rose-500" />
             </div>
 
-            {/* Stock Global */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Valorisation Stock</span>
-                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                  <span className="material-symbols-outlined text-[20px]">inventory_2</span>
-                </div>
-              </div>
-              <p className="text-2xl font-black text-emerald-700 mt-2">
-                {stockValuation.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
-              </p>
-              <span className="text-xs text-slate-500 mt-2 block">{stockGlobal} unités physiques</span>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500" />
+            {/* Nombre de clients */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Total Clients</span>
+              <p className="text-lg font-black text-slate-900">{nbClients}</p>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500" />
             </div>
+
+            {/* Nombre de factures */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Factures (Ventes)</span>
+              <p className="text-lg font-black text-slate-900">{nbFactures}</p>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-teal-500" />
+            </div>
+
           </div>
 
           {/* CA PAR BOUTIQUE (BF-BOUT-013 Global Breakdown) */}
@@ -658,7 +667,7 @@ export function Dashboard({
       )}
 
       {currentUser?.role !== 'agent' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-slate-900">Évolution Comparée des Ventes vs Achats</h2>

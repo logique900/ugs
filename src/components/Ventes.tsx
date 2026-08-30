@@ -1,5 +1,6 @@
+import { getArticleStock, hasLowStock, isOutOfStock } from '../utils/stockUtils';
 import React, { useState, useMemo } from 'react';
-import { Utilisateur, Vente, Client, Article, Projet, LigneVente, Reglement } from '../types';
+import { Utilisateur, Vente, Client, Article, Projet, LigneVente, Reglement, MouvementStock } from '../types';
 import { generateInvoicePdf, generateReceiptPdf, generateCreditAgreementPdf } from '../utils/pdfExportEngine';
 
 interface VentesProps {
@@ -10,9 +11,12 @@ interface VentesProps {
   articles: Article[];
   projets: Projet[];
   reglements: Reglement[];
+  mouvements?: MouvementStock[];
   onVentesChange: (ventes: Vente[]) => void;
   onReglementsChange: (reglements: Reglement[]) => void;
   onClientsChange?: (clients: Client[]) => void;
+  onArticlesChange?: (articles: Article[]) => void;
+  onMouvementsChange?: (mouvements: MouvementStock[]) => void;
 }
 
 export function Ventes({
@@ -23,9 +27,12 @@ export function Ventes({
   articles,
   projets,
   reglements,
+  mouvements = [],
   onVentesChange,
   onReglementsChange,
-  onClientsChange
+  onClientsChange,
+  onArticlesChange,
+  onMouvementsChange
 }: VentesProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -58,6 +65,8 @@ export function Ventes({
     }
   ]);
   const [newNotes, setNewNotes] = useState('');
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  const [editStatut, setEditStatut] = useState<'Devis' | 'En Négociation' | 'Commande'>('Devis');
 
   // Modal State: Quick Payment (Bouton de Paiement)
   const [paymentModalSale, setPaymentModalSale] = useState<Vente | null>(null);
@@ -184,6 +193,27 @@ export function Ventes({
     ]);
   };
 
+  const handleAddServiceLine = (type: 'Main d\'œuvre' | 'Livraison') => {
+    const serviceArticle = articles.find(a => a.designation === type && a.typeArticle === 'Service');
+    const pu = serviceArticle?.prixVenteHT || 0;
+    const tva = serviceArticle?.tva || 19;
+    
+    setNewLines([
+      ...newLines,
+      {
+        id: `l-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        articleId: serviceArticle?.id || '',
+        designation: type,
+        quantite: 1,
+        prixUnitaireHT: pu,
+        tauxTVA: tva,
+        remisePourcentage: 0,
+        totalHT: pu,
+        totalTTC: pu * (1 + tva / 100)
+      }
+    ]);
+  };
+
   const handleRemoveLine = (index: number) => {
     if (newLines.length <= 1) return;
     setNewLines(newLines.filter((_, i) => i !== index));
@@ -192,8 +222,24 @@ export function Ventes({
   const calculatedTotalHT = newLines.reduce((a, l) => a + (l.totalHT || 0), 0);
   const calculatedTotalTTC = newLines.reduce((a, l) => a + (l.totalTTC || 0), 0);
 
+  const handleOpenEditModal = (vente: Vente) => {
+    setEditingSaleId(vente.id);
+    setModalMode(vente.statut === 'Facture' || vente.statut === 'Payée' ? 'Facture' : 'Devis');
+    setEditStatut(vente.statut as any);
+    setNewClientId(vente.clientId);
+    setNewDate(vente.date);
+    setNewDueDate(vente.dateEcheance || vente.date);
+    setPaymentOption(vente.statut === 'Payée' ? 'Comptant' : 'Credit');
+    setImmediatePaidAmount(vente.montantPaye || 0);
+    setNewNotes(vente.notes || '');
+    setNewLines(vente.lignes || []);
+    setIsCreateModalOpen(true);
+  };
+
   // Open Create Modal
   const handleOpenCreateModal = (mode: 'Facture' | 'Devis', forceCredit = false) => {
+    setEditingSaleId(null);
+    setEditStatut(mode === 'Devis' ? 'Devis' : 'Facture' as any);
     setModalMode(mode);
     setNewClientId(scopedClients[0]?.id || '');
     setNewClientName('');
@@ -206,24 +252,57 @@ export function Ventes({
     setPaymentOption(forceCredit ? 'Credit' : 'Credit');
     setImmediatePaidAmount(0);
     setNewNotes('');
-    if (scopedActiveArticles.length > 0) {
-      const firstArt = scopedActiveArticles[0];
-      const pu = firstArt.prixVenteHT || 0;
-      const tva = firstArt.tva || 19;
-      setNewLines([
-        {
-          id: 'l1',
-          articleId: firstArt.id,
-          designation: firstArt.designation,
-          quantite: 1,
-          prixUnitaireHT: pu,
-          tauxTVA: tva,
-          remisePourcentage: 0,
-          totalHT: pu,
-          totalTTC: pu * (1 + tva / 100)
-        }
-      ]);
+    const defaultLines: LigneVente[] = [];
+    const moArticle = scopedActiveArticles.find(a => a.id === 'mo-install');
+    
+    if (moArticle) {
+      const moPu = moArticle.prixVenteHT || 0;
+      const moTva = moArticle.tva || 19;
+      defaultLines.push({
+        id: `l-mo-${Date.now()}`,
+        articleId: moArticle.id,
+        designation: moArticle.designation,
+        quantite: 1,
+        prixUnitaireHT: moPu,
+        tauxTVA: moTva,
+        remisePourcentage: 0,
+        totalHT: moPu,
+        totalTTC: moPu * (1 + moTva / 100)
+      });
     }
+
+    const firstStandardArt = scopedActiveArticles.find(a => a.id !== 'mo-install');
+    if (firstStandardArt) {
+      const pu = firstStandardArt.prixVenteHT || 0;
+      const tva = firstStandardArt.tva || 19;
+      defaultLines.push({
+        id: `l-std-${Date.now()}`,
+        articleId: firstStandardArt.id,
+        designation: firstStandardArt.designation,
+        quantite: 1,
+        prixUnitaireHT: pu,
+        tauxTVA: tva,
+        remisePourcentage: 0,
+        totalHT: pu,
+        totalTTC: pu * (1 + tva / 100)
+      });
+    }
+
+    if (defaultLines.length === 0) {
+      defaultLines.push({
+        id: 'l1',
+        articleId: '',
+        designation: '',
+        quantite: 1,
+        prixUnitaireHT: 0,
+        tauxTVA: 19,
+        remisePourcentage: 0,
+        totalHT: 0,
+        totalTTC: 0
+      });
+    }
+    
+    setNewLines(defaultLines);
     setIsCreateModalOpen(true);
   };
 
@@ -231,6 +310,27 @@ export function Ventes({
   const handleSaveSale = (e: React.FormEvent) => {
     e.preventDefault();
     if ((!newClientId || (newClientId === 'NEW' && !newClientName.trim())) || newLines.length === 0) return;
+
+    const targetProjetId = selectedProjectId === 'all' ? (projets[0]?.id || 'p1') : selectedProjectId;
+
+    // BF-STOCK-007: Out of stock check & negative stock prevention for invoices
+    if (modalMode === 'Facture') {
+      for (const line of newLines) {
+        if (!line.articleId) continue;
+        const art = articles.find(a => a.id === line.articleId);
+        if (art && art.typeArticle !== 'Service') {
+          const availStock = getArticleStock(art, targetProjetId);
+          if (availStock <= 0) {
+            alert(`🔴 RUPTURE DE STOCK : Impossible d'effectuer la vente. Le produit "${art.designation}" est en rupture (stock = 0).`);
+            return;
+          }
+          if (line.quantite > availStock) {
+            alert(`⚠️ STOCK INSUFFISANT : La quantité demandée (${line.quantite}) dépasse le stock disponible (${availStock}) pour "${art.designation}".`);
+            return;
+          }
+        }
+      }
+    }
 
     let clientIdToUse = newClientId;
     let clientNomToUse = '';
@@ -262,15 +362,23 @@ export function Ventes({
     const prefix = modalMode === 'Facture' ? 'FAC' : 'DEV';
     const year = new Date().getFullYear();
     const count = ventes.filter(v => v.statut === modalMode).length + 1;
-    const numero = `${prefix}-${year}-${count.toString().padStart(4, '0')}`;
+    
+    // Use existing number if editing, else generate new
+    const existingSale = editingSaleId ? ventes.find(v => v.id === editingSaleId) : null;
+    const numero = existingSale ? existingSale.numero : `${prefix}-${year}-${count.toString().padStart(4, '0')}`;
 
     const isComptant = modalMode === 'Facture' && paymentOption === 'Comptant';
     const initialPaid = isComptant ? calculatedTotalTTC : immediatePaidAmount;
 
+    let finalStatut: any = isComptant ? 'Payée' : modalMode;
+    if (editingSaleId && modalMode === 'Devis') {
+      finalStatut = editStatut;
+    }
+
     const newSale: Vente = {
-      id: `v-${Date.now()}`,
+      id: existingSale ? existingSale.id : `v-${Date.now()}`,
       numero,
-      projetId: selectedProjectId === 'all' ? (projets[0]?.id || 'p1') : selectedProjectId,
+      projetId: existingSale ? existingSale.projetId : (selectedProjectId === 'all' ? (projets[0]?.id || 'p1') : selectedProjectId),
       clientId: clientIdToUse,
       clientNom: clientNomToUse,
       date: newDate,
@@ -278,12 +386,64 @@ export function Ventes({
       montantHT: calculatedTotalHT,
       montantTTC: calculatedTotalTTC,
       montantPaye: initialPaid,
-      statut: isComptant ? 'Payée' : modalMode,
+      statut: finalStatut,
       lignes: newLines,
       notes: newNotes
     };
 
-    onVentesChange([newSale, ...ventes]);
+    if (existingSale) {
+      onVentesChange(ventes.map(v => v.id === existingSale.id ? newSale : v));
+    } else {
+      onVentesChange([newSale, ...ventes]);
+    }
+
+    // Update stock and register stock movement if it's a NEW Invoice (BF-PROD-021)
+    if (modalMode === 'Facture' && !existingSale) {
+      const currentBoutiqueNom = projets.find(p => p.id === newSale.projetId)?.nom || 'Sfax Centre';
+      const newStockMvs: MouvementStock[] = [];
+
+      if (onArticlesChange && articles) {
+        const updatedArticles = articles.map(art => {
+          const lineMatch = newLines.find(l => l.articleId === art.id);
+          if (lineMatch && art.typeArticle !== 'Service') {
+            const stockAvant = getArticleStock(art, newSale.projetId);
+            const stockApres = Math.max(0, stockAvant - lineMatch.quantite);
+
+            newStockMvs.push({
+              id: `mvt-vte-${Date.now()}-${art.id}`,
+              projetId: newSale.projetId,
+              articleId: art.id,
+              designation: art.designation,
+              type: 'Sortie',
+              quantite: lineMatch.quantite,
+              date: newDate,
+              motif: `Vente ${numero}`,
+              reference: numero,
+              referencePiece: numero,
+              auteur: currentUser?.nom || 'Commercial',
+              boutique: currentBoutiqueNom,
+              stockAvant,
+              stockApres
+            });
+
+            return {
+              ...art,
+              stock: stockApres,
+              stocks: {
+                ...(art.stocks || {}),
+                [newSale.projetId]: stockApres
+              }
+            };
+          }
+          return art;
+        });
+        onArticlesChange(updatedArticles);
+      }
+
+      if (onMouvementsChange && newStockMvs.length > 0) {
+        onMouvementsChange([...newStockMvs, ...mouvements]);
+      }
+    }
 
     // If initial payment was made, generate reglement
     if (initialPaid > 0) {
@@ -310,24 +470,74 @@ export function Ventes({
     setIsCreateModalOpen(false);
   };
 
-  // Convert Quote to Invoice
-  const handleConvertQuote = (quote: Vente) => {
+  // Convert Quote to Commande or Invoice
+  const handleConvertQuote = (quote: Vente, target: 'Commande' | 'Facture') => {
     const year = new Date().getFullYear();
-    const count = ventes.filter(v => v.statut === 'Facture' || v.statut === 'Payée').length + 1;
-    const newNumero = `FAC-${year}-${count.toString().padStart(4, '0')}`;
+    const prefix = target === 'Facture' ? 'FAC' : 'CMD';
+    const count = ventes.filter(v => v.statut === target || (target === 'Facture' && v.statut === 'Payée')).length + 1;
+    const newNumero = `${prefix}-${year}-${count.toString().padStart(4, '0')}`;
+    const today = new Date().toISOString().split('T')[0];
 
     const updated = ventes.map(v => {
       if (v.id === quote.id) {
         return {
           ...v,
           numero: newNumero,
-          statut: 'Facture' as const,
-          date: new Date().toISOString().split('T')[0]
+          statut: target as any,
+          date: today
         };
       }
       return v;
     });
     onVentesChange(updated);
+
+    // Update article stock & register stock movements ONLY if going to Facture
+    if (target === 'Facture' && quote.lignes && quote.lignes.length > 0) {
+      const boutiqueNom = projets.find(p => p.id === quote.projetId)?.nom || 'Sfax Centre';
+      const newMvts: MouvementStock[] = [];
+
+      if (onArticlesChange && articles) {
+        const updatedArticles = articles.map(art => {
+          const lineMatch = quote.lignes?.find(l => l.articleId === art.id);
+          if (lineMatch && art.typeArticle !== 'Service') {
+            const stockAvant = getArticleStock(art, quote.projetId);
+            const stockApres = Math.max(0, stockAvant - lineMatch.quantite);
+
+            newMvts.push({
+              id: `mvt-quote-${Date.now()}-${art.id}`,
+              projetId: quote.projetId,
+              articleId: art.id,
+              designation: art.designation,
+              type: 'Sortie',
+              quantite: lineMatch.quantite,
+              date: today,
+              motif: `Vente (Conversion Devis) ${newNumero}`,
+              reference: newNumero,
+              referencePiece: newNumero,
+              auteur: currentUser?.nom || 'Commercial',
+              boutique: boutiqueNom,
+              stockAvant,
+              stockApres
+            });
+
+            return {
+              ...art,
+              stock: stockApres,
+              stocks: {
+                ...(art.stocks || {}),
+                [quote.projetId]: stockApres
+              }
+            };
+          }
+          return art;
+        });
+        onArticlesChange(updatedArticles);
+      }
+
+      if (onMouvementsChange && newMvts.length > 0) {
+        onMouvementsChange([...newMvts, ...mouvements]);
+      }
+    }
   };
 
   // Open Payment Modal (Bouton de Paiement)
@@ -479,6 +689,10 @@ export function Ventes({
         return <span className="inline-flex items-center px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-bold">Facture (À crédit)</span>;
       case 'Devis':
         return <span className="inline-flex items-center px-2.5 py-1 bg-amber-100 text-amber-800 rounded-lg text-xs font-bold">Devis</span>;
+      case 'En Négociation':
+        return <span className="inline-flex items-center px-2.5 py-1 bg-fuchsia-100 text-fuchsia-800 rounded-lg text-xs font-bold shadow-[0_0_8px_rgba(217,70,239,0.2)]">En Négociation</span>;
+      case 'Commande':
+        return <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-800 rounded-lg text-xs font-bold">Commande</span>;
       default:
         return <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-800 rounded-lg text-xs font-bold">{statut}</span>;
     }
@@ -503,12 +717,16 @@ export function Ventes({
         <div>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-              <span className="material-symbols-outlined text-[22px]">receipt_long</span>
+              <span className="material-symbols-outlined text-[22px]">
+                {selectedProjectId === '2' ? 'receipt_long' : 'assignment'}
+              </span>
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Gestion des Ventes</h1>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                {selectedProjectId === '2' ? 'Journal de Caisse' : selectedProjectId === '1' ? 'Bons & Devis' : 'Gestion des Ventes'}
+              </h1>
               <p className="text-xs text-slate-500 mt-0.5">
-                Facturation, suivi des devis et encaissements
+                {selectedProjectId === '2' ? 'Historique des tickets et encaissements' : 'Facturation, suivi des devis et encaissements'}
               </p>
             </div>
           </div>
@@ -694,12 +912,36 @@ export function Ventes({
                           PDF
                         </button>
 
-                        {/* Convert Quote */}
-                        {vente.statut === 'Devis' && (
+                        {/* Edit / Négocier Devis */}
+                        {(vente.statut === 'Devis' || vente.statut === 'En Négociation') && (
                           <button
-                            onClick={() => handleConvertQuote(vente)}
+                            onClick={() => handleOpenEditModal(vente)}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-600 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                            title="Négocier ou Modifier ce Devis"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">edit_note</span>
+                            Négocier
+                          </button>
+                        )}
+
+                        {/* Convert to Commande */}
+                        {(vente.statut === 'Devis' || vente.statut === 'En Négociation') && (
+                          <button
+                            onClick={() => handleConvertQuote(vente, 'Commande')}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                            title="Convertir en Commande"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">shopping_bag</span>
+                            Commande
+                          </button>
+                        )}
+
+                        {/* Convert Quote / Commande to Invoice */}
+                        {(vente.statut === 'Devis' || vente.statut === 'En Négociation' || vente.statut === 'Commande') && (
+                          <button
+                            onClick={() => handleConvertQuote(vente, 'Facture')}
                             className="flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                            title="Convertir ce Devis en Facture"
+                            title="Convertir en Facture"
                           >
                             <span className="material-symbols-outlined text-[14px]">transform</span>
                             Facturer
@@ -757,7 +999,7 @@ export function Ventes({
                   {modalMode === 'Facture' ? 'receipt_long' : 'description'}
                 </span>
                 <h3 className="font-extrabold text-base text-slate-900">
-                  Créer un(e) {modalMode === 'Facture' ? 'Nouvelle Facture de Vente' : 'Nouveau Devis Client'}
+                  {editingSaleId ? (modalMode === 'Facture' ? 'Modifier Facture' : 'Négocier / Modifier Devis') : `Créer un(e) ${modalMode === 'Facture' ? 'Nouvelle Facture de Vente' : 'Nouveau Devis Client'}`}
                 </h3>
               </div>
               <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
@@ -805,7 +1047,7 @@ export function Ventes({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className={`grid grid-cols-1 ${editingSaleId && modalMode === 'Devis' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-bold text-slate-700 uppercase">Client *</label>
@@ -885,6 +1127,21 @@ export function Ventes({
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-800"
                   />
                 </div>
+
+                {editingSaleId && modalMode === 'Devis' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Statut Devis</label>
+                    <select
+                      value={editStatut}
+                      onChange={(e) => setEditStatut(e.target.value as any)}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-indigo-500"
+                    >
+                      <option value="Devis">Devis (Standard)</option>
+                      <option value="En Négociation">En Négociation</option>
+                      <option value="Commande">Converti en Commande</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Client Credit Solvency Status Widget */}
@@ -972,41 +1229,33 @@ export function Ventes({
 
               {/* Invoice Lines Table */}
               <div className="space-y-3">
-                <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-start gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-[20px] mt-0.5 shrink-0">sell</span>
-                  <div className="text-xs text-emerald-950 leading-relaxed">
-                    <span className="font-extrabold uppercase tracking-wide block mb-0.5">
-                      BF-PROD-006 — Récupération Automatique du Prix de Vente
-                    </span>
-                    Lors de la sélection d'un produit, son prix catalogue est extrait automatiquement 
-                    (ex. <strong>Clavier Logitech K120 → 45 DT</strong>) et le total panier est recalculé en temps réel.
-                    {currentUser.role === 'caissier' || currentUser.role === 'agent' ? (
-                      <span className="block mt-1 font-bold text-slate-700 bg-white/80 px-2 py-0.5 rounded border border-emerald-300 w-fit">
-                        🔒 Mode Caissier : Saisie du prix verrouillée (Prix officiel uniquement).
-                      </span>
-                    ) : (
-                      <span className="block mt-1 text-slate-600 font-medium">
-                        🔓 Rôle {currentUser.role} : Modification exceptionnelle du prix unitaire autorisée.
-                      </span>
-                    )}
-                  </div>
-                </div>
-
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold text-slate-700 uppercase">Articles / Prestations du Panier</label>
-                  <button
-                    type="button"
-                    onClick={handleAddLine}
-                    className="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">add_circle</span>
-                    Ajouter un article
-                  </button>
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => handleAddServiceLine('Main d\'œuvre')}
+                      className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1.5 cursor-pointer bg-amber-50 px-2 py-1 rounded-lg border border-amber-200"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">build</span>
+                      + Main d'œuvre
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddLine}
+                      className="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                      Ajouter un article
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2.5">
                   {newLines.map((line, idx) => {
-                    const isPriceLocked = currentUser.role === 'caissier' || currentUser.role === 'agent';
+                    const lineArticle = articles.find(a => a.id === line.articleId);
+                    const isService = lineArticle?.typeArticle === 'Service';
+                    const isPriceLocked = !isService && (currentUser.role === 'caissier' || currentUser.role === 'agent');
                     return (
                       <div key={line.id || idx} className="grid grid-cols-12 gap-2.5 items-center bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-sm">
                         <div className="col-span-5">
@@ -1042,7 +1291,7 @@ export function Ventes({
                             placeholder="P.U HT"
                             disabled={isPriceLocked}
                             readOnly={isPriceLocked}
-                            title={isPriceLocked ? "Prix catalogue verrouillé en mode caissier (BF-PROD-006)" : "Prix modifiable (Autorisation Admin)"}
+                            title={isPriceLocked ? "Prix catalogue verrouillé en mode caissier" : "Prix modifiable (Autorisation Admin)"}
                             className={`w-full px-3 py-2 border rounded-xl text-sm font-bold text-right transition-all ${
                               isPriceLocked 
                                 ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' 
@@ -1050,7 +1299,7 @@ export function Ventes({
                             }`}
                           />
                           {isPriceLocked && (
-                            <span className="absolute left-2 top-2.5 text-slate-400 text-xs" title="Prix verrouillé (BF-PROD-006)">
+                            <span className="absolute left-2 top-2.5 text-slate-400 text-xs" title="Prix verrouillé">
                               🔒
                             </span>
                           )}
@@ -1103,7 +1352,7 @@ export function Ventes({
                   type="submit"
                   className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl shadow-md cursor-pointer"
                 >
-                  Valider et Enregistrer
+                  {editingSaleId ? 'Enregistrer les Modifications' : 'Valider et Enregistrer'}
                 </button>
               </div>
             </form>
