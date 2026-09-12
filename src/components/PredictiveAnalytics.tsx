@@ -299,7 +299,7 @@ export function PredictiveAnalytics({
       
       {/* Toast Notification */}
       {successToast && (
-        <div className="bg-emerald-600 text-white p-4 rounded-2xl shadow-lg flex items-center justify-between animate-in slide-in-from-top-4 duration-300">
+        <div className="bg-emerald-600 text-white p-4 rounded-xl shadow-lg flex items-center justify-between animate-in slide-in-from-top-4 duration-300">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-2xl">check_circle</span>
             <p className="text-sm font-semibold">{successToast}</p>
@@ -316,20 +316,18 @@ export function PredictiveAnalytics({
       )}
 
       {/* HEADER & PIPELINE ARCHITECTURE */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
                 <span className="material-symbols-outlined text-2xl">insights</span>
               </div>
               <div>
-                <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                   P3.1 — Analyse Prédictive & Réapprovisionnement
                 </h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Anticipation de la demande, détection des ruptures de stock et génération intelligente des commandes fournisseurs
-                </p>
+                
               </div>
             </div>
           </div>
@@ -341,9 +339,9 @@ export function PredictiveAnalytics({
               onChange={(e) => setFilterBoutique(e.target.value)}
               className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-3.5 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20"
             >
-              <option value="all">🏢 Toutes les boutiques (Consolidé)</option>
+              <option value="all">Toutes les boutiques (Consolidé)</option>
               {projets.map(p => (
-                <option key={p.id} value={p.id}>🏪 {p.nom}</option>
+                <option key={p.id} value={p.id}>{p.nom}</option>
               ))}
             </select>
 
@@ -368,8 +366,8 @@ export function PredictiveAnalytics({
             Pipeline du Moteur Prédictif
           </p>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-black text-xs">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold text-xs">
                 1
               </div>
               <div>
@@ -378,8 +376,8 @@ export function PredictiveAnalytics({
               </div>
             </div>
 
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-black text-xs">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold text-xs">
                 2
               </div>
               <div>
@@ -388,8 +386,8 @@ export function PredictiveAnalytics({
               </div>
             </div>
 
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-black text-xs">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold text-xs">
                 3
               </div>
               <div>
@@ -398,8 +396,8 @@ export function PredictiveAnalytics({
               </div>
             </div>
 
-            <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/30 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-xs">
+            <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/30 rounded-xl border border-indigo-100 dark:border-indigo-900/50 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
                 4
               </div>
               <div>
@@ -414,17 +412,17 @@ export function PredictiveAnalytics({
       {/* KPI METRIC CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Ruptures Imminentes */}
-        <div className="bg-white dark:bg-slate-900 border border-rose-100 dark:border-rose-900/30 rounded-3xl p-5 shadow-xs relative overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 border border-rose-100 dark:border-rose-900/30 rounded-xl p-5 shadow-xs relative overflow-hidden">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
               Ruptures Imminentes
             </span>
-            <div className="w-9 h-9 rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[20px]">warning</span>
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">
+            <span className="text-3xl font-bold text-slate-900 dark:text-white">
               {kpis.urgentCount}
             </span>
             <span className="text-xs font-semibold text-rose-500">
@@ -437,17 +435,17 @@ export function PredictiveAnalytics({
         </div>
 
         {/* Card 2: Articles à Réapprovisionner */}
-        <div className="bg-white dark:bg-slate-900 border border-amber-100 dark:border-amber-900/30 rounded-3xl p-5 shadow-xs relative overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 border border-amber-100 dark:border-amber-900/30 rounded-xl p-5 shadow-xs relative overflow-hidden">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
               Seuil de Commande
             </span>
-            <div className="w-9 h-9 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[20px]">notifications_active</span>
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">
+            <span className="text-3xl font-bold text-slate-900 dark:text-white">
               {kpis.attentionCount}
             </span>
             <span className="text-xs font-semibold text-amber-600">
@@ -460,17 +458,17 @@ export function PredictiveAnalytics({
         </div>
 
         {/* Card 3: Volume Global Recommandé */}
-        <div className="bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900/30 rounded-3xl p-5 shadow-xs relative overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-5 shadow-xs relative overflow-hidden">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
               Besoin Total Recommandé
             </span>
-            <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[20px]">inventory_2</span>
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">
+            <span className="text-3xl font-bold text-slate-900 dark:text-white">
               {kpis.totalRecommandation.toLocaleString('fr-FR')}
             </span>
             <span className="text-xs font-semibold text-slate-500">
@@ -483,17 +481,17 @@ export function PredictiveAnalytics({
         </div>
 
         {/* Card 4: Budget Prévisionnel d'Achat */}
-        <div className="bg-white dark:bg-slate-900 border border-emerald-100 dark:border-emerald-900/30 rounded-3xl p-5 shadow-xs relative overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 border border-emerald-100 dark:border-emerald-900/30 rounded-xl p-5 shadow-xs relative overflow-hidden">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
               Budget Prévisionnel
             </span>
-            <div className="w-9 h-9 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[20px]">payments</span>
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">
+            <span className="text-3xl font-bold text-slate-900 dark:text-white">
               {kpis.totalBudgetHT.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}
             </span>
             <span className="text-xs font-bold text-emerald-600">DT HT</span>
@@ -505,7 +503,7 @@ export function PredictiveAnalytics({
       </div>
 
       {/* PARAMETERS & SIMULATION CONTROLS */}
-      <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-md">
+      <div className="bg-slate-900 text-white rounded-xl p-6 shadow-md">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-indigo-400 text-2xl">tune</span>
@@ -522,7 +520,7 @@ export function PredictiveAnalytics({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {/* Historical Window */}
-          <div className="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/60">
+          <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/60">
             <label className="block text-xs font-semibold text-slate-300 mb-2 flex justify-between">
               <span>Historique d'Analyse</span>
               <span className="text-indigo-400 font-bold">{historiqueDays} Jours</span>
@@ -541,7 +539,7 @@ export function PredictiveAnalytics({
           </div>
 
           {/* Forecast Horizon */}
-          <div className="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/60">
+          <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/60">
             <label className="block text-xs font-semibold text-slate-300 mb-2 flex justify-between">
               <span>Horizon Prévisionnel</span>
               <span className="text-indigo-400 font-bold">J+{horizonPrevision}</span>
@@ -560,7 +558,7 @@ export function PredictiveAnalytics({
           </div>
 
           {/* Supplier Lead Time */}
-          <div className="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/60">
+          <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/60">
             <label className="block text-xs font-semibold text-slate-300 mb-2 flex justify-between">
               <span>Délai Fournisseur (Lead Time)</span>
               <span className="text-amber-400 font-bold">{delaiLivraisonFournisseur} Jours</span>
@@ -581,7 +579,7 @@ export function PredictiveAnalytics({
           </div>
 
           {/* Safety Stock Buffer */}
-          <div className="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/60">
+          <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/60">
             <label className="block text-xs font-semibold text-slate-300 mb-2 flex justify-between">
               <span>Stock Tampon de Sécurité</span>
               <span className="text-purple-400 font-bold">{stockSecuriteJours} Jours</span>
@@ -605,7 +603,7 @@ export function PredictiveAnalytics({
 
       {/* TIME-SERIES DEEP DIVE SIMULATION (RECHARTS) */}
       {activeArticle && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -691,7 +689,7 @@ export function PredictiveAnalytics({
       )}
 
       {/* PREDICTIVE RECOMMENDATIONS DATA TABLE */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
         
         {/* Table Controls Header */}
         <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
@@ -803,7 +801,7 @@ export function PredictiveAnalytics({
 
                       {/* Stock Actuel */}
                       <td className="py-3.5 px-3 text-center">
-                        <span className={`inline-flex items-center font-black text-sm px-2.5 py-1 rounded-lg ${
+                        <span className={`inline-flex items-center font-bold text-sm px-2.5 py-1 rounded-lg ${
                           item.currentStock === 0 
                             ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400' 
                             : item.currentStock <= item.pointDeCommande
@@ -817,7 +815,7 @@ export function PredictiveAnalytics({
                       {/* Vélocité Journalière */}
                       <td className="py-3.5 px-3 text-center font-bold text-slate-700 dark:text-slate-300">
                         <div className="flex flex-col items-center">
-                          <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">
+                          <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
                             {item.vitesseJournaliere}
                           </span>
                           <span className="text-[10px] text-slate-400">unités / jour</span>
@@ -827,7 +825,7 @@ export function PredictiveAnalytics({
                       {/* Autonomie Restante */}
                       <td className="py-3.5 px-3 text-center">
                         <div className="flex flex-col items-center">
-                          <span className={`font-black text-sm ${
+                          <span className={`font-bold text-sm ${
                             item.joursAutonomie <= delaiLivraisonFournisseur 
                               ? 'text-rose-600 dark:text-rose-400' 
                               : item.joursAutonomie <= delaiLivraisonFournisseur + stockSecuriteJours
@@ -848,7 +846,7 @@ export function PredictiveAnalytics({
                       {/* Statut Risque */}
                       <td className="py-3.5 px-3 text-center">
                         {item.urgence === 'urgent' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-400 font-black text-[10px] border border-rose-200 dark:border-rose-900">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-400 font-bold text-[10px] border border-rose-200 dark:border-rose-900">
                             <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping"></span>
                             Rupture Imminente
                           </span>
@@ -877,7 +875,7 @@ export function PredictiveAnalytics({
                       <td className="py-3.5 px-3 text-right">
                         {item.quantiteRecommandee > 0 ? (
                           <div>
-                            <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">
+                            <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
                               +{item.quantiteRecommandee} u
                             </span>
                             <span className="block text-[10px] text-slate-400">
@@ -925,12 +923,12 @@ export function PredictiveAnalytics({
       {/* QUICK REORDER MODAL (Bon de Commande Instantané) */}
       {reassortModalArticle && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-800">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-800">
             
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-xl">shopping_cart_checkout</span>
                 </div>
                 <div>
@@ -954,18 +952,18 @@ export function PredictiveAnalytics({
             <div className="p-6 space-y-4">
               
               {/* Context Summary Box */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 grid grid-cols-3 gap-3 text-center">
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 grid grid-cols-3 gap-3 text-center">
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Stock Actuel</span>
-                  <span className="text-base font-black text-slate-900 dark:text-white">{reassortModalArticle.currentStock} u</span>
+                  <span className="text-base font-bold text-slate-900 dark:text-white">{reassortModalArticle.currentStock} u</span>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Ventes Moyennes</span>
-                  <span className="text-base font-black text-indigo-600">{reassortModalArticle.vitesseJournaliere} u/j</span>
+                  <span className="text-base font-bold text-indigo-600">{reassortModalArticle.vitesseJournaliere} u/j</span>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Autonomie</span>
-                  <span className="text-base font-black text-rose-600">{reassortModalArticle.joursAutonomie} j</span>
+                  <span className="text-base font-bold text-rose-600">{reassortModalArticle.joursAutonomie} j</span>
                 </div>
               </div>
 
@@ -999,7 +997,7 @@ export function PredictiveAnalytics({
                     min={1}
                     value={commandeQuantite}
                     onChange={(e) => setCommandeQuantite(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 font-black text-lg outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 font-bold text-lg outline-none focus:ring-2 focus:ring-indigo-500/20"
                   />
                   <button
                     onClick={() => setCommandeQuantite(reassortModalArticle.quantiteRecommandee)}
@@ -1011,12 +1009,12 @@ export function PredictiveAnalytics({
               </div>
 
               {/* Cost Summary */}
-              <div className="p-4 bg-indigo-50/60 dark:bg-indigo-950/40 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between">
+              <div className="p-4 bg-indigo-50/60 dark:bg-indigo-950/40 rounded-xl border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between">
                 <div>
                   <span className="text-xs text-indigo-950 dark:text-indigo-300 font-medium block">
                     Montant total estimé (HT)
                   </span>
-                  <span className="text-xl font-black text-indigo-700 dark:text-indigo-400">
+                  <span className="text-xl font-bold text-indigo-700 dark:text-indigo-400">
                     {(commandeQuantite * (reassortModalArticle.prixAchatHT || 0)).toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT
                   </span>
                 </div>

@@ -52,7 +52,7 @@ export function AdminAuditLogs({ projets }: AdminAuditLogsProps) {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col bg-surface-container-lowest rounded-2xl border border-outline-variant overflow-hidden shadow-sm">
+      <div className="flex-1 flex flex-col bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden shadow-sm">
         <div className="p-4 border-b border-outline-variant flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface-container-lowest shrink-0">
           <div className="relative w-full max-w-md">
             <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>

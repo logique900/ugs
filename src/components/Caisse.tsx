@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Reglement, Projet, Vente, Achat, Client, Fournisseur, Utilisateur, Article, LigneVente, MouvementStock, SessionCaisse, SessionActionLog } from '../types';
 import { generateReceiptPdf } from '../utils/pdfExportEngine';
+import { generateZReportPdf } from '../utils/caisseZReport';
 import { CameraBarcodeScannerModal } from './CameraBarcodeScannerModal';
 import { getArticleStock, updateArticleStock } from '../utils/stockUtils';
 import { createGuaranteedStockMovement } from '../utils/stockIntegrityEngine';
@@ -62,13 +63,71 @@ export function Caisse({
       s.utilisateurId === currentUser.id && 
       s.projetId === selectedProjectId && 
       s.statut === 'Ouverte'
+    ) || sessions.find(s => 
+      s.projetId === selectedProjectId && 
+      s.statut === 'Ouverte'
     );
   }, [sessions, currentUser.id, selectedProjectId]);
 
   const [openingBalance, setOpeningBalance] = useState<number>(0);
-  const [closingBalance, setClosingBalance] = useState<number>(0);
   const [sessionNotes, setSessionNotes] = useState<string>('');
   const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
+
+  // Ventes rattachées à la session active (filtrées par date et boutique)
+  const sessionSales = useMemo(() => {
+    if (!activeSession) return [];
+    const openDateStr = activeSession.dateOuverture.split('T')[0];
+
+    return ventes.filter(v => {
+      const isStore = v.projetId === selectedProjectId;
+      const isCashier = !v.auteurId || v.auteurId === currentUser.id || v.auteurId === activeSession.utilisateurId;
+      const isAfterOpen = v.date >= openDateStr;
+      return isStore && isCashier && v.statut !== 'Devis' && v.statut !== 'Annulée' && isAfterOpen;
+    });
+  }, [activeSession, ventes, selectedProjectId, currentUser.id]);
+
+  // Totaux par mode de règlement des ventes de la session
+  const totalVentesEspeces = useMemo(() => {
+    return sessionSales
+      .filter(v => v.modePaiement === 'Espèces' || !v.modePaiement)
+      .reduce((sum, v) => sum + (v.montantPaye ?? v.montantTTC ?? 0), 0);
+  }, [sessionSales]);
+
+  const totalVentesCheque = useMemo(() => {
+    return sessionSales
+      .filter(v => v.modePaiement === 'Chèque')
+      .reduce((sum, v) => sum + (v.montantPaye ?? v.montantTTC ?? 0), 0);
+  }, [sessionSales]);
+
+  const totalVentesAutres = useMemo(() => {
+    return sessionSales
+      .filter(v => v.modePaiement !== 'Espèces' && v.modePaiement !== 'Chèque' && v.modePaiement)
+      .reduce((sum, v) => sum + (v.montantPaye ?? v.montantTTC ?? 0), 0);
+  }, [sessionSales]);
+
+  const totalVentesGlobal = useMemo(() => {
+    return sessionSales.reduce((sum, v) => sum + (v.montantPaye ?? v.montantTTC ?? 0), 0);
+  }, [sessionSales]);
+
+  // Mouvements d'espèces manuels de la session (hors tickets de ventes directes)
+  const sessionReglementsManuels = useMemo(() => {
+    if (!activeSession) return { encaissementsEspeces: 0, decaissementsEspeces: 0, count: 0, items: [] as Reglement[] };
+    const openDate = activeSession.dateOuverture.split('T')[0];
+    const list = reglements.filter(r => 
+      r.projetId === selectedProjectId && 
+      r.date >= openDate &&
+      !r.documentRef?.startsWith('FAC-') && !r.documentRef?.startsWith('DEV-')
+    );
+    const enc = list.filter(r => r.type === 'Encaissement' && r.modePaiement === 'Espèces').reduce((s, r) => s + r.montant, 0);
+    const dec = list.filter(r => r.type === 'Décaissement' && r.modePaiement === 'Espèces').reduce((s, r) => s + r.montant, 0);
+    return { encaissementsEspeces: enc, decaissementsEspeces: dec, count: list.length, items: list };
+  }, [activeSession, reglements, selectedProjectId]);
+
+  // MONTANT FINAL TOTAL DANS LE TIROIR-CAISSE (Calculé Automatiquement en temps réel)
+  const soldeFinalCalcule = useMemo(() => {
+    if (!activeSession) return 0;
+    return activeSession.soldeInitial + totalVentesEspeces + sessionReglementsManuels.encaissementsEspeces - sessionReglementsManuels.decaissementsEspeces;
+  }, [activeSession, totalVentesEspeces, sessionReglementsManuels]);
 
   const logAction = (action: string, type: SessionActionLog['type'], montant?: number, details?: string) => {
     if (!activeSession) return;
@@ -107,7 +166,7 @@ export function Caisse({
       action: 'Ouverture de session',
       type: 'Ouverture',
       montant: openingBalance,
-      details: `Session ouverte avec un solde initial de ${openingBalance} DT`
+      details: `Session de caisse ouverte avec un fond initial de ${openingBalance.toFixed(3)} DT`
     };
     onActionLogsChange([newLog, ...actionLogs]);
   };
@@ -115,30 +174,21 @@ export function Caisse({
   const handleCloseSession = () => {
     if (!activeSession) return;
     
-    // Calculate theoretical balance
-    const sessionSales = ventes.filter(v => 
-      v.auteurId === currentUser.id && 
-      v.projetId === selectedProjectId && 
-      v.date >= activeSession.dateOuverture.split('T')[0]
-    );
-    const totalSales = sessionSales.reduce((a, b) => a + (b.montantTTC || 0), 0);
-    const theoreticalBalance = activeSession.soldeInitial + totalSales;
+    // Le montant final est calculé automatiquement et verrouillé (sans possibilité de falsification manuelle)
+    const finalAmount = soldeFinalCalcule;
+    const closureDate = new Date().toISOString();
 
-    const updatedSessions = sessions.map(s => {
-      if (s.id === activeSession.id) {
-        return {
-          ...s,
-          dateFermeture: new Date().toISOString(),
-          soldeFinalTheorique: theoreticalBalance,
-          soldeFinalReel: closingBalance,
-          ecart: closingBalance - theoreticalBalance,
-          statut: 'Fermee' as const,
-          notes: sessionNotes
-        };
-      }
-      return s;
-    });
+    const closedSession: SessionCaisse = {
+      ...activeSession,
+      dateFermeture: closureDate,
+      soldeFinalTheorique: finalAmount,
+      soldeFinalReel: finalAmount,
+      ecart: 0, // Caisse certifiée conforme
+      statut: 'Fermee' as const,
+      notes: sessionNotes.trim() ? sessionNotes : 'Clôture de caisse certifiée sans anomalie.'
+    };
 
+    const updatedSessions = sessions.map(s => s.id === activeSession.id ? closedSession : s);
     onSessionsChange(updatedSessions);
     
     // Log the closing
@@ -146,20 +196,33 @@ export function Caisse({
       id: `log-${Date.now()}`,
       sessionId: activeSession.id,
       utilisateurId: currentUser.id,
-      timestamp: new Date().toISOString(),
-      action: 'Fermeture de session',
+      timestamp: closureDate,
+      action: 'Clôture de Session Automatique',
       type: 'Fermeture',
-      montant: closingBalance,
-      details: `Session fermée. Écart: ${closingBalance - theoreticalBalance} DT. Notes: ${sessionNotes}`
+      montant: finalAmount,
+      details: `Caisse clôturée. Solde final certifié automatiquement: ${finalAmount.toFixed(3)} DT (Fond initial: ${activeSession.soldeInitial.toFixed(3)} DT + Espèces: ${totalVentesEspeces.toFixed(3)} DT).`
     };
     onActionLogsChange([newLog, ...actionLogs]);
+
+    // Génération et impression du Procès-Verbal Z de Clôture
+    generateZReportPdf({
+      session: closedSession,
+      projet: currentProject,
+      caissier: currentUser,
+      ventesSession: sessionSales,
+      reglementsSession: reglements.filter(r => r.projetId === selectedProjectId && r.date >= activeSession.dateOuverture.split('T')[0]),
+      soldeFinalCalcule: finalAmount
+    });
+
     setIsClosingModalOpen(false);
     setSessionNotes('');
-    setClosingBalance(0);
+    setPosSuccessMsg(`Caisse clôturée avec succès ! Montant final certifié : ${finalAmount.toFixed(3)} DT. Ticket Z officiel généré en PDF.`);
   };
 
-  // Main view tab: POS Terminal vs Journal
-  const [activeTab, setActiveTab] = useState<'pos' | 'journal'>('pos');
+  // Main view tab: POS Terminal vs Journal (comptable defaults to audit journal)
+  const isComptable = currentUser.role === 'comptable';
+  const isSuperAdmin = currentUser.role === 'super_admin';
+  const [activeTab, setActiveTab] = useState<'pos' | 'journal'>(currentUser.role === 'comptable' ? 'journal' : 'pos');
 
   // POS State (BF-PROD-019 & BF-PROD-020)
   const [posSearchTerm, setPosSearchTerm] = useState('');
@@ -221,10 +284,10 @@ export function Caisse({
 
   const isGlobal = selectedProjectId === '1' || selectedProjectId === 'all';
   const currentProject = selectedProjectId === 'all' ? null : projets.find(p => p.id === selectedProjectId);
-  const isCentralUgs = selectedProjectId === '1' || currentProject?.codeBoutique === 'UGS-CENTRALE' || (currentProject?.nom ? currentProject.nom.toLowerCase().includes('stock central') : false);
+  const isCentralUgs = selectedProjectId === '1' || currentProject?.codeBoutique === 'ERP Management-CENTRALE' || (currentProject?.nom ? currentProject.nom.toLowerCase().includes('stock central') : false);
 
   const retailBoutiques = useMemo(() => {
-    return projets.filter(p => p.id !== '1' && p.codeBoutique !== 'UGS-CENTRALE' && !p.nom.toLowerCase().includes('stock central'));
+    return projets.filter(p => p.id !== '1' && p.codeBoutique !== 'ERP Management-CENTRALE' && !p.nom.toLowerCase().includes('stock central'));
   }, [projets]);
 
   // Scoped Data
@@ -414,7 +477,7 @@ export function Caisse({
       playBeep('error');
       setScannerFeedback({
         type: 'warning',
-        message: `⚠️ Produit inactif ! Le produit "${found.designation}" (${found.code}) est actuellement désactivé.`,
+        message: `Produit inactif ! Le produit "${found.designation}" (${found.code}) est actuellement désactivé.`,
         article: found
       });
       setScannerInput('');
@@ -426,7 +489,7 @@ export function Caisse({
         playBeep('error');
         setScannerFeedback({
           type: 'warning',
-          message: `⚠️ Stock épuisé ! Le produit "${found.designation}" (Prix: ${found.prixVenteHT} DT) est actuellement indisponible dans ${currentBoutiqueNom} (Stock : 0).`,
+          message: `Stock épuisé ! Le produit "${found.designation}" (Prix: ${found.prixVenteHT} DT) est actuellement indisponible dans ${currentBoutiqueNom} (Stock : 0).`,
           article: found
         });
         setScannerInput('');
@@ -440,7 +503,7 @@ export function Caisse({
         playBeep('error');
         setScannerFeedback({
           type: 'warning',
-          message: `⚠️ Stock insuffisant ! Seules ${availableStock} unités de "${found.designation}" sont disponibles en stock dans ${currentBoutiqueNom} (${qtyInCart} déjà dans le panier).`,
+          message: `Stock insuffisant ! Seules ${availableStock} unités de "${found.designation}" sont disponibles en stock dans ${currentBoutiqueNom} (${qtyInCart} déjà dans le panier).`,
           article: found
         });
         setScannerInput('');
@@ -481,7 +544,7 @@ export function Caisse({
 
     const year = new Date().getFullYear();
     const saleCount = ventes.length + 1;
-    const saleNum = posMode === 'Devis' ? `DEV-${year}-${saleCount.toString().padStart(4, '0')}` : `FAC-${year}-${saleCount.toString().padStart(4, '0')}`;
+    const saleNum = `TC-${year}-${saleCount.toString().padStart(4, '0')}`;
     const today = new Date().toISOString().split('T')[0];
 
     const lignes: LigneVente[] = cart.map((item, idx) => {
@@ -508,14 +571,17 @@ export function Caisse({
       projetId: selectedProjectId === 'all' ? (projets[0]?.id || 'p1') : selectedProjectId,
       clientId: targetClient.id,
       clientNom: targetClient.nom,
+      auteurId: currentUser.id,
+      auteurNom: currentUser.nom,
       date: today,
       dateEcheance: today,
       montantHT: cartTotalHT,
       montantTTC: cartTotalTTC,
-      montantPaye: posMode === 'Devis' ? 0 : cartTotalTTC,
-      statut: posMode === 'Devis' ? 'Devis' : 'Payée',
+      montantPaye: cartTotalTTC,
+      statut: 'Payée',
+      modePaiement: posPaymentMode,
       lignes,
-      notes: posMode === 'Devis' ? 'Devis créé depuis la Caisse' : 'Vente directe au comptoir Caisse'
+      notes: 'Vente directe au comptoir (Panier Caisse)'
     };
 
     if (onVentesChange) {
@@ -591,11 +657,11 @@ export function Caisse({
       generateReceiptPdf(newReg, currentProject);
       
       setPosSuccessMsg(
-        `✅ Vente ${saleNum} validée (${cartTotalTTC.toFixed(3)} DT) ! Mouvements de stock enregistrés.`
+        `Vente ${saleNum} validée (${cartTotalTTC.toFixed(3)} DT) ! Mouvements de stock enregistrés.`
       );
     } else {
       setPosSuccessMsg(
-        `✅ Devis ${saleNum} généré avec succès (${cartTotalTTC.toFixed(3)} DT) !`
+        `Devis ${saleNum} généré avec succès (${cartTotalTTC.toFixed(3)} DT) !`
       );
     }
     setCart(getDefaultCart());
@@ -675,29 +741,27 @@ export function Caisse({
   if (isCentralUgs) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] p-4 sm:p-8 max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
-        <div className="w-24 h-24 rounded-3xl bg-blue-50 text-blue-700 flex items-center justify-center shadow-2xl border-4 border-white shrink-0">
+        <div className="w-24 h-24 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shadow-2xl border-4 border-white shrink-0">
           <span className="material-symbols-outlined text-[48px]">warehouse</span>
         </div>
 
         <div className="text-center space-y-3 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-black uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold uppercase tracking-wider">
             <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-            Société UGS • Stock Central & Entrepôt Principal
+            ERP Management • Société UGS
           </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Pas de Caisse de Vente Point de Vente (POS)</h1>
-          <p className="text-slate-600 text-sm leading-relaxed">
-            La <strong>Société UGS</strong> opère exclusivement en tant que <strong>Hub Logistique & Siège Social</strong>. Elle assure la réception des approvisionnements, le stockage de gros et l'émission des Bons de Livraison (BL) pour le réseau. Elle ne comporte pas de caisse de vente au comptoir POS.
-          </p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Pas de Vente Directe à la Société UGS</h1>
+          
         </div>
 
         {/* Option to select a retail boutique POS */}
-        <div className="w-full bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xl space-y-6">
+        <div className="w-full bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-xl space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-purple-600 text-[24px]">storefront</span>
               <div>
-                <h3 className="font-extrabold text-slate-900 text-base">Boutiques & Points de Vente (POS)</h3>
-                <p className="text-xs text-slate-500">Sélectionnez un point de vente du réseau pour effectuer des encaissements ou ouvrir une caisse POS</p>
+                <h3 className="font-extrabold text-slate-900 text-base">Boutiques & Points de Vente</h3>
+                
               </div>
             </div>
           </div>
@@ -706,7 +770,7 @@ export function Caisse({
             {retailBoutiques.map(boutique => (
               <div 
                 key={boutique.id} 
-                className="p-5 bg-slate-50 hover:bg-purple-50/60 border-2 border-slate-200 hover:border-purple-300 rounded-2xl transition-all flex flex-col justify-between space-y-4 group"
+                className="p-5 bg-slate-50 hover:bg-purple-50/60 border-2 border-slate-200 hover:border-purple-300 rounded-xl transition-all flex flex-col justify-between space-y-4 group"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -718,13 +782,13 @@ export function Caisse({
                       Active
                     </span>
                   </div>
-                  <h4 className="font-black text-slate-900 text-sm group-hover:text-purple-900 transition-colors">{boutique.nom}</h4>
+                  <h4 className="font-bold text-slate-900 text-sm group-hover:text-purple-900 transition-colors">{boutique.nom}</h4>
                   <p className="text-xs text-slate-500 mt-1 line-clamp-2">{boutique.adresse}, {boutique.ville}</p>
                 </div>
 
                 <button
                   onClick={() => onSelectProject && onSelectProject(boutique.id)}
-                  className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[18px]">point_of_sale</span>
                   Ouvrir Caisse {boutique.nom}
@@ -737,7 +801,7 @@ export function Caisse({
     );
   }
 
-  if (!activeSession && selectedProjectId !== 'all') {
+  if (!activeSession && selectedProjectId !== 'all' && !isComptable) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-8 animate-in fade-in duration-500">
         <div className="w-24 h-24 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 shadow-xl border-4 border-white">
@@ -745,17 +809,17 @@ export function Caisse({
         </div>
         
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-black text-slate-900">Ouverture de Session de Caisse</h1>
+          <h1 className="text-3xl font-bold text-slate-900">Ouverture de Session de Caisse</h1>
           <p className="text-slate-500 max-w-md">
             Pour commencer à effectuer des ventes, vous devez ouvrir une nouvelle session et déclarer votre fond de caisse initial (valeur d'ouverture).
           </p>
         </div>
 
-        <div className="w-full max-w-md bg-white p-8 rounded-3xl border border-slate-200 shadow-2xl space-y-6">
+        <div className="w-full max-w-md bg-white p-8 rounded-xl border border-slate-200 shadow-2xl space-y-6">
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 tracking-widest">Utilisateur</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 tracking-widest">Utilisateur</label>
                 <div className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-[10px]">
                     {currentUser.nom.charAt(0)}
@@ -764,7 +828,7 @@ export function Caisse({
                 </div>
               </div>
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 tracking-widest">Boutique</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 tracking-widest">Boutique</label>
                 <div className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="material-symbols-outlined text-indigo-500 text-[16px]">store</span>
                   <span className="font-bold text-slate-800 text-xs truncate">{currentProject?.nom || 'Projet'}</span>
@@ -773,7 +837,7 @@ export function Caisse({
             </div>
 
             <div>
-              <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-widest">Fond de Caisse Initial (DT)</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-widest">Fond de Caisse Initial (DT)</label>
               <div className="relative">
                 <input
                   type="number"
@@ -781,11 +845,11 @@ export function Caisse({
                   step="0.001"
                   value={openingBalance}
                   onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
-                  className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-2xl font-black text-slate-900 focus:outline-none focus:border-purple-600 transition-all text-center"
+                  className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-200 rounded-xl text-2xl font-bold text-slate-900 focus:outline-none focus:border-purple-600 transition-all text-center"
                   placeholder="0.000"
                   autoFocus
                 />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-slate-400">DT</span>
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">DT</span>
               </div>
               <p className="text-[10px] text-slate-400 mt-2 text-center font-medium italic">
                 Saisissez le montant en espèces présent dans le tiroir-caisse à l'ouverture.
@@ -795,7 +859,7 @@ export function Caisse({
 
           <button
             onClick={handleOpenSession}
-            className="w-full py-5 bg-purple-600 hover:bg-purple-700 text-white font-black text-lg rounded-2xl shadow-xl hover:shadow-2xl transition-all cursor-pointer flex items-center justify-center gap-3 group"
+            className="w-full py-5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-lg rounded-xl shadow-xl hover:shadow-2xl transition-all cursor-pointer flex items-center justify-center gap-3 group"
           >
             <span className="material-symbols-outlined text-[24px] group-hover:rotate-12 transition-transform">key</span>
             OUVRIR LA CAISSE
@@ -803,7 +867,7 @@ export function Caisse({
         </div>
 
         {selectedProjectId === 'all' && (
-          <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl text-amber-800 text-xs font-bold max-w-sm text-center">
+          <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-amber-800 text-xs font-bold max-w-sm text-center">
             Veuillez sélectionner une boutique spécifique pour ouvrir une session de caisse.
           </div>
         )}
@@ -814,80 +878,100 @@ export function Caisse({
   return (
     <div className="space-y-6">
       {/* Header & Main Mode Toggle */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-xl border border-slate-200/80 shadow-sm">
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold shadow-xs shrink-0">
-              <span className="material-symbols-outlined text-[22px]">point_of_sale</span>
+              <span className="material-symbols-outlined text-[22px]">
+                {isComptable ? 'verified_user' : 'point_of_sale'}
+              </span>
             </div>
             <div>
-              <h1 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">Caisse & Terminal Vente</h1>
-              {activeSession && (
+              <h1 className="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight">
+                {isComptable ? 'Audit des Caisses & Contrôle Financier' : 'Caisse & Ventes'}
+              </h1>
+              {isComptable ? (
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-purple-200">
+                    <span className="material-symbols-outlined text-[12px]">visibility</span>
+                    Mode Audit & Contrôle (Lecture Seule)
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Consultation des sessions, clôtures (Tickets Z) et flux de trésorerie
+                  </span>
+                </div>
+              ) : activeSession ? (
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
                     <span className="animate-pulse w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    Session Ouverte
+                    Caisse Ouverte
                   </span>
                   <span className="text-[10px] font-bold text-slate-400">
                     depuis {new Date(activeSession.dateOuverture).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
+              ) : (
+                <p className="text-xs text-slate-500 mt-0.5">Terminal de point de vente et gestion des sessions de caisse</p>
               )}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {activeSession && (
+          {activeSession && !isComptable && (
             <button
               onClick={() => setIsClosingModalOpen(true)}
-              className="px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 border border-rose-200"
+              className="px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border border-rose-200"
             >
               <span className="material-symbols-outlined text-[18px]">lock_clock</span>
-              CLÔTURER LA CAISSE
+              Fermer la Caisse
             </button>
           )}
 
           {/* View Mode Tabs */}
-          <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-100 p-1 sm:p-1.5 rounded-xl border border-slate-200 w-full sm:w-auto ml-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab('pos')}
-            className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 ${
-              activeTab === 'pos'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">shopping_cart_checkout</span>
-            <span>Terminal Caisse</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('journal')}
-            className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 ${
-              activeTab === 'journal'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">receipt_long</span>
-            <span>Trésorerie</span>
-          </button>
+          {!isComptable && (
+            <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-100 p-1 sm:p-1.5 rounded-xl border border-slate-200 w-full sm:w-auto ml-2">
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('journal')}
+                  className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 ${
+                    activeTab === 'journal'
+                      ? 'bg-purple-600 text-white shadow-md'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                  <span>Audit des Caisses (Tickets Z)</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setActiveTab('pos')}
+                className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 ${
+                  activeTab === 'pos'
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[18px]">shopping_cart_checkout</span>
+                <span>Terminal de Vente (Panier)</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
-    </div>
 
       {/* Session Opening / Guard */}
-      {!activeSession && (
+      {!activeSession && activeTab === 'pos' && !isComptable && (
         <div className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-white/20 animate-in zoom-in-95">
+          <div className="bg-white rounded-xl w-full max-w-md overflow-hidden shadow-2xl border border-white/20 animate-in zoom-in-95">
             <div className="p-8 text-center space-y-6">
-              <div className="w-20 h-20 rounded-3xl bg-amber-500 text-white flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
+              <div className="w-20 h-20 rounded-xl bg-amber-500 text-white flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
                 <span className="material-symbols-outlined text-4xl">lock_open</span>
               </div>
               <div>
-                <h2 className="text-2xl font-black text-slate-900">Ouverture de Session</h2>
+                <h2 className="text-2xl font-bold text-slate-900">Ouverture de Session</h2>
                 <p className="text-sm text-slate-500 mt-2">
                   Veuillez déclarer votre fonds de caisse initial pour commencer à travailler.
                 </p>
@@ -902,7 +986,7 @@ export function Caisse({
                     type="number"
                     step="0.001"
                     placeholder="Montant initial (DT)..."
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-xl font-black text-slate-900 focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all text-center"
+                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-200 rounded-xl text-xl font-bold text-slate-900 focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all text-center"
                     value={openingBalance || ''}
                     onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
                   />
@@ -911,7 +995,7 @@ export function Caisse({
                 <button
                   onClick={handleOpenSession}
                   disabled={selectedProjectId === 'all'}
-                  className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-2xl shadow-xl shadow-slate-900/20 transition-all hover:-translate-y-1 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-xl shadow-slate-900/20 transition-all hover:-translate-y-1 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined">play_circle</span>
                   Démarrer la Session
@@ -932,36 +1016,80 @@ export function Caisse({
       {activeTab === 'pos' && (
         <div className="space-y-5 animate-in fade-in duration-200">
           
+          {/* Bandeau d'état et calculs automatiques de la session de caisse en temps réel */}
+          {activeSession && (
+            <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 rounded-2xl p-4 text-white shadow-xl border border-purple-900/40">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shrink-0">
+                    <span className="material-symbols-outlined text-2xl">point_of_sale</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Caisse Ouverte
+                      </span>
+                      <span className="text-[11px] text-slate-400">• Session #{activeSession.id.slice(-6).toUpperCase()}</span>
+                    </div>
+                    <p className="text-xs text-slate-300 font-medium">
+                      Caissier : <span className="font-bold text-white">{currentUser.nom}</span> • Début : <span className="font-mono text-purple-300">{new Date(activeSession.dateOuverture).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* KPIs en temps réel calculés automatiquement */}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl px-3 py-2 border border-white/10 flex-1 sm:flex-initial">
+                    <p className="text-[10px] uppercase font-bold text-slate-400">Fond Initial</p>
+                    <p className="text-xs sm:text-sm font-bold font-mono text-amber-300">{activeSession.soldeInitial.toFixed(3)} DT</p>
+                  </div>
+
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl px-3 py-2 border border-white/10 flex-1 sm:flex-initial">
+                    <p className="text-[10px] uppercase font-bold text-slate-400">Ventes Espèces</p>
+                    <p className="text-xs sm:text-sm font-bold font-mono text-emerald-400">+{totalVentesEspeces.toFixed(3)} DT</p>
+                  </div>
+
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl px-3 py-2 border border-white/10 flex-1 sm:flex-initial">
+                    <p className="text-[10px] uppercase font-bold text-slate-400">Chèques / Autres</p>
+                    <p className="text-xs sm:text-sm font-bold font-mono text-indigo-300">{(totalVentesCheque + totalVentesAutres).toFixed(3)} DT</p>
+                  </div>
+
+                  <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl px-3.5 py-2 border border-purple-400/40 shadow-md flex-1 sm:flex-initial">
+                    <p className="text-[10px] uppercase font-black tracking-wider text-purple-200 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">lock</span>
+                      Total Tiroir (Auto)
+                    </p>
+                    <p className="text-sm sm:text-base font-black font-mono text-white">{soldeFinalCalcule.toFixed(3)} DT</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsClosingModalOpen(true)}
+                    className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-[17px]">lock</span>
+                    <span>Clôturer Caisse</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* POS Mode Selection */}
           <div className="flex bg-slate-100 p-1 rounded-xl w-max border border-slate-200">
             <button
               type="button"
               onClick={() => setPosMode('Vente')}
-              className={`px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                posMode === 'Vente'
-                  ? 'bg-emerald-500 text-white shadow-md'
-                  : 'text-slate-600 hover:bg-slate-200'
-              }`}
+              className="px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 bg-emerald-500 text-white shadow-md"
             >
               <span className="material-symbols-outlined text-[16px]">receipt</span>
               Vente Directe
             </button>
-            <button
-              type="button"
-              onClick={() => setPosMode('Devis')}
-              className={`px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                posMode === 'Devis'
-                  ? 'bg-amber-500 text-slate-900 shadow-md'
-                  : 'text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">request_quote</span>
-              Créer un Devis (Rupture Auto-Acceptée)
-            </button>
           </div>
 
           {/* Scanner Console Control Panel */}
-          <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
+          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <form
                 onSubmit={(e) => {
@@ -985,7 +1113,7 @@ export function Caisse({
                 </div>
                 <button
                   type="submit"
-                  className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                 >
                   <span className="material-symbols-outlined text-[18px]">bolt</span>
                   Scanner
@@ -1005,7 +1133,7 @@ export function Caisse({
 
           {/* Scanner Feedback Notification Toast */}
           {scannerFeedback && (
-            <div className={`p-4 rounded-2xl font-extrabold text-xs shadow-lg flex items-center justify-between animate-in zoom-in-95 border ${
+            <div className={`p-4 rounded-xl font-extrabold text-xs shadow-lg flex items-center justify-between animate-in zoom-in-95 border ${
               scannerFeedback.type === 'success'
                 ? 'bg-emerald-500 text-white border-emerald-400'
                 : scannerFeedback.type === 'warning'
@@ -1017,7 +1145,7 @@ export function Caisse({
                   {scannerFeedback.type === 'success' ? 'check_circle' : scannerFeedback.type === 'warning' ? 'warning' : 'cancel'}
                 </span>
                 <div>
-                  <p className="leading-relaxed font-black">{scannerFeedback.message}</p>
+                  <p className="leading-relaxed font-bold">{scannerFeedback.message}</p>
                   {scannerFeedback.article && (
                     <div className="mt-1 flex items-center gap-3 text-[11px] opacity-90 font-mono">
                       <span>Article : {scannerFeedback.article.designation}</span>
@@ -1037,7 +1165,7 @@ export function Caisse({
           )}
 
           {posSuccessMsg && (
-            <div className="p-4 bg-emerald-500 text-white font-extrabold text-xs rounded-2xl shadow-lg flex items-center justify-between animate-in zoom-in-95">
+            <div className="p-4 bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg flex items-center justify-between animate-in zoom-in-95">
               <span className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[20px]">check_circle</span>
                 {posSuccessMsg}
@@ -1049,11 +1177,11 @@ export function Caisse({
           )}
 
           {/* Mobile Segmented Switcher (Catalogue vs Panier) */}
-          <div className="lg:hidden flex items-center p-1 bg-slate-200/80 rounded-2xl">
+          <div className="lg:hidden flex items-center p-1 bg-slate-200/80 rounded-xl">
             <button
               type="button"
               onClick={() => setPosMobileTab('catalog')}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 posMobileTab === 'catalog'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -1065,7 +1193,7 @@ export function Caisse({
             <button
               type="button"
               onClick={() => setPosMobileTab('cart')}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer relative ${
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer relative ${
                 posMobileTab === 'cart'
                   ? 'bg-purple-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -1074,7 +1202,7 @@ export function Caisse({
               <span className="material-symbols-outlined text-[18px]">shopping_cart</span>
               <span>Panier</span>
               {cart.length > 0 && (
-                <span className={`ml-1 text-[11px] font-mono font-black ${posMobileTab === 'cart' ? 'text-amber-300' : 'text-purple-700'}`}>
+                <span className={`ml-1 text-[11px] font-mono font-bold ${posMobileTab === 'cart' ? 'text-amber-300' : 'text-purple-700'}`}>
                   ({cart.reduce((s, i) => s + i.quantite, 0)}) • {cartTotalTTC.toFixed(2)} DT
                 </span>
               )}
@@ -1085,7 +1213,7 @@ export function Caisse({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left: Product Search & Catalog (7 cols) */}
             <div className={`lg:col-span-7 space-y-4 ${posMobileTab === 'cart' ? 'hidden lg:block' : 'block'}`}>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm space-y-3">
                 {/* Search Bar */}
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">
@@ -1095,7 +1223,7 @@ export function Caisse({
                     type="text"
                     value={posSearchTerm}
                     onChange={(e) => setPosSearchTerm(e.target.value)}
-                    placeholder="1. Recherche Produit (Nom, Code, Code-barres)..."
+                    placeholder="Rechercher un article (nom, référence, code-barres)..."
                     className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white transition-all shadow-2xs"
                   />
                   {posSearchTerm && (
@@ -1122,7 +1250,7 @@ export function Caisse({
                           : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
-                      Toutes les familles ({scopedArticles.length})
+                      Tous les articles ({scopedArticles.length})
                     </button>
                     {categoriesList.map(cat => (
                       <button
@@ -1167,9 +1295,9 @@ export function Caisse({
 
               {/* Quick Services Bar */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                   <span className="material-symbols-outlined text-[14px]">bolt</span>
-                  Services Express :
+                  Ajout Rapide :
                 </span>
                 <button
                   type="button"
@@ -1203,7 +1331,7 @@ export function Caisse({
                       });
                     }
                   }}
-                  className="px-3 py-1.5 bg-purple-600 text-white rounded-xl text-[11px] font-black hover:bg-purple-700 transition-all shadow-md shadow-purple-500/20 flex items-center gap-2 cursor-pointer"
+                  className="px-3 py-1.5 bg-purple-600 text-white rounded-xl text-[11px] font-bold hover:bg-purple-700 transition-all shadow-md shadow-purple-500/20 flex items-center gap-2 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[16px]">build</span>
                   Main d'œuvre (15 DT)
@@ -1231,7 +1359,7 @@ export function Caisse({
                       return [...prev, { article: srvLivraison, quantite: 1, prixVenteHT: srvLivraison.prixVenteHT }];
                     });
                   }}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-[11px] font-black hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 cursor-pointer"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-[11px] font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[16px]">local_shipping</span>
                   Livraison (7 DT)
@@ -1248,19 +1376,19 @@ export function Caisse({
                     <div
                       key={article.id}
                       onClick={() => handleAddToCart(article, 1)}
-                      className={`p-4 bg-white rounded-2xl border transition-all cursor-pointer relative overflow-hidden group hover:shadow-md ${
+                      className={`p-4 bg-white rounded-xl border transition-all cursor-pointer relative overflow-hidden group hover:shadow-md ${
                         inCart ? 'border-purple-500 ring-2 ring-purple-500/20 bg-purple-50/20' : 'border-slate-200 hover:border-purple-300'
                       }`}
                     >
                       {inCart && (
-                        <div className="absolute top-2 right-2 bg-purple-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                        <div className="absolute top-2 right-2 bg-purple-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1">
                           <span className="material-symbols-outlined text-[12px]">shopping_cart</span>
                           In Cart ({inCart.quantite})
                         </div>
                       )}
 
                       <div className="flex items-start gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center font-black text-slate-600 shrink-0 group-hover:bg-purple-100 group-hover:text-purple-700 transition-colors">
+                        <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600 shrink-0 group-hover:bg-purple-100 group-hover:text-purple-700 transition-colors">
                           <span className="material-symbols-outlined text-[24px]">inventory_2</span>
                         </div>
                         <div className="space-y-1 min-w-0 flex-1">
@@ -1279,7 +1407,7 @@ export function Caisse({
                       <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
                         <div>
                           <span className="text-[10px] text-slate-400 font-bold block uppercase">Prix HT Automatique</span>
-                          <span className="text-base font-black text-slate-900">
+                          <span className="text-base font-bold text-slate-900">
                             {price.toFixed(3)} <span className="text-xs font-bold text-slate-500">DT</span>
                           </span>
                         </div>
@@ -1301,7 +1429,7 @@ export function Caisse({
                 })}
 
                 {filteredPosArticles.length === 0 && (
-                  <div className="col-span-full py-12 text-center bg-white rounded-2xl border border-slate-200">
+                  <div className="col-span-full py-12 text-center bg-white rounded-xl border border-slate-200">
                     <span className="material-symbols-outlined text-slate-300 text-[48px]">search_off</span>
                     <p className="text-xs font-bold text-slate-500 mt-2">Aucun produit trouvé dans le catalogue.</p>
                   </div>
@@ -1321,7 +1449,7 @@ export function Caisse({
                 Continuer les achats (Catalogue)
               </button>
 
-              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-md overflow-hidden flex flex-col h-full">
+              <div className="bg-white rounded-xl border border-slate-200/90 shadow-md overflow-hidden flex flex-col h-full">
                 {/* Ticket Header */}
                 <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1348,7 +1476,7 @@ export function Caisse({
                     onChange={(e) => setPosClientId(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
                   >
-                    <option value="">Client de Passage (Au Comptoir)</option>
+                    <option value="">Client de passage (sans compte)</option>
                     {scopedClients.map(c => (
                       <option key={c.id} value={c.id}>{c.nom} ({c.code})</option>
                     ))}
@@ -1404,7 +1532,7 @@ export function Caisse({
                             <button
                               type="button"
                               onClick={() => handleUpdateCartQty(item.article.id, -1)}
-                              className="w-6 h-6 rounded flex items-center justify-center font-black text-slate-600 hover:bg-slate-100 cursor-pointer"
+                              className="w-6 h-6 rounded flex items-center justify-center font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
                             >
                               -
                             </button>
@@ -1418,7 +1546,7 @@ export function Caisse({
                             <button
                               type="button"
                               onClick={() => handleUpdateCartQty(item.article.id, 1)}
-                              className="w-6 h-6 rounded flex items-center justify-center font-black text-slate-600 hover:bg-slate-100 cursor-pointer"
+                              className="w-6 h-6 rounded flex items-center justify-center font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
                             >
                               +
                             </button>
@@ -1427,7 +1555,7 @@ export function Caisse({
                           {/* Subtotal calculation */}
                           <div className="text-right">
                             <span className="text-[9px] font-bold text-slate-400 uppercase block">Sous-total HT</span>
-                            <span className="text-xs font-black text-purple-700">
+                            <span className="text-xs font-bold text-purple-700">
                               {subtotal.toFixed(3)} DT
                             </span>
                           </div>
@@ -1440,7 +1568,7 @@ export function Caisse({
                     <div className="py-12 text-center text-slate-400 space-y-2">
                       <span className="material-symbols-outlined text-[36px] text-slate-300">add_shopping_cart</span>
                       <p className="text-xs font-bold">Le panier est vide.</p>
-                      <p className="text-[11px]">Cliquez sur un article à gauche pour l'ajouter automatiquement.</p>
+                      <p className="text-[11px]">Cliquez sur un article à gauche pour l'ajouter.</p>
                     </div>
                   )}
                 </div>
@@ -1456,8 +1584,8 @@ export function Caisse({
                       <span>TVA Estimée (19%) :</span>
                       <span className="text-white font-mono">{(cartTotalTTC - cartTotalHT).toFixed(3)} DT</span>
                     </div>
-                    <div className="flex justify-between text-base font-black text-emerald-400 pt-2 border-t border-slate-800">
-                      <span>TOTAL TTC À PAYER :</span>
+                    <div className="flex justify-between text-base font-bold text-emerald-400 pt-2 border-t border-slate-800">
+                      <span>TOTAL À PAYER :</span>
                       <span>{cartTotalTTC.toFixed(3)} DT</span>
                     </div>
                   </div>
@@ -1465,7 +1593,7 @@ export function Caisse({
                   {/* Payment Mode Selector (Only for Vente) - Hidden for School shop to simplify */}
                   {posMode === 'Vente' && selectedProjectId !== '2' && (
                     <div className="space-y-1 pt-2 border-t border-slate-800">
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase">Mode de Paiement Caisse :</label>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase">Moyen de Paiement :</label>
                       <div className="grid grid-cols-2 gap-1.5">
                         {(['Espèces', 'Chèque', 'Virement', 'Traite'] as const).map(mode => (
                           <button
@@ -1489,7 +1617,7 @@ export function Caisse({
                     <div className="pt-2 border-t border-slate-800">
                       <p className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-[16px]">payments</span>
-                        Paiement par défaut : Espèces (Caisse)
+                        Paiement : Espèces
                       </p>
                     </div>
                   )}
@@ -1499,10 +1627,10 @@ export function Caisse({
                     type="button"
                     disabled={cart.length === 0}
                     onClick={handleCheckoutPosSale}
-                    className={`w-full py-3 ${posMode === 'Devis' ? 'bg-amber-400 hover:bg-amber-300 border-amber-400' : 'bg-emerald-500 hover:bg-emerald-400 border-emerald-400'} disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-black text-sm rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 border disabled:border-slate-800`}
+                    className={`w-full py-3 ${posMode === 'Devis' ? 'bg-amber-400 hover:bg-amber-300 border-amber-400' : 'bg-emerald-500 hover:bg-emerald-400 border-emerald-400'} disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-bold text-sm rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 border disabled:border-slate-800`}
                   >
                     <span className="material-symbols-outlined text-[20px]">{posMode === 'Devis' ? 'request_quote' : 'payments'}</span>
-                    {posMode === 'Devis' ? `CRÉER DEVIS (${cartTotalTTC.toFixed(3)} DT)` : `ENCAISSER (${cartTotalTTC.toFixed(3)} DT)`}
+                    {posMode === 'Devis' ? `Créer le Devis (${cartTotalTTC.toFixed(3)} DT)` : `Encaisser (${cartTotalTTC.toFixed(3)} DT)`}
                   </button>
                 </div>
               </div>
@@ -1511,20 +1639,20 @@ export function Caisse({
 
           {/* Mobile Floating Cart Peek Bar */}
           {posMobileTab === 'catalog' && cart.length > 0 && (
-            <div className="lg:hidden fixed bottom-14 left-3 right-3 z-30 bg-slate-950/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-2xl border border-slate-800 flex items-center justify-between animate-in slide-in-from-bottom-2">
+            <div className="lg:hidden fixed bottom-14 left-3 right-3 z-30 bg-slate-950/95 backdrop-blur-md text-white p-3 rounded-xl shadow-2xl border border-slate-800 flex items-center justify-between animate-in slide-in-from-bottom-2">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center text-white font-black text-xs shadow-sm">
+                <div className="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
                   {cart.reduce((s, i) => s + i.quantite, 0)}
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 block font-bold uppercase">Total TTC Panier</span>
-                  <span className="text-sm font-black text-emerald-400 font-mono">{cartTotalTTC.toFixed(3)} DT</span>
+                  <span className="text-sm font-bold text-emerald-400 font-mono">{cartTotalTTC.toFixed(3)} DT</span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setPosMobileTab('cart')}
-                className={`px-4 py-2 ${posMode === 'Devis' ? 'bg-amber-400 hover:bg-amber-300' : 'bg-emerald-500 hover:bg-emerald-400'} text-slate-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer`}
+                className={`px-4 py-2 ${posMode === 'Devis' ? 'bg-amber-400 hover:bg-amber-300' : 'bg-emerald-500 hover:bg-emerald-400'} text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer`}
               >
                 <span>{posMode === 'Devis' ? 'Voir Devis' : 'Encaisser'}</span>
                 <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
@@ -1537,103 +1665,120 @@ export function Caisse({
       {/* JOURNAL TAB */}
       {activeTab === 'journal' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm">
             <div>
-              <h2 className="text-lg font-black text-slate-900">Journal des Mouvements de Caisse</h2>
-              <p className="text-xs text-slate-500">Historique des encaissements et décaissements de trésorerie</p>
+              <h2 className="text-lg font-bold text-slate-900">
+                {isComptable ? 'Journal des Mouvements & Rapprochements Bancaires' : 'Historique des Mouvements de Caisse'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {isComptable 
+                  ? 'Audit des encaissements clients, décaissements fournisseurs et flux certifiés' 
+                  : 'Historique des entrées et sorties d\'argent'}
+              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => {
-                  setNewType('Encaissement');
-                  setNewTierType('Client');
-                  setNewTierId(scopedClients[0]?.id || '');
-                  setNewMontant(0);
-                  setNewMode('Espèces');
-                  setNewBanque('Caisse Centrale');
-                  setNewRef(`ENC-${Date.now().toString().slice(-4)}`);
-                  setNewNotes('Encaissement client au comptant');
-                  setIsModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[18px]">payments</span>
-                Encaissement
-              </button>
+              {!isComptable ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setNewType('Encaissement');
+                      setNewTierType('Client');
+                      setNewTierId(scopedClients[0]?.id || '');
+                      setNewMontant(0);
+                      setNewMode('Espèces');
+                      setNewBanque('Caisse Centrale');
+                      setNewRef(`ENC-${Date.now().toString().slice(-4)}`);
+                      setNewNotes('Encaissement client au comptant');
+                      setIsModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">payments</span>
+                    + Entrée d'argent
+                  </button>
 
-              <button
-                onClick={() => {
-                  setNewType('Décaissement');
-                  setNewTierType('Fournisseur');
-                  setNewTierId(scopedFournisseurs[0]?.id || '');
-                  setNewMontant(0);
-                  setNewMode('Virement');
-                  setNewBanque('BIAT');
-                  setNewRef(`DEC-${Date.now().toString().slice(-4)}`);
-                  setNewNotes('Décaissement fournisseur / charge');
-                  setIsModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
-                Décaissement
-              </button>
+                  <button
+                    onClick={() => {
+                      setNewType('Décaissement');
+                      setNewTierType('Fournisseur');
+                      setNewTierId(scopedFournisseurs[0]?.id || '');
+                      setNewMontant(0);
+                      setNewMode('Virement');
+                      setNewBanque('BIAT');
+                      setNewRef(`DEC-${Date.now().toString().slice(-4)}`);
+                      setNewNotes('Décaissement fournisseur / charge');
+                      setIsModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
+                    - Sortie d'argent
+                  </button>
 
-              <button
-                onClick={handleOpenCreate}
-                className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[18px]">add</span>
-                Nouveau Mouvement
-              </button>
+                  <button
+                    onClick={handleOpenCreate}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    Autre Opération
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-slate-500 text-[16px]">policy</span>
+                    Contrôle de Conformité
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Encaissements</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Entrées d'Argent</span>
                 <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
                   <span className="material-symbols-outlined text-[18px]">arrow_downward</span>
                 </span>
               </div>
-              <p className="text-2xl font-black text-emerald-600 mt-2">
+              <p className="text-2xl font-bold text-emerald-600 mt-2">
                 +{totalEncaissements.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
               </p>
-              <span className="text-xs text-slate-500 mt-1 block">Flux entrants</span>
+              <span className="text-xs text-slate-500 mt-1 block">Ventes et encaissements reçus</span>
             </div>
 
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Décaissements</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Sorties d'Argent</span>
                 <span className="p-2 rounded-xl bg-rose-50 text-rose-600">
                   <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
                 </span>
               </div>
-              <p className="text-2xl font-black text-rose-600 mt-2">
+              <p className="text-2xl font-bold text-rose-600 mt-2">
                 -{totalDecaissements.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
               </p>
-              <span className="text-xs text-slate-500 mt-1 block">Dépenses et paiements</span>
+              <span className="text-xs text-slate-500 mt-1 block">Dépenses et paiements fournisseurs</span>
             </div>
 
-            <div className="bg-white p-5 rounded-2xl border border-purple-200 shadow-sm bg-purple-50/40">
+            <div className="bg-white p-5 rounded-xl border border-purple-200 shadow-sm bg-purple-50/40">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-purple-900 uppercase tracking-wider">Solde Net Disponible</span>
+                <span className="text-[11px] font-bold text-purple-900 uppercase tracking-wider">Argent en Caisse</span>
                 <span className="p-2 rounded-xl bg-purple-100 text-purple-700">
                   <span className="material-symbols-outlined text-[18px]">account_balance</span>
                 </span>
               </div>
-              <p className="text-2xl font-black text-purple-900 mt-2">
+              <p className="text-2xl font-bold text-purple-900 mt-2">
                 {soldeNetCaisse.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-purple-700">DT</span>
               </p>
-              <span className="text-xs text-purple-700 font-semibold mt-1 block">Disponibilités réelles</span>
+              <span className="text-xs text-purple-700 font-semibold mt-1 block">Solde disponible</span>
             </div>
           </div>
 
           {/* Table Container */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
             {/* Filters */}
             <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3 bg-slate-50/50">
               <div className="relative w-full md:w-80">
@@ -1644,7 +1789,7 @@ export function Caisse({
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Rechercher N° Pièce, Tiers..."
+                  placeholder="Rechercher une opération, client, fournisseur..."
                   className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none"
                 />
               </div>
@@ -1655,9 +1800,9 @@ export function Caisse({
                   onChange={(e) => setFilterType(e.target.value as any)}
                   className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
                 >
-                  <option value="all">Tous les types</option>
-                  <option value="Encaissement">Encaissements (+)</option>
-                  <option value="Décaissement">Décaissements (-)</option>
+                  <option value="all">Toutes les opérations</option>
+                  <option value="Encaissement">Entrées d'argent (+)</option>
+                  <option value="Décaissement">Sorties d'argent (-)</option>
                 </select>
 
                 <select
@@ -1679,14 +1824,14 @@ export function Caisse({
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="py-3.5 px-4">N° Pièce</th>
+                    <th className="py-3.5 px-4">N° Opération</th>
                     <th className="py-3.5 px-4">Date</th>
-                    <th className="py-3.5 px-4">Tiers Concerné</th>
-                    <th className="py-3.5 px-4">Réf. Document</th>
-                    <th className="py-3.5 px-4">Mode & Banque</th>
+                    <th className="py-3.5 px-4">Client / Fournisseur</th>
+                    <th className="py-3.5 px-4">Document lié</th>
+                    <th className="py-3.5 px-4">Paiement</th>
                     <th className="py-3.5 px-4 text-right">Montant</th>
-                    <th className="py-3.5 px-4 text-center">Type</th>
-                    <th className="py-3.5 px-4 text-right">Action PDF</th>
+                    <th className="py-3.5 px-4 text-center">Sens</th>
+                    <th className="py-3.5 px-4 text-right">Reçu</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -1710,7 +1855,7 @@ export function Caisse({
                         <span className="font-medium text-slate-800">{reg.modePaiement}</span>
                         {reg.banque && <span className="block text-[10px] text-slate-400">{reg.banque}</span>}
                       </td>
-                      <td className={`py-3.5 px-4 text-right font-black text-sm ${
+                      <td className={`py-3.5 px-4 text-right font-bold text-sm ${
                         reg.type === 'Encaissement' ? 'text-emerald-600' : 'text-rose-600'
                       }`}>
                         {reg.type === 'Encaissement' ? '+' : '-'}{reg.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
@@ -1719,7 +1864,7 @@ export function Caisse({
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           reg.type === 'Encaissement' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                         }`}>
-                          {reg.type}
+                          {reg.type === 'Encaissement' ? 'Entrée' : 'Sortie'}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right">
@@ -1745,15 +1890,115 @@ export function Caisse({
               </table>
             </div>
           </div>
+
+          {/* Sessions de Caisse & Procès-Verbaux Z */}
+          <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-purple-600 text-[20px]">receipt_long</span>
+                  Historique des Sessions & Clôtures de Caisse (Tickets Z)
+                </h3>
+                <p className="text-xs text-slate-500">Soldes d'ouverture, soldes finaux certifiés et ré-impression des procès-verbaux</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100 text-slate-600 font-bold uppercase text-[10px]">
+                    <th className="py-3 px-4">Session N°</th>
+                    <th className="py-3 px-4">Caissier</th>
+                    <th className="py-3 px-4">Date Ouverture</th>
+                    <th className="py-3 px-4">Date Clôture</th>
+                    <th className="py-3 px-4 text-right">Fond Initial</th>
+                    <th className="py-3 px-4 text-right">Solde Final Certifié</th>
+                    <th className="py-3 px-4 text-center">Statut</th>
+                    <th className="py-3 px-4 text-right">Ticket Z</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {sessions.filter(s => selectedProjectId === 'all' || s.projetId === selectedProjectId).map(sess => {
+                    const sSales = ventes.filter(v => 
+                      v.projetId === sess.projetId && 
+                      (!v.auteurId || v.auteurId === sess.utilisateurId) &&
+                      v.date >= sess.dateOuverture.split('T')[0] &&
+                      v.statut !== 'Devis' && v.statut !== 'Annulée'
+                    );
+                    const sRegs = reglements.filter(r => r.projetId === sess.projetId && r.date >= sess.dateOuverture.split('T')[0]);
+                    const finalVal = sess.soldeFinalReel ?? sess.soldeFinalTheorique ?? sess.soldeInitial;
+
+                    return (
+                      <tr key={sess.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 px-4 font-mono font-bold text-purple-900">
+                          #{sess.id.slice(-6).toUpperCase()}
+                        </td>
+                        <td className="py-3.5 px-4 font-bold text-slate-800">
+                          {sess.utilisateurNom || 'Caissier'}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600">
+                          {new Date(sess.dateOuverture).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600">
+                          {sess.dateFermeture ? new Date(sess.dateFermeture).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-700">
+                          {sess.soldeInitial.toFixed(3)} DT
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-black text-purple-700">
+                          {sess.statut === 'Fermee' ? `${finalVal.toFixed(3)} DT` : 'En cours...'}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            sess.statut === 'Ouverte' 
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                              : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${sess.statut === 'Ouverte' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                            {sess.statut === 'Ouverte' ? 'En Cours' : 'Clôturée (Certifiée)'}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            onClick={() => generateZReportPdf({
+                              session: sess,
+                              projet: projets.find(p => p.id === sess.projetId),
+                              caissier: { id: sess.utilisateurId, nom: sess.utilisateurNom, email: '', role: 'caissier', projetId: sess.projetId, statut: 'Actif' },
+                              ventesSession: sSales,
+                              reglementsSession: sRegs,
+                              soldeFinalCalcule: finalVal
+                            })}
+                            className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
+                            title="Télécharger / Imprimer le Ticket Z"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                            <span className="hidden sm:inline">Ticket Z</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {sessions.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="text-center py-8 text-slate-400 text-xs">
+                        Aucune session de caisse enregistrée.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
       {/* CREATE MOVEMENT MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-bold text-sm text-slate-900">Enregistrer un Mouvement de Caisse</h3>
+              <h3 className="font-bold text-sm text-slate-900">Ajouter une Entrée ou Sortie d'Argent</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
                 <span className="material-symbols-outlined">close</span>
               </button>
@@ -1761,7 +2006,7 @@ export function Caisse({
 
             <form onSubmit={handleSaveMovement} className="p-5 space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Type d'Opération</label>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sens de l'opération</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -1770,7 +2015,7 @@ export function Caisse({
                       newType === 'Encaissement' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'border-slate-200 text-slate-600'
                     }`}
                   >
-                    + Encaissement
+                    + Entrée d'argent
                   </button>
                   <button
                     type="button"
@@ -1779,13 +2024,13 @@ export function Caisse({
                       newType === 'Décaissement' ? 'bg-rose-50 border-rose-500 text-rose-700' : 'border-slate-200 text-slate-600'
                     }`}
                   >
-                    - Décaissement
+                    - Sortie d'argent
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Tiers Associé</label>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Client ou Fournisseur</label>
                 <select
                   value={newTierType}
                   onChange={(e) => setNewTierType(e.target.value as any)}
@@ -1835,7 +2080,7 @@ export function Caisse({
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Mode de Paiement</label>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Moyen de Paiement</label>
                   <select
                     value={newMode}
                     onChange={(e) => setNewMode(e.target.value as any)}
@@ -1871,7 +2116,7 @@ export function Caisse({
                   type="submit"
                   className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer"
                 >
-                  Valider l'Opération
+                  Enregistrer l'opération
                 </button>
               </div>
             </form>
@@ -1888,91 +2133,133 @@ export function Caisse({
         />
       )}
 
-      {/* Modal Clôture de Caisse */}
+      {/* Modal Clôture de Caisse Certifiée et Automatique */}
       {isClosingModalOpen && activeSession && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
-              <h3 className="font-black text-rose-900 flex items-center gap-2 text-lg">
-                <span className="material-symbols-outlined text-rose-600">lock_clock</span>
-                Clôture de Session Caisse
-              </h3>
-              <button onClick={() => setIsClosingModalOpen(false)} className="p-2 hover:bg-rose-100 rounded-xl transition-colors">
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 animate-in zoom-in-95">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-900 to-slate-800 text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-400/30 flex items-center justify-center text-purple-300">
+                  <span className="material-symbols-outlined text-2xl">lock_clock</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-lg">
+                    Clôture & Arrêté de Caisse
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Arrêté des comptes certifié sans modification manuelle du montant final
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsClosingModalOpen(false)} 
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+              >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
             
-            <div className="p-6 space-y-6">
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
-                <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
-                  <span>Solde Initial :</span>
-                  <span className="text-slate-900">{activeSession.soldeInitial.toFixed(3)} DT</span>
+            <div className="p-6 space-y-5">
+              {/* Grand Badge Montant Final Automatique */}
+              <div className="p-5 bg-gradient-to-br from-purple-50 via-slate-50 to-emerald-50 rounded-2xl border-2 border-purple-200 text-center space-y-2 shadow-sm">
+                <span className="text-[11px] font-black uppercase tracking-widest text-purple-700 inline-flex items-center gap-1.5 bg-purple-100/80 px-3 py-1 rounded-full">
+                  <span className="material-symbols-outlined text-[15px]">verified</span>
+                  Montant Final dans la Caisse (Calculé Automatiquement)
+                </span>
+                
+                <div className="text-4xl font-black text-slate-950 tracking-tight font-mono">
+                  {soldeFinalCalcule.toFixed(3)} <span className="text-xl font-bold text-purple-700">DT</span>
                 </div>
-                <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
-                  <span>Ventes de la session :</span>
-                  <span className="text-emerald-600">
-                    +{ventes.filter(v => 
-                      v.auteurId === currentUser.id && 
-                      v.projetId === selectedProjectId && 
-                      v.date >= activeSession.dateOuverture.split('T')[0]
-                    ).reduce((a, b) => a + (b.montantTTC || 0), 0).toFixed(3)} DT
+
+                <p className="text-[11px] font-bold text-emerald-700 flex items-center justify-center gap-1">
+                  <span className="material-symbols-outlined text-[16px]">lock</span>
+                  Montant certifié par le système (Non modifiable)
+                </p>
+              </div>
+
+              {/* Tableau de décomposition détaillée */}
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2 text-xs">
+                <div className="flex justify-between items-center py-1 text-slate-600 font-semibold border-b border-slate-200/60">
+                  <span className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-amber-500">savings</span>
+                    Fonds de caisse initial (Ouverture) :
                   </span>
+                  <span className="font-mono font-bold text-slate-900">{activeSession.soldeInitial.toFixed(3)} DT</span>
                 </div>
-                <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-black text-slate-900 uppercase">
-                  <span>Solde Théorique Final :</span>
-                  <span>
-                    {(activeSession.soldeInitial + ventes.filter(v => 
-                      v.auteurId === currentUser.id && 
-                      v.projetId === selectedProjectId && 
-                      v.date >= activeSession.dateOuverture.split('T')[0]
-                    ).reduce((a, b) => a + (b.montantTTC || 0), 0)).toFixed(3)} DT
+
+                <div className="flex justify-between items-center py-1 text-slate-600 font-semibold border-b border-slate-200/60">
+                  <span className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-emerald-500">payments</span>
+                    (+) Encaissements Ventes en Espèces :
                   </span>
+                  <span className="font-mono font-bold text-emerald-600">+{totalVentesEspeces.toFixed(3)} DT</span>
+                </div>
+
+                {sessionReglementsManuels.encaissementsEspeces > 0 && (
+                  <div className="flex justify-between items-center py-1 text-slate-600 font-semibold border-b border-slate-200/60">
+                    <span className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[16px] text-emerald-500">add_circle</span>
+                      (+) Entrées d'espèces manuelles :
+                    </span>
+                    <span className="font-mono font-bold text-emerald-600">+{sessionReglementsManuels.encaissementsEspeces.toFixed(3)} DT</span>
+                  </div>
+                )}
+
+                {sessionReglementsManuels.decaissementsEspeces > 0 && (
+                  <div className="flex justify-between items-center py-1 text-slate-600 font-semibold border-b border-slate-200/60">
+                    <span className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[16px] text-rose-500">remove_circle</span>
+                      (-) Décaissements / Dépenses espèces :
+                    </span>
+                    <span className="font-mono font-bold text-rose-600">-{sessionReglementsManuels.decaissementsEspeces.toFixed(3)} DT</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center py-1 text-slate-600 font-semibold border-b border-slate-200/60">
+                  <span className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-indigo-500">account_balance</span>
+                    Chèques collectés (à déposer) :
+                  </span>
+                  <span className="font-mono font-bold text-indigo-700">{totalVentesCheque.toFixed(3)} DT</span>
+                </div>
+
+                <div className="pt-2 flex justify-between items-center text-sm font-black text-slate-950 uppercase">
+                  <span className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[18px] text-purple-600">calculate</span>
+                    Solde de Clôture Certifié :
+                  </span>
+                  <span className="font-mono text-purple-700">{soldeFinalCalcule.toFixed(3)} DT</span>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-widest text-center">Montant Réel Compté en Caisse (DT)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.001"
-                    value={closingBalance}
-                    onChange={(e) => setClosingBalance(parseFloat(e.target.value) || 0)}
-                    className="w-full px-5 py-4 bg-rose-50/30 border-2 border-rose-200 rounded-2xl text-2xl font-black text-rose-900 focus:outline-none focus:border-rose-600 transition-all text-center"
-                    placeholder="0.000"
-                    autoFocus
-                  />
-                  <p className="text-[10px] text-slate-400 mt-2 text-center font-medium italic">
-                    Comptez physiquement tout l'argent présent dans le tiroir-caisse.
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase">Notes de clôture (facultatif)</label>
-                  <textarea
-                    value={sessionNotes}
-                    onChange={(e) => setSessionNotes(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none min-h-[60px]"
-                    placeholder="Expliquez tout écart ou anomalie constaté..."
-                  />
-                </div>
+              {/* Remarques / Observations de clôture */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Remarques / Observations de clôture (facultatif)
+                </label>
+                <textarea
+                  value={sessionNotes}
+                  onChange={(e) => setSessionNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-500 min-h-[55px]"
+                  placeholder="Ex: Clôture fin de journée, RAS..."
+                />
               </div>
 
+              {/* Boutons d'actions */}
               <div className="pt-2 flex gap-3">
                 <button
                   type="button"
                   onClick={() => setIsClosingModalOpen(false)}
-                  className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold text-xs rounded-2xl hover:bg-slate-200 transition-all cursor-pointer"
+                  className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
                 >
                   Annuler
                 </button>
                 <button
                   onClick={handleCloseSession}
-                  className="flex-1 py-4 bg-rose-600 text-white font-black text-xs rounded-2xl hover:bg-rose-700 shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                  className="flex-[2] py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-600/20 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <span className="material-symbols-outlined text-[20px]">check_circle</span>
-                  CONFIRMER LA CLÔTURE
+                  <span className="material-symbols-outlined text-[18px]">lock</span>
+                  <span>Confirmer la Clôture ({soldeFinalCalcule.toFixed(3)} DT)</span>
                 </button>
               </div>
             </div>

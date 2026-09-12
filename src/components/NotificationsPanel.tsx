@@ -40,13 +40,13 @@ const initialBroadcasts: AppNotification[] = [
     priorite: 'Haute',
     destinataireRole: 'tous',
     destinataireProjetId: 'tous',
-    auteur: 'Direction Générale (UGS)',
+    auteur: 'Direction Générale (ERP Management)',
     isBroadcast: true
   },
   {
     id: 'broadcast-2',
     type: 'warning',
-    title: '⚠️ Rappel Caisse : Clôture quotidienne',
+    title: 'Rappel Caisse : Clôture quotidienne',
     message: 'N\'oubliez pas de procéder au comptage d\'espèces et à l\'impression du journal de caisse avant de fermer vos sessions.',
     date: new Date(Date.now() - 3600000 * 12).toISOString(),
     tab: 'caisse',
@@ -214,20 +214,61 @@ export function NotificationsPanel({
       });
     });
 
-    // 5. Bons de Sortie en attente (BS)
-    bonsDeSortie.filter(bs => bs.statut === 'BROUILLON' || bs.statut === 'EN ATTENTE').forEach((bs, idx) => {
-      pushUnique({
-        id: `bs-att-${bs.id || idx}`,
-        type: 'warning',
-        title: 'Bon de Sortie à valider',
-        message: `BS ${bs.numero} (${bs.serviceDepartement || 'Service'}) nécessite validation.`,
-        date: bs.dateCreation,
-        tab: 'bons_sortie',
-        categorie: 'Logistique',
-        priorite: 'Haute',
-        destinataireRole: 'tous',
-        destinataireProjetId: bs.projetId || 'tous'
-      });
+    // 5. Bons de Sortie en attente (BS) & Transferts
+    bonsDeSortie.forEach((bs, idx) => {
+      const isTransfert = bs.motif === 'Transfert';
+      const destBoutique = bs.destinationBoutiqueId ? projets.find(p => p.id === bs.destinationBoutiqueId)?.nom || bs.destinationBoutiqueId : 'Destination inconnue';
+      const bsKey = bs.id || `bs-${idx}`;
+
+      // A. En attente de validation
+      if (bs.statut === 'BROUILLON' || bs.statut === 'EN ATTENTE') {
+        pushUnique({
+          id: `bs-att-${bsKey}`,
+          type: 'warning',
+          title: isTransfert ? 'Transfert de Stock à valider' : 'Bon de Sortie à valider',
+          message: isTransfert
+            ? `Le transfert ${bs.numero} vers la boutique ${destBoutique} nécessite une validation.`
+            : `BS ${bs.numero} (${bs.serviceDepartement || 'Service'}) nécessite validation.`,
+          date: bs.dateCreation,
+          tab: 'bons_sortie',
+          categorie: 'Logistique',
+          priorite: 'Haute',
+          destinataireRole: 'tous',
+          destinataireProjetId: isTransfert ? (bs.destinationBoutiqueId || bs.projetId || 'tous') : (bs.projetId || 'tous')
+        });
+      }
+      
+      // B. Transferts validés / En expédition
+      if (isTransfert && (bs.statut === 'VALIDÉ' || bs.statut === 'EN PRÉPARATION')) {
+        pushUnique({
+          id: `transf-val-${bsKey}`,
+          type: 'info',
+          title: 'Transfert en préparation / Expédition',
+          message: `Le transfert ${bs.numero} est en cours d'expédition vers la boutique : ${destBoutique}.`,
+          date: bs.historiqueStatuts?.length ? bs.historiqueStatuts[bs.historiqueStatuts.length - 1].date : bs.dateCreation,
+          tab: 'bons_sortie',
+          categorie: 'Logistique',
+          priorite: 'Moyenne',
+          destinataireRole: 'tous',
+          destinataireProjetId: bs.destinationBoutiqueId || 'tous' // Notifie la boutique de destination
+        });
+      }
+
+      // C. Transferts complétés
+      if (isTransfert && bs.statut === 'SORTIE EFFECTUÉE') {
+        pushUnique({
+          id: `transf-done-${bsKey}`,
+          type: 'success',
+          title: 'Transfert de Stock Réceptionné',
+          message: `Le transfert ${bs.numero} vers ${destBoutique} a été marqué comme sortie effectuée / réceptionnée.`,
+          date: bs.historiqueStatuts?.length ? bs.historiqueStatuts[bs.historiqueStatuts.length - 1].date : bs.dateCreation,
+          tab: 'bons_sortie',
+          categorie: 'Logistique',
+          priorite: 'Basse',
+          destinataireRole: 'tous',
+          destinataireProjetId: bs.destinationBoutiqueId || 'tous'
+        });
+      }
     });
 
     // 6. Objectifs non atteints
@@ -390,7 +431,7 @@ export function NotificationsPanel({
           {toasts.map(toast => (
             <div
               key={toast.id}
-              className="pointer-events-auto p-4 rounded-2xl bg-slate-900 text-white shadow-2xl border border-slate-700 flex items-start gap-3 animate-in slide-in-from-right-5 duration-300"
+              className="pointer-events-auto p-4 rounded-xl bg-slate-900 text-white shadow-2xl border border-slate-700 flex items-start gap-3 animate-in slide-in-from-right-5 duration-300"
             >
               <div className={`p-2 rounded-xl shrink-0 ${getColorForType(toast.type)}`}>
                 <span className="material-symbols-outlined text-[22px]">{getIconForType(toast.type, toast.categorie)}</span>
@@ -423,7 +464,7 @@ export function NotificationsPanel({
       >
         <span className="material-symbols-outlined text-[24px]">notifications</span>
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 px-1.5 py-0.5 bg-rose-600 text-white text-[10px] font-black rounded-full shadow-xs animate-pulse border-2 border-white dark:border-slate-900">
+          <span className="absolute top-1 right-1 px-1.5 py-0.5 bg-rose-600 text-white text-[10px] font-bold rounded-full shadow-xs animate-pulse border-2 border-white dark:border-slate-900">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -431,14 +472,14 @@ export function NotificationsPanel({
 
       {/* Dropdown Notification Panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 sm:w-[420px] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 flex flex-col max-h-[85vh]">
+        <div className="absolute right-0 mt-3 w-80 sm:w-[420px] bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 flex flex-col max-h-[85vh]">
           {/* Header */}
           <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur-xs flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-indigo-600 text-[22px]">notifications_active</span>
               <h3 className="font-extrabold text-slate-900 dark:text-white text-sm">Centre d'Alertes ERP</h3>
               {unreadCount > 0 && (
-                <span className="text-[11px] font-black text-rose-700 bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-bold text-rose-700 bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 px-2 py-0.5 rounded-full">
                   {unreadCount} non lue{unreadCount > 1 ? 's' : ''}
                 </span>
               )}
@@ -482,8 +523,8 @@ export function NotificationsPanel({
               {[
                 { id: 'tous', label: 'Tous' },
                 { id: 'unread', label: `Non lus (${unreadCount})` },
-                { id: 'Stock', label: '📦 Stock' },
-                { id: 'Finances', label: '💰 Finances' },
+                { id: 'Stock', label: 'Stock' },
+                { id: 'Finances', label: 'Finances' },
                 { id: 'Achats', label: '🛒 Achats' },
                 { id: 'Caisse', label: '🪙 Caisse' },
                 { id: 'Logistique', label: '🚚 Logistique' },
@@ -590,7 +631,7 @@ export function NotificationsPanel({
       {/* Broadcast Modal Dialog */}
       {isBroadcastModalOpen && (
         <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
@@ -598,7 +639,7 @@ export function NotificationsPanel({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">Diffuser une Notification</h3>
-                  <p className="text-xs text-slate-500">Envoyer une alerte ou information à tous les utilisateurs</p>
+                  
                 </div>
               </div>
 
@@ -636,8 +677,8 @@ export function NotificationsPanel({
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none"
                   >
                     <option value="Diffusion">📢 Diffusion Générale</option>
-                    <option value="Stock">📦 Stock</option>
-                    <option value="Finances">💰 Finances & Ventes</option>
+                    <option value="Stock">Stock</option>
+                    <option value="Finances">Finances & Ventes</option>
                     <option value="Caisse">🪙 Caisse</option>
                     <option value="Logistique">🚚 Logistique</option>
                   </select>
@@ -653,7 +694,7 @@ export function NotificationsPanel({
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none"
                   >
                     <option value="Haute">🚨 Haute (Urgente)</option>
-                    <option value="Moyenne">⚠️ Moyenne</option>
+                    <option value="Moyenne">Moyenne</option>
                     <option value="Basse">ℹ️ Basse (Info)</option>
                   </select>
                 </div>
@@ -669,11 +710,11 @@ export function NotificationsPanel({
                     onChange={(e: any) => setTargetRole(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none"
                   >
-                    <option value="tous">👥 Tous les utilisateurs</option>
+                    <option value="tous">Tous les utilisateurs</option>
                     <option value="caissier">🪙 Caissiers</option>
                     <option value="comptable">💼 Comptables</option>
-                    <option value="directeur">🏢 Directeurs</option>
-                    <option value="chef_projet">🛠️ Chefs de Projet</option>
+                    <option value="directeur">Directeurs</option>
+                    <option value="chef_projet">Chefs de Projet</option>
                     <option value="admin">🛡️ Administrateurs</option>
                   </select>
                 </div>

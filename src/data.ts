@@ -3,70 +3,220 @@ import { Article, AuditLog, Client, Fournisseur, Projet, Utilisateur } from './t
 export const mockUsers: Utilisateur[] = [
   { 
     id: 'demo-super-admin', 
-    nom: 'Demo Super Admin', 
-    email: 'superadmin@ugs.tn', 
+    nom: 'Direction Générale UGS', 
+    prenom: 'Super Admin',
+    email: 'superadmin@erp-management.com', 
+    telephone: '+216 75 655 555',
     motDePasse: 'demo123', 
     role: 'super_admin', 
     statut: 'Actif', 
-    projetsAffectes: ['1', '2', '3'] 
+    projetsAffectes: ['1', '2', '3'],
+    dateCreation: '2023-01-15',
+    derniereConnexion: '2026-09-08 11:42',
+    permissions: {
+      peutAccorderRemise: true,
+      peutModifierPrix: true,
+      peutSupprimerDocuments: true,
+      peutVoirMarge: true,
+      peutCloturerCaisse: true,
+    }
   },
   { 
     id: 'demo-admin', 
-    nom: 'Demo Admin UGS', 
-    email: 'admin@ugs.tn', 
+    nom: 'Mohamed Ali (Dépôt Central)', 
+    prenom: 'Mohamed Ali',
+    email: 'admin@erp-management.com', 
+    telephone: '+216 75 655 556',
     motDePasse: 'demo123', 
     role: 'admin', 
     statut: 'Actif', 
-    projetsAffectes: ['1', '2', '3'] 
+    projetId: '1',
+    projetsAffectes: ['1'],
+    dateCreation: '2023-01-20',
+    derniereConnexion: '2026-09-08 09:15',
+    permissions: {
+      peutAccorderRemise: true,
+      peutModifierPrix: true,
+      peutSupprimerDocuments: false,
+      peutVoirMarge: true,
+      peutCloturerCaisse: false,
+    }
   },
   { 
     id: 'demo-comptable', 
-    nom: 'Demo Comptable', 
-    email: 'comptable@ugs.tn', 
+    nom: 'Khadija Mansour', 
+    prenom: 'Khadija',
+    email: 'comptable@erp-management.com', 
+    telephone: '+216 75 655 557',
     motDePasse: 'demo123', 
     role: 'comptable', 
     statut: 'Actif', 
-    projetsAffectes: ['1', '2', '3'] 
+    projetsAffectes: ['1', '2', '3'],
+    dateCreation: '2023-03-10',
+    derniereConnexion: '2026-09-07 16:30',
+    permissions: {
+      peutAccorderRemise: false,
+      peutModifierPrix: false,
+      peutSupprimerDocuments: false,
+      peutVoirMarge: true,
+      peutCloturerCaisse: true,
+    }
   },
   { 
     id: 'demo-caissier', 
-    nom: 'Demo Caissier', 
-    email: 'caissier@ugs.tn', 
+    nom: 'Anis Ben Salah', 
+    prenom: 'Anis',
+    email: 'caissier@erp-management.com', 
+    telephone: '+216 75 655 558',
     motDePasse: 'demo123', 
     role: 'caissier', 
     statut: 'Actif', 
     projetId: '1', 
-    projetsAffectes: ['1'] 
+    projetsAffectes: ['1'],
+    dateCreation: '2023-05-12',
+    derniereConnexion: '2026-09-08 08:30',
+    permissions: {
+      peutAccorderRemise: false,
+      peutModifierPrix: false,
+      peutSupprimerDocuments: false,
+      peutVoirMarge: false,
+      peutCloturerCaisse: true,
+    }
   },
   { 
     id: 'demo-caissier-scolaire', 
-    nom: 'Demo Caissier Scolaire', 
-    email: 'caissier.scolaire@ugs.tn', 
+    nom: 'Rim Trabelsi (Boutique Scolaire)', 
+    prenom: 'Rim',
+    email: 'caissier.scolaire@erp-management.com', 
+    telephone: '+216 74 000 002',
     motDePasse: 'demo123', 
     role: 'caissier', 
     statut: 'Actif', 
     projetId: '2', 
-    projetsAffectes: ['2'] 
+    projetsAffectes: ['2'],
+    dateCreation: '2023-06-25',
+    derniereConnexion: '2026-09-08 10:10',
+    permissions: {
+      peutAccorderRemise: false,
+      peutModifierPrix: false,
+      peutSupprimerDocuments: false,
+      peutVoirMarge: false,
+      peutCloturerCaisse: true,
+    }
   },
-  { id: 'u1', nom: 'Chef de Groupe', email: 'admin@entreprise.com', motDePasse: 'admin123', role: 'super_admin', statut: 'Actif', projetsAffectes: ['1', '2', '3'] },
-  { id: 'u7', nom: 'Sarah (Agent Commercial)', email: 'agent@entreprise.com', motDePasse: 'agent123', role: 'agent', statut: 'Actif', projetId: '1', projetsAffectes: ['1'] },
+  { 
+    id: 'u-gabes', 
+    nom: 'Fatma Zahra (Boutique Gabès)', 
+    prenom: 'Fatma',
+    email: 'gabes@erp-management.com', 
+    telephone: '+216 75 000 001',
+    motDePasse: 'demo123', 
+    role: 'chef_projet', 
+    statut: 'Actif', 
+    projetId: '3', 
+    projetsAffectes: ['3'],
+    dateCreation: '2023-07-01',
+    derniereConnexion: '2026-09-06 14:05',
+    permissions: {
+      peutAccorderRemise: true,
+      peutModifierPrix: false,
+      peutSupprimerDocuments: false,
+      peutVoirMarge: true,
+      peutCloturerCaisse: true,
+    }
+  },
+  { 
+    id: 'u7', 
+    nom: 'Sarah Ayadi (Agent Commercial)', 
+    prenom: 'Sarah',
+    email: 'agent@entreprise.com', 
+    telephone: '+216 75 655 559',
+    motDePasse: 'agent123', 
+    role: 'agent', 
+    statut: 'Actif', 
+    projetId: '1', 
+    projetsAffectes: ['1', '3'],
+    dateCreation: '2023-09-14',
+    derniereConnexion: '2026-09-05 18:22',
+    permissions: {
+      peutAccorderRemise: true,
+      peutModifierPrix: false,
+      peutSupprimerDocuments: false,
+      peutVoirMarge: false,
+      peutCloturerCaisse: false,
+    }
+  },
 ];
 
 export const mockAuditLogs: AuditLog[] = [
-  { id: 'log-6', timestamp: '2026-08-18 09:20:00', utilisateurNom: 'Ahmed', utilisateurEmail: 'ahmed@ugs.tn', projetId: '1', projetNom: 'Boutique Sfax Centre', action: 'Vente V-00125', categorie: 'Financier', nouvelleValeur: '+450 DT' },
-  { id: 'log-7', timestamp: '2026-08-18 10:15:00', utilisateurNom: 'Admin', utilisateurEmail: 'admin@ugs-distribution.com', projetId: '1', projetNom: 'Boutique Sfax Centre', action: 'Correction stock • Laptop HP', categorie: 'Métier', nouvelleValeur: '-2 unités' },
-  { id: 'log-8', timestamp: '2026-08-18 11:30:00', utilisateurNom: 'Admin', utilisateurEmail: 'admin@ugs-distribution.com', projetId: '1', projetNom: 'Boutique Sfax Centre', action: 'Transfert • 5 × Laptop HP Sfax → Gabès', categorie: 'Métier' },
-  { id: 'log-1', timestamp: '2026-08-12 02:15:30', utilisateurNom: 'Super Admin', utilisateurEmail: 'admin@ugs-distribution.com', action: 'Connexion réussie au Portail Central', categorie: 'Sécurité' },
-  { id: 'log-2', timestamp: '2026-08-12 02:10:12', utilisateurNom: 'Super Admin', utilisateurEmail: 'admin@ugs-distribution.com', projetId: '1', projetNom: 'Projet Alpha', action: 'Context Switching: Basculement vers Projet Alpha', categorie: 'Système' },
-  { id: 'log-3', timestamp: '2026-08-11 16:45:00', utilisateurNom: 'Jean Dupont', utilisateurEmail: 'jean.dupont@ugs-distribution.com', projetId: '1', projetNom: 'Projet Alpha', action: 'Création Facture FAC-ALP-001', categorie: 'Financier', nouvelleValeur: '15000 DT TTC' },
-  { id: 'log-4', timestamp: '2026-08-11 14:22:18', utilisateurNom: 'Marie Martin', utilisateurEmail: 'marie.martin@ugs-distribution.com', projetId: '2', projetNom: 'Projet Beta', action: 'Mouvement Stock Sortie ART003', categorie: 'Métier', ancienneValeur: 'Stock 95', nouvelleValeur: 'Stock 65' },
-  { id: 'log-5', timestamp: '2026-08-10 11:05:40', utilisateurNom: 'Super Admin', utilisateurEmail: 'admin@ugs-distribution.com', action: 'Mise à jour permissions utilisateur Marie Martin', categorie: 'Sécurité' }
+  { id: 'log-6', timestamp: '2026-08-18 09:20:00', utilisateurNom: 'Ahmed', utilisateurEmail: 'ahmed@erp-management.com', projetId: '1', projetNom: 'Boutique Sfax Centre', action: 'Vente V-00125', categorie: 'Financier', nouvelleValeur: '+450 DT' },
+  { id: 'log-7', timestamp: '2026-08-18 10:15:00', utilisateurNom: 'Admin', utilisateurEmail: 'admin@erp-management.com', projetId: '1', projetNom: 'Boutique Sfax Centre', action: 'Correction stock • Laptop HP', categorie: 'Métier', nouvelleValeur: '-2 unités' },
+  { id: 'log-8', timestamp: '2026-08-18 11:30:00', utilisateurNom: 'Admin', utilisateurEmail: 'admin@erp-management.com', projetId: '1', projetNom: 'Boutique Sfax Centre', action: 'Transfert • 5 × Laptop HP Sfax → Gabès', categorie: 'Métier' },
+  { id: 'log-1', timestamp: '2026-08-12 02:15:30', utilisateurNom: 'Super Admin', utilisateurEmail: 'admin@erp-management.com', action: 'Connexion réussie au Portail Central', categorie: 'Sécurité' },
+  { id: 'log-2', timestamp: '2026-08-12 02:10:12', utilisateurNom: 'Super Admin', utilisateurEmail: 'admin@erp-management.com', projetId: '1', projetNom: 'Projet Alpha', action: 'Context Switching: Basculement vers Projet Alpha', categorie: 'Système' },
+  { id: 'log-3', timestamp: '2026-08-11 16:45:00', utilisateurNom: 'Jean Dupont', utilisateurEmail: 'jean.dupont@erp-management.com', projetId: '1', projetNom: 'Projet Alpha', action: 'Création Facture FAC-ALP-001', categorie: 'Financier', nouvelleValeur: '15000 DT TTC' },
+  { id: 'log-4', timestamp: '2026-08-11 14:22:18', utilisateurNom: 'Marie Martin', utilisateurEmail: 'marie.martin@erp-management.com', projetId: '2', projetNom: 'Projet Beta', action: 'Mouvement Stock Sortie ART003', categorie: 'Métier', ancienneValeur: 'Stock 95', nouvelleValeur: 'Stock 65' },
+  { id: 'log-5', timestamp: '2026-08-10 11:05:40', utilisateurNom: 'Super Admin', utilisateurEmail: 'admin@erp-management.com', action: 'Mise à jour permissions utilisateur Marie Martin', categorie: 'Sécurité' }
 ];
 
 export const mockProjets: Projet[] = [
-  { id: '1', nom: 'Société UGS - Stock Central', codeBoutique: 'UGS-CENTRALE', adresse: 'Zone Industrielle & Logistique - Avenue Habib Bourguiba', ville: 'Sfax', gouvernorat: 'Sfax', telephone: '+216 74 000 001', email: 'centrale@ugs.tn', statut: 'Active', description: 'Siège Social, Dépôt Central & Entrepôt Principal de Distribution UGS', dateCreation: '2023-01-15', responsable: 'Mohamed Ali (Responsable Logistique & Stock Central)' },
-  { id: '2', nom: 'UGS - Scolaire Plus', codeBoutique: 'SCOL-001', adresse: 'Route de Tunis km 5', ville: 'Sfax', gouvernorat: 'Sfax', telephone: '+216 74 000 002', email: 'scolaire@ugs.tn', statut: 'Active', description: 'Point de vente spécialisé distribution Scolaire', dateCreation: '2023-06-20', responsable: 'Sami Ben Ali' },
-  { id: '3', nom: 'UGS - Boutique Gabès', codeBoutique: 'GB-SUD-001', adresse: 'Avenue de la République', ville: 'Gabès', gouvernorat: 'Gabès', telephone: '+216 75 000 001', email: 'gabes@ugs.tn', statut: 'Inactive', description: 'Succursale de distribution Sud', dateCreation: '2022-11-05', responsable: 'Fatma Zahra' },
+  { 
+    id: '1', 
+    nom: 'SOCIETE UNIVERS GSM DE SUD', 
+    entrepriseNom: 'SOCIETE UNIVERS GSM DE SUD',
+    codeBoutique: 'DEPOT-CENTRAL', 
+    adresse: '112, OMAR IBN KHATAB ZRIG, GABES S3', 
+    ville: 'Gabès', 
+    gouvernorat: 'Gabès', 
+    telephone: '+216 75 655 555', 
+    email: 'contact@univers-gsm.tn', 
+    statut: 'Active', 
+    description: 'SOCIETE UNIVERS GSM DE SUD — Siège & Dépôt Central Distribution', 
+    dateCreation: '2023-01-15', 
+    responsable: 'Direction Générale UGS',
+    matriculeFiscal: '1532846 G/A/M/000',
+    rib: '04 705 012 0051487155 82',
+    banque: 'Attijari Bank',
+    logoUrl: '/logo.png'
+  },
+  { 
+    id: '2', 
+    nom: 'Boutique Scolaire Plus', 
+    entrepriseNom: 'SOCIETE UNIVERS GSM DE SUD',
+    codeBoutique: 'SCOL-001', 
+    adresse: '112, OMAR IBN KHATAB ZRIG, GABES S3', 
+    ville: 'Gabès', 
+    gouvernorat: 'Gabès', 
+    telephone: '+216 75 655 555', 
+    email: 'scolaire@univers-gsm.tn', 
+    statut: 'Active', 
+    description: 'Point de vente spécialisé distribution Scolaire & Fournitures', 
+    dateCreation: '2023-06-20', 
+    responsable: 'Sami Ben Ali',
+    matriculeFiscal: '1532846 G/A/M/000',
+    rib: '04 705 012 0051487155 82',
+    banque: 'Attijari Bank',
+    logoUrl: '/logo.png'
+  },
+  { 
+    id: '3', 
+    nom: 'Boutique Gabès', 
+    entrepriseNom: 'SOCIETE UNIVERS GSM DE SUD',
+    codeBoutique: 'GB-SUD-001', 
+    adresse: '112, OMAR IBN KHATAB ZRIG, GABES S3', 
+    ville: 'Gabès', 
+    gouvernorat: 'Gabès', 
+    telephone: '+216 75 655 555', 
+    email: 'gabes@univers-gsm.tn', 
+    statut: 'Active', 
+    description: 'Succursale commerciale de distribution Sud', 
+    dateCreation: '2022-11-05', 
+    responsable: 'Fatma Zahra',
+    matriculeFiscal: '1532846 G/A/M/000',
+    rib: '04 705 012 0051487155 82',
+    banque: 'Attijari Bank',
+    logoUrl: '/logo.png'
+  },
 ];
 
 export const mockArticles: Article[] = [
@@ -883,7 +1033,7 @@ export const mockBonsDeLivraison: any[] = [
     id: 'bl-101',
     numero: 'BL-2026-000125',
     projetId: '1',
-    boutiqueNom: 'Société UGS - Stock Central',
+    boutiqueNom: 'ERP Management - Stock Central',
     dateCreation: '2026-08-28',
     dateLivraison: '2026-08-30',
     dateExpedition: '2026-08-29',
@@ -897,12 +1047,12 @@ export const mockBonsDeLivraison: any[] = [
     adresseLivraison: 'Chantier Principal Voie 4 - Hangar B, Tunis',
     telephoneClient: '+216 71 234 567',
     emailClient: 'contact@btp-alpha.fr',
-    transporteur: 'UGS Express Logistics',
+    transporteur: 'ERP Management Express Logistics',
     chauffeur: 'Slim Amara',
     immatriculation: '210 TN 4589',
     fraisLivraison: 45,
     notes: 'Livraison prioritaire avec déchargement grue.',
-    entrepôtSource: 'Dépôt Central Sfax',
+    entrepôtSource: 'Société UGS Sfax',
     signatureReception: 'Signé par K. Mansour',
     nomReceptionnaire: 'Karim Mansour',
     dateReception: '2026-08-30 10:15',
@@ -956,7 +1106,7 @@ export const mockBonsDeLivraison: any[] = [
     id: 'bl-102',
     numero: 'BL-2026-000126',
     projetId: '1',
-    boutiqueNom: 'Société UGS - Stock Central',
+    boutiqueNom: 'ERP Management - Stock Central',
     dateCreation: '2026-08-29',
     dateLivraison: '2026-08-31',
     statut: 'Livraison partielle',
@@ -1015,7 +1165,7 @@ export const mockBonsDeLivraison: any[] = [
     id: 'bl-103',
     numero: 'BL-2026-000127',
     projetId: '2',
-    boutiqueNom: 'UGS - Scolaire Plus',
+    boutiqueNom: 'ERP Management - Scolaire Plus',
     dateCreation: '2026-08-30',
     dateLivraison: '2026-08-30',
     statut: 'En préparation',
@@ -1058,7 +1208,7 @@ export const mockStockOperations: any[] = [
     operationNumber: 'OUT-2026-000087',
     type: 'SORTIE',
     projetId: '1',
-    warehouseId: 'Dépôt Central Sfax',
+    warehouseId: 'Société UGS Sfax',
     referenceType: 'BL',
     referenceId: 'bl-101',
     referenceNumero: 'BL-2026-000125',
@@ -1077,7 +1227,7 @@ export const mockStockOperations: any[] = [
     operationNumber: 'OUT-2026-000092',
     type: 'SORTIE',
     projetId: '1',
-    warehouseId: 'Dépôt Central Sfax',
+    warehouseId: 'Société UGS Sfax',
     referenceType: 'BL',
     referenceId: 'bl-102',
     referenceNumero: 'BL-2026-000126',
@@ -1126,7 +1276,7 @@ export const mockBonsDAchat: any[] = [
     id: 'ba-201',
     numero: 'BA-2026-000045',
     projetId: '1',
-    boutiqueNom: 'Société UGS - Stock Central',
+    boutiqueNom: 'ERP Management - Stock Central',
     fournisseurId: 'f1',
     fournisseurNom: 'Cimenterie Nationale de Tunisie (CNT)',
     matriculeFiscalFournisseur: '0894562/A/M/000',
@@ -1138,11 +1288,11 @@ export const mockBonsDAchat: any[] = [
     datePrevueReception: '2026-08-30',
     statut: 'RÉCEPTION PARTIELLE',
     auteurId: 'u1',
-    auteurNom: 'Mohamed Ali (Chef Achats UGS)',
+    auteurNom: 'Mohamed Ali (Chef Achats ERP Management)',
     conditionsAchat: 'Paiement à 30 jours fin de mois après livraison conforme',
     remiseGlobalHT: 0,
     fraisAnnexes: 120,
-    observations: 'Livraison par camion plateau à décharger au Quai A du Dépôt Central UGS.',
+    observations: 'Livraison par camion plateau à décharger au Quai A de la Société UGS.',
     lignes: [
       {
         id: 'lba-1',
@@ -1195,7 +1345,7 @@ export const mockBonsDAchat: any[] = [
     stockOperationId: 'IN-2026-000087',
     historiqueStatuts: [
       { statut: 'BROUILLON', date: '2026-08-25 09:00', utilisateur: 'Mohamed Ali' },
-      { statut: 'APPROUVÉ', date: '2026-08-25 11:30', utilisateur: 'Directeur UGS' },
+      { statut: 'APPROUVÉ', date: '2026-08-25 11:30', utilisateur: 'Directeur ERP Management' },
       { statut: 'COMMANDÉ', date: '2026-08-25 14:00', utilisateur: 'Mohamed Ali' },
       { statut: 'RÉCEPTION PARTIELLE', date: '2026-08-28 14:30', utilisateur: 'Ahmed (Magasinier)' }
     ]
@@ -1204,7 +1354,7 @@ export const mockBonsDAchat: any[] = [
     id: 'ba-202',
     numero: 'BA-2026-000046',
     projetId: '1',
-    boutiqueNom: 'Société UGS - Stock Central',
+    boutiqueNom: 'ERP Management - Stock Central',
     fournisseurId: 'f2',
     fournisseurNom: 'Aciérie & Métal du Sud',
     matriculeFiscalFournisseur: '0123456/B/M/000',
@@ -1216,7 +1366,7 @@ export const mockBonsDAchat: any[] = [
     datePrevueReception: '2026-09-02',
     statut: 'COMMANDÉ',
     auteurId: 'u1',
-    auteurNom: 'Mohamed Ali (Chef Achats UGS)',
+    auteurNom: 'Mohamed Ali (Chef Achats ERP Management)',
     conditionsAchat: 'Règlement au comptoir à la récepton',
     remiseGlobalHT: 150,
     fraisAnnexes: 0,
@@ -1245,7 +1395,7 @@ export const mockBonsDAchat: any[] = [
     isStockIncremented: false,
     historiqueStatuts: [
       { statut: 'BROUILLON', date: '2026-08-29 10:00', utilisateur: 'Mohamed Ali' },
-      { statut: 'APPROUVÉ', date: '2026-08-29 11:00', utilisateur: 'Directeur UGS' },
+      { statut: 'APPROUVÉ', date: '2026-08-29 11:00', utilisateur: 'Directeur ERP Management' },
       { statut: 'COMMANDÉ', date: '2026-08-29 11:15', utilisateur: 'Mohamed Ali' }
     ]
   }
@@ -1256,7 +1406,7 @@ export const mockBonsDeSortie: any[] = [
     id: 'bs-301',
     numero: 'BS-2026-000032',
     projetId: '1',
-    boutiqueNom: 'Société UGS - Stock Central',
+    boutiqueNom: 'ERP Management - Stock Central',
     dateCreation: '2026-08-29',
     heureCreation: '10:15',
     statut: 'SORTIE EFFECTUÉE',
@@ -1267,7 +1417,7 @@ export const mockBonsDeSortie: any[] = [
     responsableValidation: 'M. Kamel (Chef Service)',
     motif: 'Consommation interne',
     motifJustification: 'Utilisation pour réfection et travaux dans l\'entrepôt B',
-    entrepotSource: 'Dépôt Central UGS - Sfax',
+    entrepotSource: 'Société UGS - Sfax',
     lignes: [
       {
         id: 'lbs-1',
@@ -1296,18 +1446,18 @@ export const mockBonsDeSortie: any[] = [
     id: 'bs-302',
     numero: 'BS-2026-000033',
     projetId: '1',
-    boutiqueNom: 'Société UGS - Stock Central',
+    boutiqueNom: 'ERP Management - Stock Central',
     dateCreation: '2026-08-30',
     heureCreation: '08:45',
     statut: 'EN ATTENTE',
     auteurId: 'u7',
     auteurNom: 'Sarah',
-    demandeur: 'Service Commercial UGS',
+    demandeur: 'Service Commercial ERP Management',
     serviceDepartement: 'Marketing & Échantillons Client',
     responsableValidation: 'Mme. Hela (Responsable Ventes)',
     motif: 'Échantillon',
     motifJustification: 'Mise à disposition pour démonstration lors du salon BTP Sfax',
-    entrepotSource: 'Dépôt Central UGS',
+    entrepotSource: 'Société UGS',
     lignes: [
       {
         id: 'lbs-2',
@@ -1331,4 +1481,107 @@ export const mockBonsDeSortie: any[] = [
     ]
   }
 ];
+
+export const mockSessionsCaisse: any[] = [
+  {
+    id: 'ses-1',
+    projetId: '2',
+    utilisateurId: 'demo-caissier-1',
+    utilisateurNom: 'Yassine (Caissier Gabès)',
+    dateOuverture: '2026-09-08 08:30',
+    dateFermeture: '2026-09-08 17:00',
+    soldeInitial: 350.000,
+    soldeFinalTheorique: 1820.500,
+    soldeFinalReel: 1820.500,
+    ecart: 0,
+    statut: 'Fermee',
+    notes: 'Journée conforme, aucun écart.'
+  },
+  {
+    id: 'ses-2',
+    projetId: '3',
+    utilisateurId: 'demo-caissier-2',
+    utilisateurNom: 'Amira (Caissière Scolaire Plus)',
+    dateOuverture: '2026-09-08 08:45',
+    dateFermeture: undefined,
+    soldeInitial: 250.000,
+    soldeFinalTheorique: 1145.200,
+    soldeFinalReel: 1140.000,
+    ecart: -5.200,
+    statut: 'Ouverte',
+    notes: 'Session en cours.'
+  },
+  {
+    id: 'ses-3',
+    projetId: '2',
+    utilisateurId: 'demo-caissier-1',
+    utilisateurNom: 'Yassine (Caissier Gabès)',
+    dateOuverture: '2026-09-07 08:30',
+    dateFermeture: '2026-09-07 18:00',
+    soldeInitial: 300.000,
+    soldeFinalTheorique: 2450.000,
+    soldeFinalReel: 2460.000,
+    ecart: 10.000,
+    statut: 'Fermee',
+    notes: 'Surplus espèces constaté.'
+  },
+  {
+    id: 'ses-4',
+    projetId: '1',
+    utilisateurId: 'demo-admin',
+    utilisateurNom: 'Mohamed Ali (Dépôt Central)',
+    dateOuverture: '2026-09-06 08:00',
+    dateFermeture: '2026-09-06 16:30',
+    soldeInitial: 500.000,
+    soldeFinalTheorique: 3890.000,
+    soldeFinalReel: 3890.000,
+    ecart: 0,
+    statut: 'Fermee',
+    notes: 'Règlement factures directes dépôt.'
+  }
+];
+
+export const mockActionLogsCaisse: any[] = [
+  {
+    id: 'log-c1',
+    sessionId: 'ses-2',
+    utilisateurId: 'demo-caissier-2',
+    timestamp: '2026-09-08 08:45:00',
+    action: 'Ouverture de caisse',
+    details: 'Fond de caisse initial vérifié : 250.000 DT',
+    montant: 250.000,
+    type: 'Ouverture'
+  },
+  {
+    id: 'log-c2',
+    sessionId: 'ses-2',
+    utilisateurId: 'demo-caissier-2',
+    timestamp: '2026-09-08 09:30:00',
+    action: 'Encaissement Vente FAC-SCOL-102',
+    details: 'Vente fournitures et cartables - Espèces',
+    montant: 340.200,
+    type: 'Vente'
+  },
+  {
+    id: 'log-c3',
+    sessionId: 'ses-2',
+    utilisateurId: 'demo-caissier-2',
+    timestamp: '2026-09-08 11:15:00',
+    action: 'Encaissement Vente FAC-SCOL-103',
+    details: 'Vente pack rentrée scolaire - Espèces',
+    montant: 555.000,
+    type: 'Vente'
+  },
+  {
+    id: 'log-c4',
+    sessionId: 'ses-1',
+    utilisateurId: 'demo-caissier-1',
+    timestamp: '2026-09-08 17:00:00',
+    action: 'Clôture de caisse quotidienne',
+    details: 'Arrêt de caisse validé. Solde final 1820.500 DT',
+    montant: 1820.500,
+    type: 'Fermeture'
+  }
+];
+
 

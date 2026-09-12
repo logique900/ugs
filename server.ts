@@ -14,13 +14,29 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-const ai = new GoogleGenAI({ 
-  apiKey: process.env.GEMINI_API_KEY || 'dummy_key',
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
+// Lazy Gemini Client initialization
+let aiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error('La clé API GEMINI_API_KEY n\'est pas configurée dans l\'environnement.');
     }
+    aiClient = new GoogleGenAI({ 
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
   }
+  return aiClient;
+}
+
+// Health Check API
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Endpoint OCR pour les factures
@@ -30,10 +46,11 @@ app.post('/api/ocr-invoice', upload.single('invoice'), async (req, res) => {
       return res.status(400).json({ error: "Aucun fichier uploadé." });
     }
 
+    const ai = getGeminiClient();
     const base64EncodeString = req.file.buffer.toString('base64');
     
     const response = await ai.models.generateContent({
-      model: "gemini-pro-latest",
+      model: "gemini-2.5-flash",
       contents: [
         {
           inlineData: {
@@ -71,12 +88,12 @@ app.post('/api/ocr-invoice', upload.single('invoice'), async (req, res) => {
       }
     });
 
-    const parsedJson = JSON.parse(response.text.trim());
+    const parsedJson = JSON.parse(response.text ? response.text.trim() : '{}');
     res.json(parsedJson);
 
   } catch (error: any) {
     console.error('Erreur OCR:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message || 'Erreur lors de l\'analyse du document.' });
   }
 });
 
@@ -84,20 +101,20 @@ app.post('/api/ocr-invoice', upload.single('invoice'), async (req, res) => {
 app.post('/api/chat-erp', async (req, res) => {
   try {
     const { prompt, erpContext } = req.body;
+    const ai = getGeminiClient();
     const response = await ai.models.generateContent({
-      model: "gemini-pro-latest",
+      model: "gemini-2.5-flash",
       contents: [
         { text: `Vous êtes un assistant ERP expert. Voici le contexte actuel des données de l'ERP : \n${JSON.stringify(erpContext)}\n\nRépondez à la question de l'utilisateur de manière concise et professionnelle en utilisant ces données.` },
-        { text: prompt }
+        { text: prompt || '' }
       ]
     });
-    res.json({ text: response.text });
+    res.json({ text: response.text || '' });
   } catch (error: any) {
     console.error('Erreur Chat ERP:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message || 'Erreur de communication avec l\'assistant IA.' });
   }
 });
-
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Express Global Error:", err);
@@ -118,7 +135,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

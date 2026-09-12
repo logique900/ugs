@@ -1,4 +1,4 @@
-export type TabType = 'dashboard' | 'projets' | 'articles' | 'categories' | 'stock' | 'clients' | 'fournisseurs' | 'achats' | 'bons_achat' | 'bons_sortie' | 'ventes' | 'livraisons' | 'caisse' | 'credits' | 'admin' | 'rapports' | 'objectifs' | 'predictive' | 'utilisateurs' | 'statistiques' | 'audit';
+export type TabType = 'dashboard' | 'projets' | 'articles' | 'categories' | 'stock' | 'clients' | 'fournisseurs' | 'achats' | 'bons_achat' | 'bons_sortie' | 'ventes' | 'livraisons' | 'transferts' | 'caisse' | 'credits' | 'admin' | 'rapports' | 'objectifs' | 'predictive' | 'utilisateurs' | 'statistiques' | 'audit';
 
 export interface CategorieItem {
   id: string;
@@ -11,16 +11,28 @@ export interface CategorieItem {
 
 export type Role = 'super_admin' | 'admin' | 'comptable' | 'caissier' | 'agent' | 'chef_projet' | 'directeur';
 
+export interface UtilisateurPermissions {
+  peutAccorderRemise?: boolean;
+  peutModifierPrix?: boolean;
+  peutSupprimerDocuments?: boolean;
+  peutVoirMarge?: boolean;
+  peutCloturerCaisse?: boolean;
+}
+
 export interface Utilisateur {
   id: string;
   nom: string;
   prenom?: string;
   email: string;
+  telephone?: string;
   motDePasse?: string;
   role: Role;
   statut?: 'Actif' | 'Inactif';
   projetId?: string; // Projet principal ou par défaut
   projetsAffectes?: string[]; // Projets autorisés en multi-projets
+  derniereConnexion?: string;
+  dateCreation?: string;
+  permissions?: UtilisateurPermissions;
 }
 
 export interface Projet {
@@ -380,6 +392,8 @@ export interface LigneBL {
   qteALivrer: number;
   qteLivree: number;
   prixUnitaireHT: number;
+  remisePourcentage?: number;
+  remise?: number;
   tauxTVA?: number;
   totalHT: number;
   totalTTC: number;
@@ -627,6 +641,8 @@ export interface BonDeSortie {
   motif: MotifSortieBS;
   motifJustification?: string;
   entrepotSource?: string;
+  destinationBoutiqueId?: string; // Boutique réceptrice pour les transferts
+  destinationBoutiqueNom?: string;
   lignes: LigneBS[];
   observations?: string;
   piecesJointes?: string[];

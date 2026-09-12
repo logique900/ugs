@@ -4,7 +4,7 @@ export function canPerformAction(user: Utilisateur | null, action: 'create' | 'm
   if (!user) return false;
   
   if (user.role === 'super_admin' || user.role === 'admin' || user.role === 'directeur') {
-    return true; // Super Admin and Admin have total control of Société UGS
+    return true; // Super Admin and Admin have total control of ERP Management
   }
 
   if (user.role === 'comptable') {

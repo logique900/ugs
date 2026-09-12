@@ -2,20 +2,52 @@
 <html lang="fr" class="h-full bg-background">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gestion Commerciale</title>
-    <meta name="description" content="Système ERP complet de gestion commerciale multi-projets avec Exports PDF avancés, Gestion des Crédits et Créances, Actions Rapides et Pilotage Financier" />
-    <meta property="og:title" content="Gestion Commerciale" />
-    <meta property="og:description" content="Système ERP complet de gestion commerciale multi-projets avec Exports PDF avancés, Gestion des Crédits et Créances, Actions Rapides et Pilotage Financier" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>UGS Distribution</title>
+    <meta name="description" content="Système ERP complet de gestion commerciale, facturation, bons de livraison et stocks pour SOCIETE UNIVERS GSM DE SUD." />
+    <meta property="og:title" content="UGS Distribution" />
+    <meta property="og:description" content="Système ERP complet de gestion commerciale, facturation, bons de livraison et stocks pour SOCIETE UNIVERS GSM DE SUD." />
+    
+    <!-- Mobile & PWA Native Meta Tags -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="UGS ERP" />
+    <meta name="application-name" content="UGS ERP" />
+    <meta name="format-detection" content="telephone=no" />
+    
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
     <style>
       .material-symbols-outlined {
           font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
       }
+      /* Prevent unwanted tap highlights and rubberbanding on mobile */
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+      /* Ensure full viewport height including mobile safe areas */
+      html, body, #root {
+        height: 100%;
+        min-height: 100%;
+        overscroll-behavior-y: none;
+      }
+      /* iOS safe area utility variables */
+      :root {
+        --sat: env(safe-area-inset-top, 0px);
+        --sab: env(safe-area-inset-bottom, 0px);
+        --sal: env(safe-area-inset-left, 0px);
+        --sar: env(safe-area-inset-right, 0px);
+      }
     </style>
   </head>
-  <body class="h-full bg-background font-body-md text-on-surface antialiased overflow-hidden">
+  <body class="h-full bg-background font-body-md text-on-surface antialiased overflow-hidden select-none sm:select-auto">
     <div id="root" class="w-full h-full flex"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

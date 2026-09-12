@@ -19,6 +19,7 @@ interface AchatsProps {
 }
 
 export function Achats({
+  currentUser,
   selectedProjectId,
   achats,
   fournisseurs,
@@ -437,54 +438,59 @@ export function Achats({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200/80 shadow-sm">
         <div>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
               <span className="material-symbols-outlined text-[22px]">shopping_cart</span>
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Gestion des Achats & Fournisseurs</h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Bons de commande, réceptions marchandises, gestion des décaissements et export PDF
-              </p>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gestion des Achats & Fournisseurs</h1>
+              
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleOpenCreate}
-            disabled={!isProjectActive}
-            className={`flex items-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl transition-all ${!isProjectActive ? 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60' : 'bg-amber-600 hover:bg-amber-500 text-white shadow-md cursor-pointer'}`}
-          >
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            Nouveau Bon d'Achat
-          </button>
+          {currentUser.role === 'comptable' ? (
+            <div className="flex items-center gap-2 px-3.5 py-2 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs font-bold">
+              <span className="material-symbols-outlined text-[18px] text-amber-600">verified</span>
+              <span>Mode Audit & Contrôle des Dépenses</span>
+            </div>
+          ) : (
+            <button
+              onClick={handleOpenCreate}
+              disabled={!isProjectActive}
+              className={`flex items-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl transition-all ${!isProjectActive ? 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60' : 'bg-amber-600 hover:bg-amber-500 text-white shadow-md cursor-pointer'}`}
+            >
+              <span className="material-symbols-outlined text-[18px]">add</span>
+              Nouveau Bon d'Achat
+            </button>
+          )}
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Volume Total Achats</span>
-          <p className="text-2xl font-black text-slate-900 mt-2">
+          <p className="text-2xl font-bold text-slate-900 mt-2">
             {totalAchatsTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
           </p>
           <span className="text-xs text-slate-500 mt-1 block">{scopedAchats.length} commandes enregistrées</span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Dépenses Réglées</span>
-          <p className="text-2xl font-black text-emerald-600 mt-2">
+          <p className="text-2xl font-bold text-emerald-600 mt-2">
             {totalPaye.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
           </p>
           <span className="text-xs text-emerald-600 font-semibold mt-1 block">Factures fournisseurs payées</span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Dettes Fournisseurs Restantes</span>
-          <p className="text-2xl font-black text-rose-600 mt-2">
+          <p className="text-2xl font-bold text-rose-600 mt-2">
             {totalRestantDu.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
           </p>
           <span className="text-xs text-rose-600 font-semibold mt-1 block">À décaisser</span>
@@ -492,7 +498,7 @@ export function Achats({
       </div>
 
       {/* Table Container */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
         {/* Filters */}
         <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3 bg-slate-50/50">
           <div className="relative w-full md:w-80">
@@ -566,45 +572,63 @@ export function Achats({
                     <td className="py-3.5 px-4 text-right text-slate-600 font-medium">
                       {achat.montantHT.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                     </td>
-                    <td className="py-3.5 px-4 text-right font-black text-slate-900">
+                    <td className="py-3.5 px-4 text-right font-bold text-slate-900">
                       {achat.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      <button
-                        onClick={() => handleToggleStatus(achat)}
-                        className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          achat.statut === 'Payé'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : achat.statut === 'Reçu'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}
-                        title="Cliquer pour faire évoluer le statut (Commandé -> Reçu -> Payé)"
-                      >
-                        {achat.statut}
-                      </button>
+                      {currentUser.role === 'comptable' ? (
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${
+                            achat.statut === 'Payé'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : achat.statut === 'Reçu'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {achat.statut}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleStatus(achat)}
+                          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            achat.statut === 'Payé'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : achat.statut === 'Reçu'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                          title="Cliquer pour faire évoluer le statut (Commandé -> Reçu -> Payé)"
+                        >
+                          {achat.statut}
+                        </button>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {/* Bouton Paiement Fournisseur */}
-                        <button
-                          onClick={() => handleOpenPayment(achat)}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 hover:border-emerald-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
-                          title="Régler cet achat (Bouton Paiement)"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">payments</span>
-                          Payer
-                        </button>
+                        {currentUser.role !== 'comptable' && (
+                          <>
+                            {/* Bouton Paiement Fournisseur */}
+                            <button
+                              onClick={() => handleOpenPayment(achat)}
+                              className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 hover:border-emerald-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+                              title="Régler cet achat (Bouton Paiement)"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">payments</span>
+                              Payer
+                            </button>
 
-                        {/* Bouton Crédit Fournisseur */}
-                        <button
-                          onClick={() => handleOpenCredit(achat)}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-purple-50 hover:bg-purple-600 text-purple-700 hover:text-white border border-purple-200 hover:border-purple-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
-                          title="Modifier l'échéance crédit fournisseur"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">calendar_month</span>
-                          Crédit
-                        </button>
+                            {/* Bouton Crédit Fournisseur */}
+                            <button
+                              onClick={() => handleOpenCredit(achat)}
+                              className="flex items-center gap-1 px-2.5 py-1 bg-purple-50 hover:bg-purple-600 text-purple-700 hover:text-white border border-purple-200 hover:border-purple-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+                              title="Modifier l'échéance crédit fournisseur"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">calendar_month</span>
+                              Crédit
+                            </button>
+                          </>
+                        )}
 
                         <button
                           onClick={() => generatePurchaseOrderPdf(achat, supplier, currentProject)}
@@ -635,7 +659,7 @@ export function Achats({
       {/* CREATE MODAL */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-[96vw] max-w-6xl h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[96vw] max-w-6xl h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-amber-600 text-[26px]">shopping_cart</span>
@@ -742,7 +766,7 @@ export function Achats({
                         />
                       </div>
 
-                      <div className="col-span-2 text-right font-black text-slate-900 text-base">
+                      <div className="col-span-2 text-right font-bold text-slate-900 text-base">
                         {(line.totalTTC || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                       </div>
 
@@ -770,7 +794,7 @@ export function Achats({
                   <span>TVA Récupérable :</span>
                   <span>{(calculatedTotalTTC - calculatedTotalHT).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
                 </div>
-                <div className="flex justify-between font-black text-slate-900 text-base pt-2 border-t border-amber-200">
+                <div className="flex justify-between font-bold text-slate-900 text-base pt-2 border-t border-amber-200">
                   <span>Total TTC Commande :</span>
                   <span className="text-amber-800 text-lg">{calculatedTotalTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
                 </div>
@@ -798,14 +822,14 @@ export function Achats({
       {/* QUICK PAYMENT MODAL (BOUTON DE PAIEMENT FOURNISSEUR) */}
       {paymentModalAchat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-emerald-50/50">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
                   <span className="material-symbols-outlined text-[20px]">payments</span>
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">Bouton Paiement Fournisseur (Décaissement)</h3>
+                  <h3 className="font-bold text-sm text-slate-900">Bouton Paiement Fournisseur (Décaissement)</h3>
                   <p className="text-[11px] text-slate-500 font-medium">Bon d'achat : {paymentModalAchat.numero}</p>
                 </div>
               </div>
@@ -836,7 +860,7 @@ export function Achats({
                     {(paymentModalAchat.montantPaye || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                   </span>
                 </div>
-                <div className="flex justify-between text-slate-900 font-black text-sm pt-2 border-t border-slate-200">
+                <div className="flex justify-between text-slate-900 font-bold text-sm pt-2 border-t border-slate-200">
                   <span>Solde Restant Dû :</span>
                   <span className="text-rose-600">
                     {Math.max(0, paymentModalAchat.montantTTC - (paymentModalAchat.montantPaye || 0)).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
@@ -858,7 +882,7 @@ export function Achats({
                     value={payAmount}
                     onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
                     required
-                    className="w-full pl-4 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                    className="w-full pl-4 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-emerald-500 focus:bg-white"
                   />
                   <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">DT</span>
                 </div>
@@ -931,14 +955,14 @@ export function Achats({
       {/* QUICK CREDIT MODAL (BOUTON DE CRÉDIT FOURNISSEUR) */}
       {creditModalAchat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-purple-50/50">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center">
                   <span className="material-symbols-outlined text-[20px]">calendar_month</span>
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">Bouton Crédit / Échéance Fournisseur</h3>
+                  <h3 className="font-bold text-sm text-slate-900">Bouton Crédit / Échéance Fournisseur</h3>
                   <p className="text-[11px] text-slate-500 font-medium">Commande : {creditModalAchat.numero}</p>
                 </div>
               </div>

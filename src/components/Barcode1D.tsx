@@ -132,7 +132,7 @@ export function PrintLabelModal({ article, onClose }: PrintLabelModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs print:p-0 print:bg-white print:static">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden print:shadow-none print:border-none print:w-auto">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden print:shadow-none print:border-none print:w-auto">
         {/* Header */}
         <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2">
@@ -151,13 +151,13 @@ export function PrintLabelModal({ article, onClose }: PrintLabelModalProps) {
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
               ÉTIQUETTE PRODUIT 1D
             </span>
-            <h4 className="text-sm font-black text-slate-900 max-w-xs truncate">
+            <h4 className="text-sm font-bold text-slate-900 max-w-xs truncate">
               {article.designation}
             </h4>
             <div className="flex items-center justify-center gap-3 text-xs font-bold text-slate-600">
               <span>Réf: {article.code}</span>
               <span>•</span>
-              <span className="text-purple-700 font-black">{article.prixVenteHT.toFixed(3)} DT HT</span>
+              <span className="text-purple-700 font-bold">{article.prixVenteHT.toFixed(3)} DT HT</span>
             </div>
 
             {/* Rendered 1D Barcode Image */}

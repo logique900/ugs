@@ -217,22 +217,38 @@ export function Fournisseurs({ currentUser,
 
   // Export PDF List
   const handleExportFournisseursPdf = () => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     
     doc.setFillColor(15, 23, 42);
     doc.rect(0, 0, 210, 32, 'F');
+    doc.setFillColor(14, 165, 233); // Sky blue accent
+    doc.rect(0, 32, 210, 1.5, 'F');
     
-    doc.setFontSize(16);
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text("RÉPERTOIRE FOURNISSEURS & SOUS-TRAITANTS", 14, 18);
+    doc.text("RÉPERTOIRE FOURNISSEURS & SOUS-TRAITANTS", 14, 13);
     
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(203, 213, 225);
-    const scopeLabel = isGlobal ? 'Tous les Projets' : currentProject?.nom || 'Projet Actif';
-    doc.text(`Périmètre : ${scopeLabel} • Édité le ${new Date().toLocaleDateString('fr-FR')}`, 14, 26);
+    const scopeLabel = isGlobal ? 'Tous les Projets (Consolidé)' : currentProject?.nom || 'Projet Actif';
+    doc.text(`ERP Management Distribution • Périmètre : ${scopeLabel} • Édité le ${new Date().toLocaleDateString('fr-FR')}`, 14, 21);
+
+    // Summary Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, 38, 182, 14, 2, 2, 'FD');
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text(`Fournisseurs : ${filteredFournisseurs.length}`, 18, 47);
+    doc.text(`Total Dépenses : ${kpis.totalDepenses.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 65, 47);
+    doc.text(`Dettes Fournisseurs : ${kpis.totalDettes.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 135, 47);
 
     autoTable(doc, {
-      startY: 40,
+      startY: 57,
       head: [['Code', 'Fournisseur / Raison Sociale', 'Catégorie', 'Téléphone', 'Total Achats TTC', 'Solde Dû']],
       body: filteredFournisseurs.map(f => {
         const fin = getFournisseurFinancials(f.id);
@@ -241,20 +257,40 @@ export function Fournisseurs({ currentUser,
           f.nom,
           f.categorie || f.typeTier || 'Fournisseur',
           f.telephone,
-          `${fin.totalAchete.toLocaleString('fr-FR')} DT`,
-          `${fin.soldeDu.toLocaleString('fr-FR')} DT`,
+          `${fin.totalAchete.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
+          `${fin.soldeDu.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
         ];
       }),
       theme: 'grid',
-      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+      styles: { fontSize: 8 },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 22 },
+        1: { cellWidth: 55 },
+        2: { cellWidth: 30 },
+        3: { halign: 'center', cellWidth: 25 },
+        4: { halign: 'right', cellWidth: 25 },
+        5: { halign: 'right', cellWidth: 25 }
+      },
       foot: [[
-        'TOTAL', '', '', '',
-        `${kpis.totalDepenses.toLocaleString('fr-FR')} DT`,
-        `${kpis.totalDettes.toLocaleString('fr-FR')} DT`,
+        'TOTAL CONSOLIDÉ', '', '', '',
+        `${kpis.totalDepenses.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
+        `${kpis.totalDettes.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
       ]],
       footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' }
     });
+
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, 285, 196, 285);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`ERP Management DISTRIBUTION ERP • Répertoire Général des Fournisseurs`, 14, 290);
+      doc.text(`Page ${i} / ${totalPages}`, 196, 290, { align: 'right' });
+    }
 
     doc.save(`Fournisseurs_${new Date().toISOString().split('T')[0]}.pdf`);
     showToast('Document PDF généré avec succès.');
@@ -262,67 +298,95 @@ export function Fournisseurs({ currentUser,
 
   // Export Individual Statement PDF
   const handleExportStatementPdf = (fournisseur: Fournisseur) => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const fin = getFournisseurFinancials(fournisseur.id);
 
     doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, 210, 34, 'F');
+    doc.rect(0, 0, 210, 32, 'F');
+    doc.setFillColor(14, 165, 233);
+    doc.rect(0, 32, 210, 1.5, 'F');
     
-    doc.setFontSize(16);
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text("RELEVÉ DE COMPTE FOURNISSEUR", 14, 18);
+    doc.text("RELEVÉ DE COMPTE FOURNISSEUR", 14, 13);
     
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(203, 213, 225);
-    doc.text(`Document de synthèse • Date : ${new Date().toLocaleDateString('fr-FR')}`, 14, 26);
+    doc.text(`Document de synthèse • Date : ${new Date().toLocaleDateString('fr-FR')}`, 14, 21);
 
     // Box Info
     doc.setDrawColor(226, 232, 240);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(14, 40, 100, 38, 2, 2, 'FD');
+    doc.roundedRect(14, 38, 100, 38, 2.5, 2.5, 'FD');
     
-    doc.setFontSize(11);
+    doc.setFontSize(10.5);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(fournisseur.nom, 18, 48);
-    doc.setFontSize(8.5);
+    doc.text(fournisseur.nom, 18, 46);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text(`Code : ${fournisseur.code || 'FRN-' + fournisseur.id}`, 18, 54);
-    doc.text(`Téléphone : ${fournisseur.telephone || '-'}`, 18, 60);
-    doc.text(`Ville : ${fournisseur.ville || 'Tunis'}`, 18, 66);
-    doc.text(`Matricule Fiscal : ${fournisseur.matriculeFiscal || 'Non renseigné'}`, 18, 72);
+    doc.text(`Code : ${fournisseur.code || 'FRN-' + fournisseur.id}`, 18, 52);
+    doc.text(`Téléphone : ${fournisseur.telephone || '-'}`, 18, 58);
+    doc.text(`Ville : ${fournisseur.ville || 'Tunis'}`, 18, 64);
+    doc.text(`Matricule Fiscal : ${fournisseur.matriculeFiscal || 'Non renseigné'}`, 18, 70);
 
     // Recap Box Right
-    doc.roundedRect(120, 40, 76, 38, 2, 2, 'FD');
-    doc.setFontSize(10);
-    doc.setTextColor(15, 23, 42);
-    doc.text("Situation Financière", 124, 48);
-    doc.setFontSize(8.5);
-    doc.setTextColor(71, 85, 105);
-    doc.text(`Total Achats :`, 124, 56);
-    doc.text(`${fin.totalAchete.toLocaleString('fr-FR')} DT`, 190, 56, { align: 'right' });
-    doc.text(`Total Réglé :`, 124, 62);
-    doc.text(`${fin.totalRegle.toLocaleString('fr-FR')} DT`, 190, 62, { align: 'right' });
-    
+    doc.roundedRect(120, 38, 76, 38, 2.5, 2.5, 'FD');
     doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text("Situation Financière", 124, 46);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Total Achats :`, 124, 54);
+    doc.text(`${fin.totalAchete.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 190, 54, { align: 'right' });
+    doc.text(`Total Réglé :`, 124, 60);
+    doc.text(`${fin.totalRegle.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 190, 60, { align: 'right' });
+    
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(fin.soldeDu > 0 ? 185 : 5, fin.soldeDu > 0 ? 28 : 150, fin.soldeDu > 0 ? 28 : 105);
-    doc.text(`SOLDE RESTANT DÛ :`, 124, 72);
-    doc.text(`${fin.soldeDu.toLocaleString('fr-FR')} DT`, 190, 72, { align: 'right' });
+    doc.text(`SOLDE RESTANT DÛ :`, 124, 70);
+    doc.text(`${fin.soldeDu.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 190, 70, { align: 'right' });
 
     // Table
     autoTable(doc, {
-      startY: 85,
+      startY: 82,
       head: [['N° Bon / Pièce', 'Date', 'Statut', 'Montant TTC', 'Solde Restant']],
       body: fin.fournisseurAchats.length > 0 ? fin.fournisseurAchats.map(a => [
         a.numero,
         new Date(a.date).toLocaleDateString('fr-FR'),
         a.statut,
-        `${a.montantTTC.toLocaleString('fr-FR')} DT`,
-        a.statut === 'Payé' ? '0 DT' : `${a.montantTTC.toLocaleString('fr-FR')} DT`
+        `${a.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
+        a.statut === 'Payé' ? '0,000 DT' : `${a.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`
       ]) : [['Aucune commande enregistrée', '-', '-', '-', '-']],
       theme: 'striped',
-      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 8.5 }
+      headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+      styles: { fontSize: 8 },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 35 },
+        1: { halign: 'center', cellWidth: 28 },
+        2: { halign: 'center', cellWidth: 25 },
+        3: { halign: 'right', cellWidth: 47 },
+        4: { halign: 'right', cellWidth: 47 }
+      }
     });
+
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, 285, 196, 285);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`ERP Management DISTRIBUTION ERP • Relevé de Compte Fournisseur - ${fournisseur.nom}`, 14, 290);
+      doc.text(`Page ${i} / ${totalPages}`, 196, 290, { align: 'right' });
+    }
 
     doc.save(`Situation_${fournisseur.nom.replace(/\s+/g, '_')}.pdf`);
     showToast(`Relevé de ${fournisseur.nom} téléchargé.`);
@@ -504,7 +568,7 @@ export function Fournisseurs({ currentUser,
       
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-in slide-in-from-bottom-4">
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-in slide-in-from-bottom-4">
           <span className="material-symbols-outlined text-emerald-400 text-[20px]">check_circle</span>
           <span className="text-xs font-bold">{toastMessage}</span>
         </div>
@@ -513,7 +577,7 @@ export function Fournisseurs({ currentUser,
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-on-surface tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-bold text-on-surface tracking-tight">
             Fournisseurs & Sous-traitants
           </h1>
           <p className="text-xs sm:text-sm text-on-surface-variant mt-0.5">
@@ -525,19 +589,25 @@ export function Fournisseurs({ currentUser,
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Nouveau Fournisseur */}
-          <button
-            onClick={handleOpenCreateModal}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            <span>Nouveau Fournisseur</span>
-          </button>
+          {currentUser.role === 'comptable' ? (
+            <div className="flex items-center gap-2 px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl text-xs font-bold">
+              <span className="material-symbols-outlined text-[18px] text-indigo-600">verified</span>
+              <span>Mode Consultation & Contrôle Fournisseurs</span>
+            </div>
+          ) : (
+            <button
+              onClick={handleOpenCreateModal}
+              className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[18px]">add</span>
+              <span>Nouveau Fournisseur</span>
+            </button>
+          )}
 
           {/* Export PDF */}
           <button
             onClick={handleExportFournisseursPdf}
-            className="flex items-center gap-1.5 px-3 py-2.5 bg-surface-container-lowest border border-outline-variant hover:bg-surface-container-low text-on-surface rounded-xl text-xs font-semibold transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-surface-container-lowest border border-outline-variant hover:bg-surface-container-low text-on-surface rounded-xl text-xs font-semibold transition-colors cursor-pointer"
             title="Télécharger la liste en PDF"
           >
             <span className="material-symbols-outlined text-[18px] text-primary">picture_as_pdf</span>
@@ -549,47 +619,47 @@ export function Fournisseurs({ currentUser,
       {/* Clean 3 KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Total Partenaires */}
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4.5 shadow-xs flex items-center justify-between">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4.5 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Partenaires</span>
-            <p className="text-2xl font-black text-on-surface mt-1">{kpis.totalCount}</p>
+            <p className="text-2xl font-bold text-on-surface mt-1">{kpis.totalCount}</p>
             <p className="text-xs text-on-surface-variant mt-0.5">
               {kpis.countFournisseurs} fournisseurs • {kpis.countSousTraitants} sous-traitants
             </p>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
             <span className="material-symbols-outlined text-[24px]">store</span>
           </div>
         </div>
 
         {/* Achats Totaux */}
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4.5 shadow-xs flex items-center justify-between">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4.5 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Achats Commandés</span>
-            <p className="text-2xl font-black text-on-surface mt-1">
+            <p className="text-2xl font-bold text-on-surface mt-1">
               {kpis.totalDepenses.toLocaleString('fr-FR')} <span className="text-xs font-medium text-on-surface-variant">DT</span>
             </p>
             <p className="text-xs text-emerald-600 font-medium mt-0.5">
               {kpis.totalRegle.toLocaleString('fr-FR')} DT déjà réglés
             </p>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
             <span className="material-symbols-outlined text-[24px]">shopping_bag</span>
           </div>
         </div>
 
         {/* Solde Restant Dû */}
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4.5 shadow-xs flex items-center justify-between">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4.5 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Reste à Payer (Dettes)</span>
-            <p className={`text-2xl font-black mt-1 ${kpis.totalDettes > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+            <p className={`text-2xl font-bold mt-1 ${kpis.totalDettes > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
               {kpis.totalDettes.toLocaleString('fr-FR')} <span className="text-xs font-medium text-on-surface-variant">DT</span>
             </p>
             <p className="text-xs text-on-surface-variant mt-0.5">
               {kpis.countAvecDettes > 0 ? `${kpis.countAvecDettes} partenaire(s) en attente` : 'Tous les comptes sont à jour'}
             </p>
           </div>
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${kpis.totalDettes > 0 ? 'bg-amber-500/10 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${kpis.totalDettes > 0 ? 'bg-amber-500/10 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
             <span className="material-symbols-outlined text-[24px]">
               {kpis.totalDettes > 0 ? 'pending_actions' : 'check_circle'}
             </span>
@@ -598,7 +668,7 @@ export function Fournisseurs({ currentUser,
       </div>
 
       {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-surface-container-lowest border border-outline-variant rounded-2xl p-2.5 shadow-xs">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-2.5 shadow-xs">
         
         {/* Filter Pills */}
         <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
@@ -694,8 +764,8 @@ export function Fournisseurs({ currentUser,
 
       {/* Empty State */}
       {filteredFournisseurs.length === 0 && (
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-12 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-surface-container-low text-on-surface-variant mx-auto flex items-center justify-center mb-3">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-12 text-center">
+          <div className="w-12 h-12 rounded-xl bg-surface-container-low text-on-surface-variant mx-auto flex items-center justify-center mb-3">
             <span className="material-symbols-outlined text-[28px]">search_off</span>
           </div>
           <h3 className="text-sm font-bold text-on-surface">Aucun partenaire trouvé</h3>
@@ -721,7 +791,7 @@ export function Fournisseurs({ currentUser,
             return (
               <div 
                 key={fournisseur.id}
-                className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4.5 hover:shadow-md transition-all flex flex-col justify-between"
+                className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4.5 hover:shadow-md transition-all flex flex-col justify-between"
               >
                 <div>
                   {/* Card Header */}
@@ -765,7 +835,7 @@ export function Fournisseurs({ currentUser,
                     </div>
                     <div>
                       <span className="text-[11px] text-on-surface-variant block">Reste à payer</span>
-                      <span className={`font-black text-sm ${fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      <span className={`font-bold text-sm ${fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                         {fin.soldeDu > 0 ? `${fin.soldeDu.toLocaleString('fr-FR')} DT` : '0 DT (À jour)'}
                       </span>
                     </div>
@@ -796,18 +866,24 @@ export function Fournisseurs({ currentUser,
                 <div className="pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5">
                     {/* Bouton Payer */}
-                    <button
-                      onClick={() => handleOpenPaymentModal(fournisseur)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs transition-all active:scale-95"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">payments</span>
-                      <span>Payer</span>
-                    </button>
+                    {currentUser.role !== 'comptable' ? (
+                      <button
+                        onClick={() => handleOpenPaymentModal(fournisseur)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs transition-all active:scale-95 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">payments</span>
+                        <span>Payer</span>
+                      </button>
+                    ) : (
+                      <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                        Audit Fournisseur
+                      </span>
+                    )}
 
                     {/* Fiche Détails */}
                     <button
                       onClick={() => setSelectedFournisseurDetail(fournisseur)}
-                      className="px-2.5 py-1.5 bg-surface-container-low hover:bg-surface-container-high text-on-surface rounded-lg text-xs font-medium transition-colors"
+                      className="px-2.5 py-1.5 bg-surface-container-low hover:bg-surface-container-high text-on-surface rounded-lg text-xs font-medium transition-colors cursor-pointer"
                     >
                       Fiche
                     </button>
@@ -815,34 +891,40 @@ export function Fournisseurs({ currentUser,
 
                   {/* Quick actions (Commander, PDF, Modifier, Supprimer) */}
                   <div className="flex items-center gap-0.5">
-                    <button
-                      onClick={() => setQuickPurchaseFournisseur(fournisseur)}
-                      className="p-1.5 text-on-surface-variant hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Nouvelle commande"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">add_shopping_cart</span>
-                    </button>
+                    {currentUser.role !== 'comptable' && (
+                      <button
+                        onClick={() => setQuickPurchaseFournisseur(fournisseur)}
+                        className="p-1.5 text-on-surface-variant hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                        title="Nouvelle commande"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => handleExportStatementPdf(fournisseur)}
-                      className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg transition-colors"
+                      className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg transition-colors cursor-pointer"
                       title="Relevé de compte PDF"
                     >
                       <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
                     </button>
-                    <button
-                      onClick={() => handleOpenEditModal(fournisseur)}
-                      className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg transition-colors"
-                      title="Modifier"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">edit</span>
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirmationId(fournisseur.id)}
-                      className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors"
-                      title="Supprimer"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">delete</span>
-                    </button>
+                    {currentUser.role !== 'comptable' && (
+                      <>
+                        <button
+                          onClick={() => handleOpenEditModal(fournisseur)}
+                          className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg transition-colors cursor-pointer"
+                          title="Modifier"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">edit</span>
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmationId(fournisseur.id)}
+                          className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors cursor-pointer"
+                          title="Supprimer"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -853,7 +935,7 @@ export function Fournisseurs({ currentUser,
 
       {/* Table View */}
       {viewMode === 'table' && filteredFournisseurs.length > 0 && (
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl overflow-hidden shadow-xs">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-surface-container-low font-bold text-on-surface-variant border-b border-outline-variant">
@@ -896,48 +978,61 @@ export function Fournisseurs({ currentUser,
                       <td className="px-4 py-3 text-right font-bold text-on-surface">
                         {fin.totalAchete.toLocaleString('fr-FR')} DT
                       </td>
-                      <td className="px-4 py-3 text-right font-black">
+                      <td className="px-4 py-3 text-right font-bold">
                         <span className={fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}>
                           {fin.soldeDu > 0 ? `${fin.soldeDu.toLocaleString('fr-FR')} DT` : '0 DT'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => handleOpenPaymentModal(f)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold"
-                            title="Régler"
-                          >
-                            Payer
-                          </button>
+                          {currentUser.role !== 'comptable' && (
+                            <button
+                              onClick={() => handleOpenPaymentModal(f)}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+                              title="Régler"
+                            >
+                              Payer
+                            </button>
+                          )}
                           <button
                             onClick={() => setSelectedFournisseurDetail(f)}
-                            className="p-1 text-on-surface-variant hover:text-primary rounded-lg"
+                            className="p-1 text-on-surface-variant hover:text-primary rounded-lg cursor-pointer"
                             title="Voir fiche"
                           >
                             <span className="material-symbols-outlined text-[16px]">visibility</span>
                           </button>
                           <button
-                            onClick={() => setQuickPurchaseFournisseur(f)}
-                            className="p-1 text-on-surface-variant hover:text-blue-600 rounded-lg"
-                            title="Commander"
+                            onClick={() => handleExportStatementPdf(f)}
+                            className="p-1 text-on-surface-variant hover:text-emerald-600 rounded-lg cursor-pointer"
+                            title="Relevé PDF"
                           >
-                            <span className="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+                            <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
                           </button>
-                          <button
-                            onClick={() => handleOpenEditModal(f)}
-                            className="p-1 text-on-surface-variant hover:text-primary rounded-lg"
-                            title="Modifier"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">edit</span>
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirmationId(f.id)}
-                            className="p-1 text-on-surface-variant hover:text-error rounded-lg"
-                            title="Supprimer"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">delete</span>
-                          </button>
+                          {currentUser.role !== 'comptable' && (
+                            <>
+                              <button
+                                onClick={() => setQuickPurchaseFournisseur(f)}
+                                className="p-1 text-on-surface-variant hover:text-blue-600 rounded-lg cursor-pointer"
+                                title="Commander"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+                              </button>
+                              <button
+                                onClick={() => handleOpenEditModal(f)}
+                                className="p-1 text-on-surface-variant hover:text-primary rounded-lg cursor-pointer"
+                                title="Modifier"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">edit</span>
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmationId(f.id)}
+                                className="p-1 text-on-surface-variant hover:text-error rounded-lg cursor-pointer"
+                                title="Supprimer"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1015,7 +1110,7 @@ export function Fournisseurs({ currentUser,
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-            <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
+            <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
               
               <div className="p-4 sm:p-5 border-b border-outline-variant flex justify-between items-center bg-emerald-700 text-white">
                 <div className="flex items-center gap-2.5">
@@ -1078,7 +1173,7 @@ export function Fournisseurs({ currentUser,
                       required
                       value={paymentAmount}
                       onChange={(e) => setPaymentAmount(Number(e.target.value))}
-                      className="w-full p-2.5 border-2 border-emerald-500 rounded-xl text-base font-black text-emerald-950 bg-white outline-none"
+                      className="w-full p-2.5 border-2 border-emerald-500 rounded-xl text-base font-bold text-emerald-950 bg-white outline-none"
                     />
                   </div>
 
@@ -1164,7 +1259,7 @@ export function Fournisseurs({ currentUser,
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-            <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
+            <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
               
               <div className="p-4 sm:p-5 border-b border-outline-variant flex justify-between items-center bg-purple-700 text-white">
                 <div className="flex items-center gap-2.5">
@@ -1229,7 +1324,7 @@ export function Fournisseurs({ currentUser,
                           <tr key={ech.numero}>
                             <td className="px-3 py-1.5 text-purple-700 font-bold">N° {ech.numero}</td>
                             <td className="px-3 py-1.5 text-on-surface">{new Date(ech.date).toLocaleDateString('fr-FR')}</td>
-                            <td className="px-3 py-1.5 text-right font-black text-on-surface">
+                            <td className="px-3 py-1.5 text-right font-bold text-on-surface">
                               {ech.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                             </td>
                           </tr>
@@ -1264,8 +1359,8 @@ export function Fournisseurs({ currentUser,
       {/* MODAL 6: Delete Confirmation */}
       {deleteConfirmationId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center animate-in zoom-in-95">
-            <div className="w-12 h-12 rounded-2xl bg-error/10 text-error mx-auto flex items-center justify-center mb-3">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-sm p-6 shadow-2xl text-center animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-xl bg-error/10 text-error mx-auto flex items-center justify-center mb-3">
               <span className="material-symbols-outlined text-[28px]">warning</span>
             </div>
             <h3 className="font-bold text-base text-on-surface">Supprimer ce fournisseur ?</h3>

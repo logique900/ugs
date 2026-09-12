@@ -94,7 +94,7 @@ export function Objectifs({ objectifs, setObjectifs, ventes, projets, utilisateu
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-12">
       {/* Header */}
-      <div className="bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex flex-col md:flex-row gap-4 justify-between md:items-center">
+      <div className="bg-white p-5 border border-slate-200 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 justify-between md:items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Objectifs & Classements</h2>
           <p className="text-slate-500 text-sm">Gérez les objectifs commerciaux et visualisez les performances</p>
@@ -118,7 +118,7 @@ export function Objectifs({ objectifs, setObjectifs, ventes, projets, utilisateu
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* BOUTIQUES */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
             <span className="material-symbols-outlined text-indigo-600">storefront</span>
             <h3 className="font-bold text-slate-800">Objectifs Boutiques</h3>
@@ -133,7 +133,7 @@ export function Objectifs({ objectifs, setObjectifs, ventes, projets, utilisateu
                       <p className="text-xs text-slate-500 font-medium">CA Cible : {obj.montantCible.toLocaleString('fr-FR')} DT</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-black text-indigo-700">{obj.realise.toLocaleString('fr-FR', { minimumFractionDigits: 0 })} DT</p>
+                      <p className="text-lg font-bold text-indigo-700">{obj.realise.toLocaleString('fr-FR', { minimumFractionDigits: 0 })} DT</p>
                       <p className="text-xs font-bold text-slate-500 uppercase">Réalisé</p>
                     </div>
                   </div>
@@ -163,7 +163,7 @@ export function Objectifs({ objectifs, setObjectifs, ventes, projets, utilisateu
         </div>
 
         {/* CAISSIERS (Classement) */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
             <span className="material-symbols-outlined text-amber-500">leaderboard</span>
             <h3 className="font-bold text-slate-800">Classement des Caissiers</h3>
@@ -174,7 +174,7 @@ export function Objectifs({ objectifs, setObjectifs, ventes, projets, utilisateu
                 <div key={obj.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3 relative">
                   
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shadow-sm
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-sm
                       ${index === 0 ? 'bg-amber-100 text-amber-700 border border-amber-200' : 
                         index === 1 ? 'bg-slate-200 text-slate-700 border border-slate-300' : 
                         index === 2 ? 'bg-orange-100 text-orange-800 border border-orange-200' : 
@@ -186,8 +186,8 @@ export function Objectifs({ objectifs, setObjectifs, ventes, projets, utilisateu
                       <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Objectif : {obj.montantCible.toLocaleString('fr-FR')} DT</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-black text-slate-800">{obj.realise.toLocaleString('fr-FR', { minimumFractionDigits: 0 })} DT</p>
-                      <span className={`text-[11px] font-black px-2 py-0.5 rounded border shadow-sm ${obj.taux >= 100 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-600 border-slate-200'}`}>
+                      <p className="text-lg font-bold text-slate-800">{obj.realise.toLocaleString('fr-FR', { minimumFractionDigits: 0 })} DT</p>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded border shadow-sm ${obj.taux >= 100 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-600 border-slate-200'}`}>
                         {obj.taux.toFixed(1)}%
                       </span>
                     </div>
@@ -211,7 +211,7 @@ export function Objectifs({ objectifs, setObjectifs, ventes, projets, utilisateu
       {/* Modal Ajout/Modification */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h3 className="font-bold text-slate-800">
                 {editingObj ? "Modifier l'objectif" : "Nouvel Objectif"}

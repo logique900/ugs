@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { BonDeLivraison, StatutBL, LigneBL, Client, Article, Vente, StockOperation, RetourMarchandise, Projet, Utilisateur, AuditLog } from '../types';
 import { Barcode1D } from './Barcode1D';
+import { numberToFrenchWords } from './FacturePrintModal';
+import { BonDeLivraisonPrintModal } from './BonDeLivraisonPrintModal';
 
 interface BonsDeLivraisonProps {
   bonsDeLivraison: BonDeLivraison[];
@@ -59,7 +61,7 @@ export default function BonsDeLivraison({
   const [formAdresseLivraison, setFormAdresseLivraison] = useState<string>('');
   const [formAdresseFacturation, setFormAdresseFacturation] = useState<string>('');
   const [formCommandeRef, setFormCommandeRef] = useState<string>('');
-  const [formTransporteur, setFormTransporteur] = useState<string>('UGS Logistics Express');
+  const [formTransporteur, setFormTransporteur] = useState<string>('ERP Management Logistics Express');
   const [formChauffeur, setFormChauffeur] = useState<string>('');
   const [formImmatriculation, setFormImmatriculation] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
@@ -234,7 +236,7 @@ export default function BonsDeLivraison({
       id: 'bl-' + Date.now(),
       numero: blNum,
       projetId: formProjetId,
-      boutiqueNom: boutique?.nom || 'Société UGS',
+      boutiqueNom: boutique?.nom || 'ERP Management',
       dateCreation: new Date().toISOString().split('T')[0],
       dateLivraison: new Date().toISOString().split('T')[0],
       statut: initialStatut,
@@ -276,7 +278,7 @@ export default function BonsDeLivraison({
       id: 'log-' + Date.now(),
       timestamp: new Date().toLocaleString('fr-FR'),
       utilisateurNom: currentUser?.nom || 'Admin',
-      utilisateurEmail: currentUser?.email || 'admin@ugs.tn',
+      utilisateurEmail: currentUser?.email || 'admin@erp-management.com',
       projetId: formProjetId,
       projetNom: boutique?.nom,
       action: `Création Bon de Livraison ${blNum}`,
@@ -302,6 +304,23 @@ export default function BonsDeLivraison({
   const executeStockOutputForBL = (bl: BonDeLivraison) => {
     if (bl.isStockDecremented || bl.stockOperationId) {
       showNotification(`Le stock a DÉJÀ été décrémenté pour le BL ${bl.numero} (Mouvement ID: ${bl.stockOperationId})`, 'warning');
+      return;
+    }
+
+    // Check stock availability (Block if stock <= 0 or line.qteLivree > currentStock)
+    const invalidLines = bl.lignes.filter(l => {
+      const art = articles.find(a => a.id === l.articleId);
+      if (!art || art.typeArticle === 'Service') return false;
+      const currentStock = art.stocks?.[bl.projetId] ?? art.stock ?? 0;
+      return currentStock <= 0 || l.qteLivree > currentStock;
+    });
+
+    if (invalidLines.length > 0) {
+      const line = invalidLines[0];
+      const art = articles.find(a => a.id === line.articleId);
+      const currentStock = art ? (art.stocks?.[bl.projetId] ?? art.stock ?? 0) : 0;
+      showNotification(`DÉCRÉMENTATION BLOQUÉE - STOCK NULL OU INSUFFISANT pour "${line.designation}" (${currentStock} dispo)`, 'error');
+      alert(`ACTION BLOQUÉE - STOCK NULL OU INSUFFISANT :\nPour "${line.designation}", le stock actuel est de ${currentStock} unité(s).\n\nImpossible de valider la livraison et de décrémenter le stock pour un produit épuisé ou en rupture.`);
       return;
     }
 
@@ -334,14 +353,14 @@ export default function BonsDeLivraison({
       operationNumber: opNumber,
       type: 'SORTIE',
       projetId: bl.projetId,
-      warehouseId: bl.boutiqueNom || 'Dépôt Central UGS',
+      warehouseId: bl.boutiqueNom || 'Société UGS',
       referenceType: 'BL',
       referenceId: bl.id,
       referenceNumero: bl.numero,
       status: 'EFFECTUE',
       createdAt: new Date().toLocaleString('fr-FR'),
       createdBy: currentUser?.id || 'admin',
-      createdByName: currentUser?.nom || 'Magasinier UGS',
+      createdByName: currentUser?.nom || 'Magasinier ERP Management',
       lignes: bl.lignes.map(l => ({
         articleId: l.articleId,
         articleNom: l.designation,
@@ -366,7 +385,7 @@ export default function BonsDeLivraison({
     });
 
     setBonsDeLivraison(updatedBLs);
-    showNotification(`Sortie de stock enregistrée (${opNumber}) - Décrémentation unique effectuée`, 'success');
+    showNotification(`Sortie de stock enregistrée (${opNumber})`, 'success');
   };
 
   // CORE LOGIC: Transform BL -> Invoice (Rule RB-05: NO SECOND DECREMENTATION!)
@@ -388,7 +407,7 @@ export default function BonsDeLivraison({
       clientId: bl.clientId,
       clientNom: bl.clientNom,
       auteurId: currentUser?.id,
-      auteurNom: currentUser?.nom || 'Comptable UGS',
+      auteurNom: currentUser?.nom || 'Comptable ERP Management',
       date: new Date().toISOString().split('T')[0],
       dateEcheance: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       montantHT: bl.montantHT,
@@ -438,11 +457,11 @@ export default function BonsDeLivraison({
       id: 'log-' + Date.now(),
       timestamp: new Date().toLocaleString('fr-FR'),
       utilisateurNom: currentUser?.nom || 'Comptable',
-      utilisateurEmail: currentUser?.email || 'comptable@ugs.tn',
+      utilisateurEmail: currentUser?.email || 'comptable@erp-management.com',
       projetId: bl.projetId,
       action: `Transformation BL ${bl.numero} → Facture ${facNumero}`,
       categorie: 'Financier',
-      nouvelleValeur: `Ref Mouvement Stock Conservée: ${bl.stockOperationId || 'N/A'} (Pas de décrémentation double)`
+      nouvelleValeur: `Ref Mouvement Stock Conservée: ${bl.stockOperationId || 'N/A'}`
     };
     setAuditLogs([log, ...auditLogs]);
 
@@ -541,14 +560,14 @@ export default function BonsDeLivraison({
       operationNumber: inStockOpNumber,
       type: 'ENTREE',
       projetId: bl.projetId,
-      warehouseId: bl.boutiqueNom || 'Dépôt Central UGS',
+      warehouseId: bl.boutiqueNom || 'Société UGS',
       referenceType: 'RETOUR',
       referenceId: bl.id,
       referenceNumero: retNumber,
       status: 'EFFECTUE',
       createdAt: new Date().toLocaleString('fr-FR'),
       createdBy: currentUser?.id || 'admin',
-      createdByName: currentUser?.nom || 'Magasinier UGS',
+      createdByName: currentUser?.nom || 'Magasinier ERP Management',
       lignes: returnLines.map(r => ({
         articleId: r.articleId,
         articleNom: r.designation,
@@ -581,7 +600,7 @@ export default function BonsDeLivraison({
       id: 'log-' + Date.now(),
       timestamp: new Date().toLocaleString('fr-FR'),
       utilisateurNom: currentUser?.nom || 'Magasinier',
-      utilisateurEmail: currentUser?.email || 'admin@ugs.tn',
+      utilisateurEmail: currentUser?.email || 'admin@erp-management.com',
       projetId: bl.projetId,
       action: `Retour Marchandise ${retNumber} sur BL ${bl.numero}`,
       categorie: 'Métier',
@@ -620,7 +639,7 @@ export default function BonsDeLivraison({
     <div className="space-y-6">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className={`fixed top-5 right-5 z-50 p-4 rounded-2xl shadow-xl border flex items-center gap-3 animate-bounce transition-all ${
+        <div className={`fixed top-5 right-5 z-50 p-4 rounded-xl shadow-xl border flex items-center gap-3 animate-bounce transition-all ${
           toastMessage.type === 'error' ? 'bg-rose-900 text-white border-rose-700' :
           toastMessage.type === 'warning' ? 'bg-amber-900 text-white border-amber-700' :
           'bg-slate-900 text-white border-slate-700'
@@ -628,87 +647,83 @@ export default function BonsDeLivraison({
           <span className="material-symbols-outlined text-[24px]">
             {toastMessage.type === 'error' ? 'error' : toastMessage.type === 'warning' ? 'warning' : 'check_circle'}
           </span>
-          <p className="text-xs font-bold">{toastMessage.text}</p>
         </div>
       )}
 
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden border border-slate-800">
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-6 md:p-8 shadow-2xl relative overflow-hidden border border-slate-800">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-500/10 via-transparent to-transparent pointer-events-none" />
         
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
           <div>
-            <div className="flex items-center gap-2.5 mb-2">
-              <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 text-[10px] font-black tracking-widest uppercase rounded-full border border-indigo-500/30">
-                Société UGS • Logistique Centralisée
-              </span>
-              <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold rounded-full border border-emerald-500/30 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                Anti-Double Décrémentation
-              </span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white flex items-center gap-3">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white flex items-center gap-3">
               <span className="material-symbols-outlined text-[32px] text-indigo-400">local_shipping</span>
               Bons de Livraison (BL)
             </h1>
-            <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              Orchestration du cycle complet de livraison : Commande → Préparation → Sortie Stock Unique → Livraison → Facturation sans doublon.
-            </p>
           </div>
 
           <div className="flex items-center gap-3 w-full md:w-auto">
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="w-full md:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black rounded-2xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer border border-indigo-400/30"
-            >
-              <span className="material-symbols-outlined text-[20px]">add_circle</span>
-              Nouveau Bon de Livraison
-            </button>
+            {currentUser?.role === 'comptable' ? (
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-indigo-900/60 border border-indigo-700/60 text-indigo-200 rounded-xl text-xs font-bold">
+                <span className="material-symbols-outlined text-[18px] text-indigo-400">verified</span>
+                <span>Mode Audit & Rapprochement Logistique</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="w-full md:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer border border-indigo-400/30"
+              >
+                <span className="material-symbols-outlined text-[20px]">add_circle</span>
+                Nouveau Bon de Livraison
+              </button>
+            )}
           </div>
         </div>
 
         {/* Overview Key Metrics Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-800/80">
-          <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-4 border border-slate-700/60">
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
             <div className="flex justify-between items-start text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Total BL Émis</span>
-              <span className="material-symbols-outlined text-[18px] text-indigo-400">receipt_long</span>
-            </div>
-            <p className="text-2xl font-black text-white mt-1">{totalBL}</p>
-            <span className="text-[10px] text-indigo-300 mt-0.5 block">Document(s) logistique(s)</span>
+    <span className="text-[11px] font-bold uppercase tracking-wider">Total BL Émis</span>
+    <span className="material-symbols-outlined text-[18px] text-indigo-400">receipt_long</span>
+  </div>
+  <p className="text-2xl font-bold text-white mt-2">{filteredBLs.length}</p>
+            
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-4 border border-slate-700/60">
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
             <div className="flex justify-between items-start text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Livraisons Effectuées</span>
-              <span className="material-symbols-outlined text-[18px] text-emerald-400">verified</span>
-            </div>
-            <p className="text-2xl font-black text-emerald-400 mt-1">{countLivre}</p>
-            <span className="text-[10px] text-slate-300 mt-0.5 block">Preuves de réception validées</span>
+    <span className="text-[11px] font-bold uppercase tracking-wider">Livraisons Effectuées</span>
+    <span className="material-symbols-outlined text-[18px] text-emerald-400">verified</span>
+  </div>
+  <p className="text-2xl font-bold text-white mt-2">{filteredBLs.filter(b => b.statut === 'Livré').length}</p>
+            
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-4 border border-slate-700/60">
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
             <div className="flex justify-between items-start text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">En Cours / Transit</span>
-              <span className="material-symbols-outlined text-[18px] text-amber-400">local_shipping</span>
-            </div>
-            <p className="text-2xl font-black text-amber-400 mt-1">{countEnCours}</p>
-            <span className="text-[10px] text-slate-300 mt-0.5 block">Préparation & Expéditions</span>
+    <span className="text-[11px] font-bold uppercase tracking-wider">En Cours / Transit</span>
+    <span className="material-symbols-outlined text-[18px] text-amber-400">local_shipping</span>
+  </div>
+  <p className="text-2xl font-bold text-white mt-2">{filteredBLs.filter(b => b.statut === 'En livraison' || b.statut === 'En préparation').length}</p>
+            
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-4 border border-slate-700/60">
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
             <div className="flex justify-between items-start text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Valeur Livrée TTC</span>
-              <span className="material-symbols-outlined text-[18px] text-indigo-400">payments</span>
-            </div>
-            <p className="text-2xl font-black text-white mt-1">{totalValeurLivree.toFixed(2)} <span className="text-xs text-indigo-300 font-bold">DT</span></p>
-            <span className="text-[10px] text-slate-300 mt-0.5 block">Marchandises sorties</span>
+    <span className="text-[11px] font-bold uppercase tracking-wider">Valeur Livrée TTC</span>
+    <span className="material-symbols-outlined text-[18px] text-indigo-400">payments</span>
+  </div>
+  <p className="text-2xl font-bold text-white mt-2">
+    {filteredBLs.filter(b => b.statut === 'Livré').reduce((sum, b) => sum + b.montantTTC, 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-sm font-bold text-slate-400">DT</span>
+  </p>
+            
           </div>
         </div>
       </div>
 
       {/* Navigation Sub-Tabs & Filters Bar */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           
           {/* Main Module Tabs */}
@@ -734,7 +749,7 @@ export default function BonsDeLivraison({
               }`}
             >
               <span className="material-symbols-outlined text-[18px]">outbound</span>
-              Mouvements & Sorties Unique ({stockOperations.length})
+              Mouvements de stock ({stockOperations.length})
             </button>
 
             <button
@@ -788,14 +803,13 @@ export default function BonsDeLivraison({
 
       {/* TAB 1: LISTE DES BONS DE LIVRAISON */}
       {activeTab === 'bl_list' && (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           {filteredBLs.length === 0 ? (
             <div className="p-12 text-center">
               <span className="material-symbols-outlined text-[48px] text-slate-300 dark:text-slate-600">
                 local_shipping
               </span>
               <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mt-2">Aucun Bon de Livraison trouvé</h3>
-              <p className="text-xs text-slate-500 mt-1">Créez votre premier BL ou ajustez vos filtres de recherche.</p>
               <button
                 onClick={() => setShowCreateModal(true)}
                 className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-sm hover:bg-indigo-500 inline-flex items-center gap-2"
@@ -808,7 +822,7 @@ export default function BonsDeLivraison({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-black uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
+                  <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
                     <th className="p-4">N° Document & Dates</th>
                     <th className="p-4">Client & Destinataire</th>
                     <th className="p-4">Boutique & Références</th>
@@ -836,13 +850,13 @@ export default function BonsDeLivraison({
                         <td className="p-4">
                           <div className="font-bold text-slate-900 dark:text-white">{bl.clientNom}</div>
                           <div className="text-[10px] text-slate-500 truncate max-w-xs" title={bl.adresseLivraison}>
-                            📍 {bl.adresseLivraison}
+                            {bl.adresseLivraison}
                           </div>
                         </td>
 
                         <td className="p-4">
                           <span className="inline-block px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold rounded-md mb-1">
-                            {bl.boutiqueNom || 'Société UGS'}
+                            {bl.boutiqueNom || 'ERP Management'}
                           </span>
                           <div className="text-[10px] text-slate-500">
                             {bl.commandeRef && <span className="mr-2">Commande : <strong className="text-slate-700 dark:text-slate-300">{bl.commandeRef}</strong></span>}
@@ -904,38 +918,42 @@ export default function BonsDeLivraison({
                             </button>
 
                             {/* Status Workflow Update */}
-                            <button
-                              onClick={() => {
-                                setShowStatusModal(bl);
-                                setNewStatut(bl.statut);
-                              }}
-                              className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-slate-800 rounded-lg transition-all"
-                              title="Mettre à jour le statut / Preuve de livraison"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">published_with_changes</span>
-                            </button>
+                            {currentUser?.role !== 'comptable' && (
+                              <button
+                                onClick={() => {
+                                  setShowStatusModal(bl);
+                                  setNewStatut(bl.statut);
+                                }}
+                                className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                                title="Mettre à jour le statut / Preuve de livraison"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">published_with_changes</span>
+                              </button>
+                            )}
 
                             {/* Transform BL to Invoice (Rule RB-05: NO double decrement!) */}
                             {!isFacture ? (
-                              <button
-                                onClick={() => handleTransformBLToInvoice(bl)}
-                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-black transition-all shadow-xs flex items-center gap-1 cursor-pointer"
-                                title="Transformer en Facture sans deuxième sortie de stock"
-                              >
-                                <span className="material-symbols-outlined text-[12px]">receipt</span>
-                                Facturer
-                              </button>
+                              currentUser?.role !== 'comptable' && (
+                                <button
+                                  onClick={() => handleTransformBLToInvoice(bl)}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                                  title="Transformer en Facture sans deuxième sortie de stock"
+                                >
+                                  <span className="material-symbols-outlined text-[12px]">receipt</span>
+                                  Facturer
+                                </button>
+                              )
                             ) : (
-                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[9px] font-black rounded border border-emerald-300">
+                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[9px] font-bold rounded border border-emerald-300">
                                 Facturé
                               </span>
                             )}
 
                             {/* Return Goods Modal */}
-                            {bl.statut === 'Livré' && (
+                            {currentUser?.role !== 'comptable' && bl.statut === 'Livré' && (
                               <button
                                 onClick={() => setShowReturnModal(bl)}
-                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-all"
+                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
                                 title="Enregistrer un retour de marchandise"
                               >
                                 <span className="material-symbols-outlined text-[18px]">assignment_return</span>
@@ -955,23 +973,21 @@ export default function BonsDeLivraison({
 
       {/* TAB 2: MOUVEMENTS & SORTIES UNIQUE (Rule RB-04, RB-10, Idempotency Audit) */}
       {activeTab === 'operations' && (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span className="material-symbols-outlined text-indigo-600 text-[22px]">verified_user</span>
                 Registre des Opérations de Stock & Anti-Duplication
               </h3>
-              <p className="text-xs text-slate-500">
-                Garantie d'idempotence : Chaque Bon de Livraison possède un identifiant unique d'opération (e.g. OUT-2026-XXXXXX).
-              </p>
+              
             </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-black uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
+                <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
                   <th className="p-3">ID Opération (Clé Unique)</th>
                   <th className="p-3">Type</th>
                   <th className="p-3">Référence Document</th>
@@ -990,12 +1006,12 @@ export default function BonsDeLivraison({
                   stockOperations.map((op) => (
                     <tr key={op.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
                       <td className="p-3">
-                        <span className="font-mono font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-1 rounded border border-indigo-200 dark:border-indigo-800">
+                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-1 rounded border border-indigo-200 dark:border-indigo-800">
                           {op.operationNumber}
                         </span>
                       </td>
                       <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                           op.type === 'SORTIE' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
                           'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                         }`}>
@@ -1005,7 +1021,7 @@ export default function BonsDeLivraison({
                       <td className="p-3 font-bold text-slate-800 dark:text-slate-200">
                         {op.referenceNumero || op.referenceId} ({op.referenceType})
                       </td>
-                      <td className="p-3 text-slate-600 dark:text-slate-300">{op.warehouseId || 'Centrale UGS'}</td>
+                      <td className="p-3 text-slate-600 dark:text-slate-300">{op.warehouseId || 'Centrale ERP Management'}</td>
                       <td className="p-3">
                         <div className="space-y-0.5">
                           {op.lignes.map((l, idx) => (
@@ -1033,23 +1049,21 @@ export default function BonsDeLivraison({
 
       {/* TAB 3: RETOURS MARCHANDISES (Rule RB-08) */}
       {activeTab === 'retours' && (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span className="material-symbols-outlined text-rose-600 text-[22px]">assignment_return</span>
                 Historique des Retours Marchandises Client
               </h3>
-              <p className="text-xs text-slate-500">
-                L'annulation d'une facture ne réintègre pas automatiquement le stock. Seul un retour formalisé génère un mouvement d'ENTRÉE (+stock).
-              </p>
+              
             </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-black uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
+                <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
                   <th className="p-3">N° Bon Retour</th>
                   <th className="p-3">BL d'Origine</th>
                   <th className="p-3">Client</th>
@@ -1101,14 +1115,13 @@ export default function BonsDeLivraison({
       {/* MODAL: NOUTVEAU BON DE LIVRAISON */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-4xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 my-8 space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-4xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 my-8 space-y-6">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <span className="material-symbols-outlined text-indigo-600">add_circle</span>
                   Créer un Bon de Livraison (BL)
                 </h3>
-                <p className="text-xs text-slate-500">Saisie manuelle ou chargement automatique depuis une Commande commerciale.</p>
               </div>
               <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
                 <span className="material-symbols-outlined">close</span>
@@ -1117,8 +1130,8 @@ export default function BonsDeLivraison({
 
             <form onSubmit={handleCreateBL} className="space-y-6">
               {/* Option 1: Pick existing Commande / Sales Order */}
-              <div className="bg-indigo-50/50 dark:bg-indigo-950/30 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
-                <label className="block text-xs font-black text-indigo-900 dark:text-indigo-300 uppercase tracking-wider mb-1.5">
+              <div className="bg-indigo-50/50 dark:bg-indigo-950/30 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
+                <label className="block text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider mb-1.5">
                   🔗 Charger depuis une Commande existante (Optionnel)
                 </label>
                 <select
@@ -1139,7 +1152,7 @@ export default function BonsDeLivraison({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Boutique UGS Source
+                    Boutique ERP Management Source
                   </label>
                   <select
                     value={formProjetId}
@@ -1194,7 +1207,7 @@ export default function BonsDeLivraison({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    📍 Adresse de Livraison
+                    Adresse de Livraison
                   </label>
                   <textarea
                     rows={2}
@@ -1231,7 +1244,7 @@ export default function BonsDeLivraison({
               {/* Product Lines Table */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                     Lignes de Produits & Quantités
                   </h4>
                   <button
@@ -1245,11 +1258,11 @@ export default function BonsDeLivraison({
                 </div>
 
                 {formLignes.length === 0 ? (
-                  <div className="p-6 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-xs text-slate-400">
+                  <div className="p-6 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-400">
                     Aucun produit ajouté. Cliquez sur "Ajouter Produit" ou sélectionnez une commande ci-dessus.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
+                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800">
@@ -1295,7 +1308,7 @@ export default function BonsDeLivraison({
                                 max={line.qteCommandee}
                                 value={line.qteLivree}
                                 onChange={(e) => handleUpdateLine(idx, 'qteLivree', Number(e.target.value))}
-                                className="w-full p-2 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-300 rounded-lg text-xs font-black text-center"
+                                className="w-full p-2 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-300 rounded-lg text-xs font-bold text-center"
                               />
                             </td>
 
@@ -1342,7 +1355,7 @@ export default function BonsDeLivraison({
 
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black shadow-md flex items-center gap-2 cursor-pointer"
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-2 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[18px]">check</span>
                   Valider & Générer Bon de Livraison
@@ -1356,13 +1369,13 @@ export default function BonsDeLivraison({
       {/* MODAL: DETAIL BON DE LIVRAISON */}
       {showDetailModal && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
                 <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${getStatutBadge(showDetailModal.statut)}`}>
                   {showDetailModal.statut}
                 </span>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-1">
                   Bon de Livraison {showDetailModal.numero}
                 </h3>
               </div>
@@ -1372,25 +1385,18 @@ export default function BonsDeLivraison({
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl space-y-1">
-                <span className="text-[10px] uppercase font-black text-slate-400">Information Client</span>
-                <p className="font-extrabold text-slate-900 dark:text-white text-sm">{showDetailModal.clientNom}</p>
-                <p className="text-slate-500">📍 {showDetailModal.adresseLivraison}</p>
-                {showDetailModal.telephoneClient && <p className="text-slate-500">📞 {showDetailModal.telephoneClient}</p>}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Information Client</span>
               </div>
 
-              <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl space-y-1">
-                <span className="text-[10px] uppercase font-black text-slate-400">Protection Stock & Idempotence</span>
-                <p className="font-mono font-bold text-indigo-600">
-                  {showDetailModal.stockOperationId || 'DÉCRÉMENTATION UNIQUE'}
-                </p>
-                <p className="text-slate-500">Boutique : {showDetailModal.boutiqueNom}</p>
-                {showDetailModal.factureRef && <p className="text-emerald-600 font-bold">Facture liée : {showDetailModal.factureRef}</p>}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Opération de stock</span>
+                <p className="font-mono font-bold text-indigo-600">{showDetailModal.stockOperationId || 'DÉJÀ RETIRÉ DU STOCK'}</p>
               </div>
             </div>
 
             {/* Articles table */}
-            <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-800 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800">
@@ -1420,8 +1426,8 @@ export default function BonsDeLivraison({
 
             {/* History timeline */}
             {showDetailModal.historiqueStatuts && showDetailModal.historiqueStatuts.length > 0 && (
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl space-y-2">
-                <span className="text-[10px] font-black uppercase text-slate-400">Historique & Traçabilité Audit</span>
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl space-y-2">
+                <span className="text-[10px] font-bold uppercase text-slate-400">Historique & Traçabilité Audit</span>
                 <div className="space-y-1.5">
                   {showDetailModal.historiqueStatuts.map((h, i) => (
                     <div key={i} className="text-xs flex items-center justify-between text-slate-600 dark:text-slate-300 border-b border-slate-200/50 dark:border-slate-700/50 pb-1">
@@ -1457,143 +1463,24 @@ export default function BonsDeLivraison({
 
       {/* MODAL: PRINT / PDF PRO PRINTABLE VIEW */}
       {showPrintModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white text-slate-900 rounded-3xl max-w-3xl w-full p-8 shadow-2xl space-y-6 my-8 print:p-0 print:shadow-none font-sans">
-            
-            {/* Action Bar (Not printed) */}
-            <div className="flex justify-between items-center print:hidden border-b pb-4">
-              <span className="text-xs font-bold text-slate-500">Aperçu Avant Impression Document Logistique</span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-500 flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-[16px]">print</span>
-                  Lancer l'Impression / Télécharger PDF
-                </button>
-                <button onClick={() => setShowPrintModal(null)} className="text-slate-400 hover:text-slate-600">
-                  <span className="material-symbols-outlined">close</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Print Document Content */}
-            <div className="p-6 border border-slate-200 rounded-2xl space-y-6 bg-white text-slate-900">
-              {/* Company Header */}
-              <div className="flex justify-between items-start border-b-2 border-indigo-900 pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 bg-indigo-900 text-white font-black text-xl flex items-center justify-center rounded-lg">
-                      UGS
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-black text-indigo-950 tracking-tight">SOCIÉTÉ UGS</h2>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Centrale de Distribution & Logistique</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-slate-600 mt-2">
-                    Avenue Habib Bourguiba, Sfax • Tél: +216 74 000 001<br />
-                    Matricule Fiscal: 1234567/M/A/M/000 • Email: centrale@ugs.tn
-                  </p>
-                </div>
-
-                <div className="text-right space-y-1">
-                  <h3 className="text-2xl font-black text-indigo-900">BON DE LIVRAISON</h3>
-                  <p className="text-sm font-mono font-bold text-slate-800">{showPrintModal.numero}</p>
-                  <p className="text-xs text-slate-500">Date : {showPrintModal.dateCreation}</p>
-                  {showPrintModal.commandeRef && <p className="text-xs font-bold text-slate-700">Commande : {showPrintModal.commandeRef}</p>}
-                </div>
-              </div>
-
-              {/* Client & Delivery Info */}
-              <div className="grid grid-cols-2 gap-6 text-xs">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-black uppercase text-indigo-900 tracking-wider">Client & Facturation</span>
-                  <p className="font-extrabold text-slate-900 text-sm mt-1">{showPrintModal.clientNom}</p>
-                  {showPrintModal.matriculeFiscalClient && <p className="text-slate-600">MF: {showPrintModal.matriculeFiscalClient}</p>}
-                  <p className="text-slate-600 mt-1">{showPrintModal.adresseFacturation || showPrintModal.adresseLivraison}</p>
-                </div>
-
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-black uppercase text-indigo-900 tracking-wider">Adresse de Livraison & Transport</span>
-                  <p className="font-bold text-slate-800 mt-1">📍 {showPrintModal.adresseLivraison}</p>
-                  <p className="text-slate-600 mt-1">Transporteur : {showPrintModal.transporteur || 'UGS Express'}</p>
-                  {showPrintModal.chauffeur && <p className="text-slate-600">Chauffeur: {showPrintModal.chauffeur}</p>}
-                </div>
-              </div>
-
-              {/* Items Table */}
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-indigo-900 text-white font-bold uppercase text-[9px] tracking-wider">
-                    <th className="p-2.5">Réf / Code</th>
-                    <th className="p-2.5">Désignation Produit</th>
-                    <th className="p-2.5 text-center">Qté Commandée</th>
-                    <th className="p-2.5 text-center">Qté Livrée</th>
-                    <th className="p-2.5 text-right">Prix HT</th>
-                    <th className="p-2.5 text-right">Total HT</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 text-slate-800">
-                  {showPrintModal.lignes.map((l, i) => (
-                    <tr key={i}>
-                      <td className="p-2.5 font-mono text-[11px] font-bold">{l.code}</td>
-                      <td className="p-2.5 font-bold">{l.designation}</td>
-                      <td className="p-2.5 text-center text-slate-500">{l.qteCommandee}</td>
-                      <td className="p-2.5 text-center font-extrabold text-indigo-950">{l.qteLivree}</td>
-                      <td className="p-2.5 text-right">{l.prixUnitaireHT.toFixed(2)} DT</td>
-                      <td className="p-2.5 text-right font-bold">{l.totalHT.toFixed(2)} DT</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Totals & QR Verification */}
-              <div className="flex justify-between items-end pt-4 border-t border-slate-200">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-slate-100 p-1 border rounded flex items-center justify-center">
-                    <Barcode1D value={showPrintModal.numero} width={1} height={40} />
-                  </div>
-                  <div className="text-[9px] text-slate-500 max-w-xs">
-                    Authentification QR Code • Mouvement Stock ID: <strong className="font-mono text-indigo-900">{showPrintModal.stockOperationId || 'OUT-UNIQUE'}</strong>. Document officiel Société UGS.
-                  </div>
-                </div>
-
-                <div className="text-right space-y-1 text-xs">
-                  <p className="text-slate-600">Total HT : <strong className="text-slate-900">{showPrintModal.montantHT.toFixed(2)} DT</strong></p>
-                  <p className="text-slate-600">TVA (19%) : <strong className="text-slate-900">{(showPrintModal.montantTVA || 0).toFixed(2)} DT</strong></p>
-                  <p className="text-base font-black text-indigo-950">Total TTC : {showPrintModal.montantTTC.toFixed(2)} DT</p>
-                </div>
-              </div>
-
-              {/* Signatures Block */}
-              <div className="grid grid-cols-2 gap-8 pt-8 border-t border-slate-300 text-center text-xs">
-                <div className="h-24 border border-dashed border-slate-300 rounded-xl p-3 flex flex-col justify-between">
-                  <span className="font-bold text-slate-700">Cachet & Signature Transporteur / Magasinier UGS</span>
-                  <span className="text-[10px] text-slate-400">Date & Nom</span>
-                </div>
-
-                <div className="h-24 border border-dashed border-slate-300 rounded-xl p-3 flex flex-col justify-between">
-                  <span className="font-bold text-slate-700">Nom & Signature Client Réceptionnaire</span>
-                  <span className="text-[10px] text-slate-400">Bon pour réception conforme</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <BonDeLivraisonPrintModal
+          bl={showPrintModal}
+          client={clients.find(c => c.id === showPrintModal.clientId || c.nom === showPrintModal.clientNom)}
+          projet={projets.find(p => p.id === showPrintModal.projetId) || projets.find(p => p.id === selectedProjectId) || projets[0]}
+          onClose={() => setShowPrintModal(null)}
+        />
       )}
 
       {/* MODAL: RETOUR MARCHANDISE */}
       {showReturnModal && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <span className="material-symbols-outlined text-rose-600">assignment_return</span>
                   Retour de Marchandise sur BL {showReturnModal.numero}
                 </h3>
-                <p className="text-xs text-slate-500">Génère un mouvement d'ENTRÉE de stock (+stock) pour les produits réintégrés.</p>
               </div>
               <button onClick={() => setShowReturnModal(null)} className="text-slate-400 hover:text-slate-600">
                 <span className="material-symbols-outlined">close</span>
@@ -1616,7 +1503,7 @@ export default function BonsDeLivraison({
               </div>
 
               <div className="space-y-2">
-                <label className="block text-xs font-black text-slate-700 dark:text-slate-300 uppercase">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
                   Saisir les Quantités Retournées par Produit
                 </label>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -1656,7 +1543,7 @@ export default function BonsDeLivraison({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-rose-600 text-white rounded-xl text-xs font-black shadow-md hover:bg-rose-500"
+                  className="px-5 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-500"
                 >
                   Valider le Retour (+Entrée Stock)
                 </button>
@@ -1669,10 +1556,10 @@ export default function BonsDeLivraison({
       {/* MODAL: UPDATE STATUS & POD */}
       {showStatusModal && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <span className="material-symbols-outlined text-amber-600">published_with_changes</span>
                   Changer le Statut - BL {showStatusModal.numero}
                 </h3>
@@ -1705,8 +1592,8 @@ export default function BonsDeLivraison({
               </div>
 
               {newStatut === 'Livré' && (
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 space-y-3">
-                  <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-300">
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/60 space-y-3">
+                  <span className="text-[10px] font-bold uppercase text-emerald-800 dark:text-emerald-300">
                     Preuve de Livraison (POD)
                   </span>
                   <div>
@@ -1753,7 +1640,7 @@ export default function BonsDeLivraison({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-amber-600 text-white rounded-xl font-black shadow-md hover:bg-amber-500"
+                  className="px-5 py-2 bg-amber-600 text-white rounded-xl font-bold shadow-md hover:bg-amber-500"
                 >
                   Enregistrer
                 </button>

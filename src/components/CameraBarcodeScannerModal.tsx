@@ -127,7 +127,7 @@ export function CameraBarcodeScannerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden text-white flex flex-col max-h-[90vh]">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden text-white flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
           <div className="flex items-center gap-3">
@@ -152,14 +152,14 @@ export function CameraBarcodeScannerModal({
         {/* Modal Body */}
         <div className="p-5 space-y-4 overflow-y-auto">
           {/* Live Camera Feed Container */}
-          <div className="relative bg-slate-950 rounded-2xl border-2 border-dashed border-purple-500/50 overflow-hidden min-h-[220px] flex items-center justify-center">
+          <div className="relative bg-slate-950 rounded-xl border-2 border-dashed border-purple-500/50 overflow-hidden min-h-[220px] flex items-center justify-center">
             {/* HTML5QRCode Video Target Div */}
             <div id="interactive-camera-reader" className="w-full h-full text-center text-xs"></div>
 
             {/* Scanning Overlay Laser Animation */}
             {isCameraActive && (
               <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                <div className="w-64 h-32 border-2 border-purple-400 rounded-2xl shadow-[0_0_20px_rgba(168,85,247,0.4)] relative overflow-hidden flex items-center justify-center">
+                <div className="w-64 h-32 border-2 border-purple-400 rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] relative overflow-hidden flex items-center justify-center">
                   <div className="w-full h-0.5 bg-rose-500 shadow-[0_0_12px_#f43f5e] animate-pulse"></div>
                   <span className="absolute bottom-2 text-[9px] font-mono text-purple-300 bg-slate-950/80 px-2 py-0.5 rounded">
                     CENTREZ LE CODE-BARRES 1D
@@ -193,7 +193,7 @@ export function CameraBarcodeScannerModal({
               <span className="material-symbols-outlined text-emerald-400 text-[20px]">check_circle</span>
               <div className="text-xs">
                 <span className="text-slate-400 font-semibold block">Dernier code scanné :</span>
-                <span className="font-mono font-black text-emerald-300 text-sm">{lastScannedCode}</span>
+                <span className="font-mono font-bold text-emerald-300 text-sm">{lastScannedCode}</span>
               </div>
             </div>
           )}

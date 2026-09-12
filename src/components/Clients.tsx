@@ -315,29 +315,40 @@ export function Clients({ currentUser,
 
   // Export Complete Clients List as PDF
   const handleExportClientsPdf = () => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     
     // Header styling
     doc.setFillColor(15, 23, 42); // slate-900
     doc.rect(0, 0, 210, 32, 'F');
+    doc.setFillColor(225, 29, 72); // Accent line
+    doc.rect(0, 32, 210, 1.5, 'F');
     
-    doc.setFontSize(18);
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text("RÉPERTOIRE & BALANCE DES TIERS CLIENTS", 14, 18);
+    doc.text("RÉPERTOIRE & BALANCE DES TIERS CLIENTS", 14, 13);
     
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(203, 213, 225);
     const scopeLabel = isGlobal ? 'Tous les Projets (Consolidé)' : currentProject?.nom || 'Projet Actif';
-    doc.text(`Périmètre : ${scopeLabel} • Édité le ${new Date().toLocaleDateString('fr-FR')}`, 14, 26);
+    doc.text(`ERP Management Distribution • Périmètre : ${scopeLabel} • Édité le ${new Date().toLocaleDateString('fr-FR')}`, 14, 21);
 
     // Summary Box
-    doc.setFontSize(10);
-    doc.setTextColor(51, 65, 85);
-    doc.text(`Nombre de clients : ${filteredClients.length} | Chiffre d'Affaires Global : ${kpis.totalCA.toLocaleString('fr-FR')} DT | Créances Totales : ${kpis.totalEncours.toLocaleString('fr-FR')} DT`, 14, 40);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, 38, 182, 14, 2, 2, 'FD');
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text(`Nombre de clients : ${filteredClients.length}`, 18, 47);
+    doc.text(`Chiffre d'Affaires Global : ${kpis.totalCA.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 65, 47);
+    doc.text(`Créances Totales : ${kpis.totalEncours.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 135, 47);
 
     // Table
     autoTable(doc, {
-      startY: 46,
+      startY: 57,
       head: [['Code', 'Raison Sociale / Nom', 'Type', 'Téléphone', 'Ville', 'CA Réalisé', 'Solde Dû', 'Statut']],
       body: filteredClients.map(c => {
         const fin = getClientFinancials(c.id);
@@ -347,96 +358,135 @@ export function Clients({ currentUser,
           c.typeTier || 'Entreprise',
           c.telephone,
           c.ville || '-',
-          `${fin.totalFacture.toLocaleString('fr-FR')} DT`,
-          `${fin.soldeDu.toLocaleString('fr-FR')} DT`,
+          `${fin.totalFacture.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
+          `${fin.soldeDu.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
           c.statut || 'Actif'
         ];
       }),
       theme: 'grid',
-      headStyles: { fillColor: [5, 150, 105], textColor: 255, fontStyle: 'bold' },
+      headStyles: { fillColor: [180, 20, 30], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
       styles: { fontSize: 8 },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 20 },
+        1: { cellWidth: 48 },
+        2: { cellWidth: 22 },
+        3: { halign: 'center', cellWidth: 24 },
+        4: { cellWidth: 18 },
+        5: { halign: 'right', cellWidth: 22 },
+        6: { halign: 'right', cellWidth: 22 },
+        7: { halign: 'center', cellWidth: 16 }
+      },
       foot: [[
         'TOTAL CONSOLIDÉ', '', '', '', '',
-        `${kpis.totalCA.toLocaleString('fr-FR')} DT`,
-        `${kpis.totalEncours.toLocaleString('fr-FR')} DT`,
+        `${kpis.totalCA.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
+        `${kpis.totalEncours.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
         ''
       ]],
       footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' }
     });
+
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, 285, 196, 285);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`ERP Management DISTRIBUTION ERP • Répertoire Général des Tiers Clients`, 14, 290);
+      doc.text(`Page ${i} / ${totalPages}`, 196, 290, { align: 'right' });
+    }
 
     doc.save(`Repertoire_Clients_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   // Export Statement of Account (Relevé Individuel Client)
   const handleExportStatementPdf = (client: Client) => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const fin = getClientFinancials(client.id);
 
     // Header styling
     doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, 210, 36, 'F');
+    doc.rect(0, 0, 210, 32, 'F');
+    doc.setFillColor(225, 29, 72);
+    doc.rect(0, 32, 210, 1.5, 'F');
     
-    doc.setFontSize(18);
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text("RELEVÉ DE COMPTE & SITUATION CLIENT", 14, 18);
+    doc.text("RELEVÉ DE COMPTE & SITUATION CLIENT", 14, 13);
     
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(203, 213, 225);
-    doc.text(`Document Comptable Officiel • Date d'édition : ${new Date().toLocaleDateString('fr-FR')}`, 14, 26);
-    doc.text(`Projet rattaché : ${projets.find(p => p.id === client.projetId)?.nom || 'Projet Principal'}`, 14, 31);
+    doc.text(`Document Comptable Officiel • Date d'édition : ${new Date().toLocaleDateString('fr-FR')}`, 14, 21);
+    doc.text(`Projet rattaché : ${projets.find(p => p.id === client.projetId)?.nom || 'Projet Principal'}`, 14, 26);
 
     // Client Info Box (Left) & Account Balance (Right)
     doc.setDrawColor(226, 232, 240);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(14, 42, 100, 42, 2, 2, 'FD');
+    doc.roundedRect(14, 38, 100, 42, 2.5, 2.5, 'FD');
     
-    doc.setFontSize(11);
+    doc.setFontSize(10.5);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(client.nom, 18, 50);
-    doc.setFontSize(8.5);
+    doc.text(client.nom, 18, 46);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text(`Code Client : ${client.code || 'CLI-' + client.id}`, 18, 56);
-    doc.text(`Matricule Fiscal / CIN : ${client.matriculeFiscal || 'Non renseigné'}`, 18, 62);
-    doc.text(`Adresse : ${client.adresse || '-'}, ${client.ville || ''}`, 18, 68);
-    doc.text(`Contact : ${client.contactNom || client.email} (${client.telephone})`, 18, 74);
+    doc.text(`Code Client : ${client.code || 'CLI-' + client.id}`, 18, 52);
+    doc.text(`Matricule Fiscal / CIN : ${client.matriculeFiscal || 'Non renseigné'}`, 18, 58);
+    doc.text(`Adresse : ${client.adresse || '-'}, ${client.ville || ''}`, 18, 64);
+    doc.text(`Contact : ${client.contactNom || client.email} (${client.telephone})`, 18, 70);
 
     // Financial Recap Box (Right)
-    doc.roundedRect(120, 42, 76, 42, 2, 2, 'FD');
-    doc.setFontSize(10);
+    doc.roundedRect(120, 38, 76, 42, 2.5, 2.5, 'FD');
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text("Synthèse des Engagements", 124, 50);
-    doc.setFontSize(8.5);
+    doc.text("Synthèse des Engagements", 124, 46);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text(`Total Facturé TTC :`, 124, 58);
-    doc.text(`${fin.totalFacture.toLocaleString('fr-FR')} DT`, 190, 58, { align: 'right' });
-    doc.text(`Total Règlements Reçus :`, 124, 64);
-    doc.text(`${fin.totalPaye.toLocaleString('fr-FR')} DT`, 190, 64, { align: 'right' });
+    doc.text(`Total Facturé TTC :`, 124, 54);
+    doc.text(`${fin.totalFacture.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 190, 54, { align: 'right' });
+    doc.text(`Total Règlements Reçus :`, 124, 60);
+    doc.text(`${fin.totalPaye.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 190, 60, { align: 'right' });
     
-    doc.setFontSize(10);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(fin.soldeDu > 0 ? 185 : 5, fin.soldeDu > 0 ? 28 : 150, fin.soldeDu > 0 ? 28 : 105);
-    doc.text(`SOLDE NET RESTANT DÛ :`, 124, 76);
-    doc.text(`${fin.soldeDu.toLocaleString('fr-FR')} DT`, 190, 76, { align: 'right' });
+    doc.text(`SOLDE NET RESTANT DÛ :`, 124, 72);
+    doc.text(`${fin.soldeDu.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 190, 72, { align: 'right' });
 
     // Invoices list table
     autoTable(doc, {
-      startY: 92,
+      startY: 86,
       head: [['N° Pièce / Facture', 'Date', 'Statut', 'Montant HT', 'Montant TTC', 'Reste à Payer']],
       body: fin.clientVentes.length > 0 ? fin.clientVentes.map(v => [
         v.numero,
         new Date(v.date).toLocaleDateString('fr-FR'),
         v.statut,
-        `${v.montantHT.toLocaleString('fr-FR')} DT`,
-        `${v.montantTTC.toLocaleString('fr-FR')} DT`,
-        v.statut === 'Payée' ? '0.00 DT' : `${v.montantTTC.toLocaleString('fr-FR')} DT`
+        `${v.montantHT.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
+        `${v.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
+        v.statut === 'Payée' ? '0,000 DT' : `${v.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`
       ]) : [['Aucune transaction enregistrée', '-', '-', '-', '-', '-']],
       theme: 'striped',
-      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [180, 20, 30], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+      styles: { fontSize: 8 },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 32 },
+        1: { halign: 'center', cellWidth: 26 },
+        2: { halign: 'center', cellWidth: 24 },
+        3: { halign: 'right', cellWidth: 32 },
+        4: { halign: 'right', cellWidth: 34 },
+        5: { halign: 'right', cellWidth: 34 }
+      },
       foot: [[
         'TOTAL GÉNÉRAL', '', '',
-        `${fin.clientVentes.reduce((a, v) => a + v.montantHT, 0).toLocaleString('fr-FR')} DT`,
-        `${fin.totalFacture.toLocaleString('fr-FR')} DT`,
-        `${fin.soldeDu.toLocaleString('fr-FR')} DT`
+        `${fin.clientVentes.reduce((a, v) => a + v.montantHT, 0).toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
+        `${fin.totalFacture.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`,
+        `${fin.soldeDu.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`
       ]],
       footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' }
     });
@@ -444,13 +494,25 @@ export function Clients({ currentUser,
     // Payment terms & Stamp notes
     // @ts-ignore
     const finalY = (doc as any).lastAutoTable.finalY + 12;
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     doc.text(`Conditions de règlement accordées : ${client.delaiPaiement || 30} jours net • Plafond de crédit : ${(client.plafondCredit || 0).toLocaleString('fr-FR')} DT`, 14, finalY);
     if (client.banque && client.rib) {
       doc.text(`Domiciliation bancaire : ${client.banque} - RIB : ${client.rib}`, 14, finalY + 5);
     }
-    doc.text("Document certifié conforme pour valoir ce que de droit.", 14, finalY + 12);
+    doc.text("Document certifié conforme pour valoir ce que de droit.", 14, finalY + 10);
+
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, 285, 196, 285);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`ERP Management DISTRIBUTION ERP • Relevé d'Engagements Client - ${client.nom}`, 14, 290);
+      doc.text(`Page ${i} / ${totalPages}`, 196, 290, { align: 'right' });
+    }
 
     doc.save(`Releve_Compte_${client.nom.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
   };
@@ -720,20 +782,27 @@ export function Clients({ currentUser,
             <span>Export CSV</span>
           </button>
 
-          <button
-            onClick={handleOpenCreateModal}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[20px]">person_add</span>
-            <span>Nouveau Client</span>
-          </button>
+          {currentUser.role === 'comptable' ? (
+            <div className="flex items-center gap-2 px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl text-xs font-bold">
+              <span className="material-symbols-outlined text-[18px] text-indigo-600">verified</span>
+              <span>Mode Consultation & Contrôle Financier</span>
+            </div>
+          ) : (
+            <button
+              onClick={handleOpenCreateModal}
+              className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[20px]">person_add</span>
+              <span>Nouveau Client</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Portefeuille */}
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4.5 shadow-xs flex flex-col justify-between">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4.5 shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start">
             <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Portefeuille Clients</span>
             <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
@@ -741,7 +810,7 @@ export function Clients({ currentUser,
             </div>
           </div>
           <div className="mt-3">
-            <p className="text-2xl font-black text-on-surface">{kpis.totalClients}</p>
+            <p className="text-2xl font-bold text-on-surface">{kpis.totalClients}</p>
             <div className="flex items-center gap-2 text-xs text-on-surface-variant mt-1">
               <span className="font-medium text-emerald-600">{kpis.countEntreprises} B2B</span>
               <span>•</span>
@@ -751,7 +820,7 @@ export function Clients({ currentUser,
         </div>
 
         {/* Card 2: CA Facturé */}
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4.5 shadow-xs flex flex-col justify-between">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4.5 shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start">
             <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">CA Facturé Cumulé</span>
             <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
@@ -759,13 +828,13 @@ export function Clients({ currentUser,
             </div>
           </div>
           <div className="mt-3">
-            <p className="text-2xl font-black text-on-surface">{kpis.totalCA.toLocaleString('fr-FR')} <span className="text-xs font-medium text-on-surface-variant">DT</span></p>
+            <p className="text-2xl font-bold text-on-surface">{kpis.totalCA.toLocaleString('fr-FR')} <span className="text-xs font-medium text-on-surface-variant">DT</span></p>
             <p className="text-xs text-emerald-600 font-medium mt-1">Total TTC facturé au portefeuille</p>
           </div>
         </div>
 
         {/* Card 3: Encours & Créances */}
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4.5 shadow-xs flex flex-col justify-between">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4.5 shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start">
             <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Créances & En-cours</span>
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${kpis.totalEncours > 0 ? 'bg-amber-500/10 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
@@ -773,7 +842,7 @@ export function Clients({ currentUser,
             </div>
           </div>
           <div className="mt-3">
-            <p className={`text-2xl font-black ${kpis.totalEncours > 0 ? 'text-amber-600' : 'text-on-surface'}`}>
+            <p className={`text-2xl font-bold ${kpis.totalEncours > 0 ? 'text-amber-600' : 'text-on-surface'}`}>
               {kpis.totalEncours.toLocaleString('fr-FR')} <span className="text-xs font-medium text-on-surface-variant">DT</span>
             </p>
             <div className="flex items-center justify-between text-xs text-on-surface-variant mt-1">
@@ -784,7 +853,7 @@ export function Clients({ currentUser,
         </div>
 
         {/* Card 4: Risques & Alertes */}
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4.5 shadow-xs flex flex-col justify-between">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4.5 shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-start">
             <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Gestion des Risques</span>
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${kpis.countAlertes > 0 ? 'bg-error/10 text-error' : 'bg-emerald-500/10 text-emerald-600'}`}>
@@ -793,7 +862,7 @@ export function Clients({ currentUser,
           </div>
           <div className="mt-3">
             <div className="flex items-center gap-2">
-              <p className="text-2xl font-black text-on-surface">{kpis.countAlertes === 0 ? '0' : kpis.countAlertes}</p>
+              <p className="text-2xl font-bold text-on-surface">{kpis.countAlertes === 0 ? '0' : kpis.countAlertes}</p>
               <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${kpis.countAlertes === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                 {kpis.countAlertes === 0 ? 'Excellente Solvabilité' : 'Tiers à surveiller'}
               </span>
@@ -804,7 +873,7 @@ export function Clients({ currentUser,
       </div>
 
       {/* Filter Toolbar */}
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4 shadow-xs space-y-3">
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 shadow-xs space-y-3">
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           {/* Search */}
           <div className="relative flex-1">
@@ -957,7 +1026,7 @@ export function Clients({ currentUser,
             return (
               <div 
                 key={client.id}
-                className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 hover:shadow-md transition-all flex flex-col justify-between group relative overflow-hidden"
+                className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 hover:shadow-md transition-all flex flex-col justify-between group relative overflow-hidden"
               >
                 {/* Top card accent line */}
                 <div className={`absolute top-0 left-0 right-0 h-1.5 ${
@@ -1039,7 +1108,7 @@ export function Clients({ currentUser,
 
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-on-surface-variant font-medium">Solde Restant Dû</span>
-                      <span className={`font-black text-sm ${fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      <span className={`font-bold text-sm ${fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                         {fin.soldeDu.toLocaleString('fr-FR')} DT
                       </span>
                     </div>
@@ -1090,30 +1159,36 @@ export function Clients({ currentUser,
 
                 {/* Card Footer Actions */}
                 <div className="pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-1.5 flex-wrap">
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleOpenPaymentModal(client)}
-                      className="py-1 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 border border-emerald-200"
-                      title="Encaisser un paiement pour ce client"
-                    >
-                      <span className="material-symbols-outlined text-[15px]">payments</span>
-                      Paiement
-                    </button>
+                  {currentUser.role !== 'comptable' ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenPaymentModal(client)}
+                        className="py-1 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 border border-emerald-200 cursor-pointer"
+                        title="Encaisser un paiement pour ce client"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">payments</span>
+                        Paiement
+                      </button>
 
-                    <button
-                      onClick={() => handleOpenCreditModal(client)}
-                      className="py-1 px-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 border border-purple-200"
-                      title="Échéancier & Convention de Crédit"
-                    >
-                      <span className="material-symbols-outlined text-[15px]">calendar_month</span>
-                      Crédit
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => handleOpenCreditModal(client)}
+                        className="py-1 px-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 border border-purple-200 cursor-pointer"
+                        title="Échéancier & Convention de Crédit"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">calendar_month</span>
+                        Crédit
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                      Audit Client
+                    </span>
+                  )}
 
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setSelectedClientDetail(client)}
-                      className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                      className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
                       title="Voir la fiche complète & relevé"
                     >
                       <span className="material-symbols-outlined text-[18px]">visibility</span>
@@ -1121,27 +1196,31 @@ export function Clients({ currentUser,
 
                     <button
                       onClick={() => handleExportStatementPdf(client)}
-                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                       title="Télécharger le relevé de compte en PDF"
                     >
                       <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
                     </button>
 
-                    <button
-                      onClick={() => handleOpenEditModal(client)}
-                      className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-lg transition-colors"
-                      title="Modifier ce client"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">edit</span>
-                    </button>
+                    {currentUser.role !== 'comptable' && (
+                      <>
+                        <button
+                          onClick={() => handleOpenEditModal(client)}
+                          className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
+                          title="Modifier ce client"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">edit</span>
+                        </button>
 
-                    <button
-                      onClick={() => setDeleteConfirmationId(client.id)}
-                      className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors"
-                      title="Supprimer ce client"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">delete</span>
-                    </button>
+                        <button
+                          onClick={() => setDeleteConfirmationId(client.id)}
+                          className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors cursor-pointer"
+                          title="Supprimer ce client"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">delete</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1150,7 +1229,7 @@ export function Clients({ currentUser,
         </div>
       ) : (
         /* TABLE VIEW */
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl overflow-hidden shadow-xs">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs whitespace-nowrap">
               <thead className="bg-surface-container-low border-b border-outline-variant text-on-surface-variant uppercase font-bold tracking-wider">
@@ -1213,7 +1292,7 @@ export function Clients({ currentUser,
                       </td>
 
                       {/* Solde Dû */}
-                      <td className={`px-4 py-3.5 text-right font-black ${fin.soldeDu > 0 ? (isExceeded ? 'text-error' : 'text-amber-600') : 'text-emerald-600'}`}>
+                      <td className={`px-4 py-3.5 text-right font-bold ${fin.soldeDu > 0 ? (isExceeded ? 'text-error' : 'text-amber-600') : 'text-emerald-600'}`}>
                         {fin.soldeDu.toLocaleString('fr-FR')} DT
                       </td>
 
@@ -1247,48 +1326,56 @@ export function Clients({ currentUser,
                       {/* Actions */}
                       <td className="px-4 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleOpenPaymentModal(client)}
-                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg border border-emerald-200"
-                            title="Bouton Paiement (Encaisser)"
-                          >
-                            <span className="material-symbols-outlined text-[17px]">payments</span>
-                          </button>
-                          <button
-                            onClick={() => handleOpenCreditModal(client)}
-                            className="p-1 text-purple-600 hover:bg-purple-50 rounded-lg border border-purple-200"
-                            title="Bouton Crédit (Convention & Échéancier)"
-                          >
-                            <span className="material-symbols-outlined text-[17px]">calendar_month</span>
-                          </button>
+                          {currentUser.role !== 'comptable' && (
+                            <>
+                              <button
+                                onClick={() => handleOpenPaymentModal(client)}
+                                className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg border border-emerald-200 cursor-pointer"
+                                title="Bouton Paiement (Encaisser)"
+                              >
+                                <span className="material-symbols-outlined text-[17px]">payments</span>
+                              </button>
+                              <button
+                                onClick={() => handleOpenCreditModal(client)}
+                                className="p-1 text-purple-600 hover:bg-purple-50 rounded-lg border border-purple-200 cursor-pointer"
+                                title="Bouton Crédit (Convention & Échéancier)"
+                              >
+                                <span className="material-symbols-outlined text-[17px]">calendar_month</span>
+                              </button>
+                            </>
+                          )}
                           <button
                             onClick={() => setSelectedClientDetail(client)}
-                            className="p-1.5 text-primary hover:bg-primary/10 rounded-lg"
+                            className="p-1.5 text-primary hover:bg-primary/10 rounded-lg cursor-pointer"
                             title="Voir la fiche détaillée"
                           >
                             <span className="material-symbols-outlined text-[18px]">visibility</span>
                           </button>
                           <button
                             onClick={() => handleExportStatementPdf(client)}
-                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer"
                             title="Exporter relevé PDF"
                           >
                             <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
                           </button>
-                          <button
-                            onClick={() => handleOpenEditModal(client)}
-                            className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-lg"
-                            title="Modifier"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">edit</span>
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirmationId(client.id)}
-                            className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg"
-                            title="Supprimer"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">delete</span>
-                          </button>
+                          {currentUser.role !== 'comptable' && (
+                            <>
+                              <button
+                                onClick={() => handleOpenEditModal(client)}
+                                className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-lg cursor-pointer"
+                                title="Modifier"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">edit</span>
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmationId(client.id)}
+                                className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg cursor-pointer"
+                                title="Supprimer"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">delete</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1302,8 +1389,8 @@ export function Clients({ currentUser,
 
       {/* Empty State */}
       {filteredClients.length === 0 && (
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-12 text-center shadow-xs">
-          <div className="w-16 h-16 rounded-2xl bg-surface-container mx-auto flex items-center justify-center text-on-surface-variant mb-4">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-12 text-center shadow-xs">
+          <div className="w-16 h-16 rounded-xl bg-surface-container mx-auto flex items-center justify-center text-on-surface-variant mb-4">
             <span className="material-symbols-outlined text-[36px]">person_off</span>
           </div>
           <h3 className="font-bold text-lg text-on-surface">Aucun client trouvé</h3>
@@ -1330,7 +1417,7 @@ export function Clients({ currentUser,
       {/* ========================================================================= */}
       {isFormModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-hidden">
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-[96vw] max-w-7xl h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 my-2">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-[96vw] max-w-7xl h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 my-2">
             
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low shrink-0">
@@ -1400,7 +1487,7 @@ export function Clients({ currentUser,
                   {/* Left Column */}
                   <div className="space-y-6">
                     {/* Section 1: Identité */}
-                    <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 shadow-sm">
+                    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
                       <h4 className="text-sm font-extrabold text-primary uppercase tracking-wider mb-5 flex items-center gap-2 border-b border-outline-variant/50 pb-3">
                         <span className="material-symbols-outlined text-[20px]">badge</span>
                         1. Identité & Catégorisation
@@ -1463,7 +1550,7 @@ export function Clients({ currentUser,
                     </div>
 
                     {/* Section 2: Conditions Financières */}
-                    <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 shadow-sm">
+                    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
                       <h4 className="text-sm font-extrabold text-primary uppercase tracking-wider mb-5 flex items-center gap-2 border-b border-outline-variant/50 pb-3">
                         <span className="material-symbols-outlined text-[20px]">account_balance</span>
                         2. Conditions Financières & Banque
@@ -1520,7 +1607,7 @@ export function Clients({ currentUser,
                   {/* Right Column */}
                   <div className="space-y-6">
                     {/* Section 3: Coordonnées & Contact */}
-                    <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 shadow-sm">
+                    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
                       <h4 className="text-sm font-extrabold text-primary uppercase tracking-wider mb-5 flex items-center gap-2 border-b border-outline-variant/50 pb-3">
                         <span className="material-symbols-outlined text-[20px]">contact_mail</span>
                         3. Coordonnées & Contact Principal
@@ -1607,7 +1694,7 @@ export function Clients({ currentUser,
                     </div>
 
                     {/* Section 4: Notes */}
-                    <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 shadow-sm">
+                    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
                       <h4 className="text-sm font-extrabold text-primary uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-outline-variant/50 pb-3">
                         <span className="material-symbols-outlined text-[20px]">note_alt</span>
                         4. Observations & Notes Spécifiques
@@ -1660,11 +1747,11 @@ export function Clients({ currentUser,
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-            <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
+            <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
               {/* Drawer Header */}
               <div className="p-6 border-b border-outline-variant bg-slate-900 text-white flex justify-between items-start">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl font-black text-emerald-400">
+                  <div className="w-14 h-14 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl font-bold text-emerald-400">
                     {client.nom.charAt(0)}
                   </div>
                   <div>
@@ -1703,23 +1790,23 @@ export function Clients({ currentUser,
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="bg-surface-container-low border border-outline-variant/60 rounded-xl p-4">
                     <span className="text-xs font-semibold text-on-surface-variant">Chiffre d'Affaires Facturé</span>
-                    <p className="text-xl font-black text-on-surface mt-1">{fin.totalFacture.toLocaleString('fr-FR')} DT</p>
+                    <p className="text-xl font-bold text-on-surface mt-1">{fin.totalFacture.toLocaleString('fr-FR')} DT</p>
                     <span className="text-[11px] text-on-surface-variant">{fin.facturesCount} factures émises</span>
                   </div>
 
                   <div className="bg-surface-container-low border border-outline-variant/60 rounded-xl p-4">
                     <span className="text-xs font-semibold text-on-surface-variant">Total Règlements Reçus</span>
-                    <p className="text-xl font-black text-emerald-600 mt-1">{fin.totalPaye.toLocaleString('fr-FR')} DT</p>
+                    <p className="text-xl font-bold text-emerald-600 mt-1">{fin.totalPaye.toLocaleString('fr-FR')} DT</p>
                     <span className="text-[11px] text-emerald-600 font-medium">Encaissé avec succès</span>
                   </div>
 
                   <div className={`border rounded-xl p-4 ${fin.soldeDu > 0 ? 'bg-amber-500/5 border-amber-500/30' : 'bg-surface-container-low border-outline-variant/60'}`}>
                     <span className="text-xs font-semibold text-on-surface-variant">Solde Restant Dû</span>
-                    <p className={`text-xl font-black mt-1 ${fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    <p className={`text-xl font-bold mt-1 ${fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                       {fin.soldeDu.toLocaleString('fr-FR')} DT
                     </p>
                     <span className={`text-[11px] font-bold ${isExceeded ? 'text-error' : 'text-on-surface-variant'}`}>
-                      {isExceeded ? '⚠️ Dépassement de plafond' : `${creditPct}% du plafond utilisé`}
+                      {isExceeded ? 'Dépassement de plafond' : `${creditPct}% du plafond utilisé`}
                     </span>
                   </div>
                 </div>
@@ -1782,7 +1869,7 @@ export function Clients({ currentUser,
                             </td>
                             <td className="px-3.5 py-2.5 text-right font-medium text-on-surface">{v.montantHT.toLocaleString('fr-FR')} DT</td>
                             <td className="px-3.5 py-2.5 text-right font-bold text-on-surface">{v.montantTTC.toLocaleString('fr-FR')} DT</td>
-                            <td className={`px-3.5 py-2.5 text-right font-black ${v.statut === 'Payée' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            <td className={`px-3.5 py-2.5 text-right font-bold ${v.statut === 'Payée' ? 'text-emerald-600' : 'text-amber-600'}`}>
                               {v.statut === 'Payée' ? '0 DT' : `${v.montantTTC.toLocaleString('fr-FR')} DT`}
                             </td>
                           </tr>
@@ -1871,7 +1958,7 @@ export function Clients({ currentUser,
       {/* ========================================================================= */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-xl shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
             <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-emerald-700 text-white">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
@@ -2095,7 +2182,7 @@ export function Clients({ currentUser,
       {/* ========================================================================= */}
       {isCreditModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
             <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-purple-700 text-white">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
@@ -2236,7 +2323,7 @@ export function Clients({ currentUser,
                           <tr key={ech.numero} className="hover:bg-surface-container-low/40">
                             <td className="px-3 py-2 font-bold text-purple-700">Versement N° {ech.numero}</td>
                             <td className="px-3 py-2 text-on-surface">{new Date(ech.date).toLocaleDateString('fr-FR')}</td>
-                            <td className="px-3 py-2 text-right font-black text-on-surface">{ech.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
+                            <td className="px-3 py-2 text-right font-bold text-on-surface">{ech.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2273,8 +2360,8 @@ export function Clients({ currentUser,
       {/* ========================================================================= */}
       {deleteConfirmationId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-error/10 text-error flex items-center justify-center mx-auto mb-4">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 text-center">
+            <div className="w-12 h-12 rounded-xl bg-error/10 text-error flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-[28px]">delete_forever</span>
             </div>
             <h3 className="font-bold text-lg text-on-surface">Confirmer la suppression</h3>

@@ -63,7 +63,7 @@ export function AdminStatistics({ projets }: AdminStatisticsProps) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Graphique Courbes: Ventes vs Achats Annuel */}
-        <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant shadow-sm flex flex-col">
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant shadow-sm flex flex-col">
           <h3 className="font-title-lg text-title-lg text-on-surface mb-1">Tendances Financières Mensuelles</h3>
           <p className="font-body-sm text-on-surface-variant mb-6">Comparaison des revenus et dépenses cumulés sur 12 mois.</p>
           
@@ -99,7 +99,7 @@ export function AdminStatistics({ projets }: AdminStatisticsProps) {
         </div>
 
         {/* Graphique Barres: CA par Projet */}
-        <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant shadow-sm flex flex-col">
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant shadow-sm flex flex-col">
           <h3 className="font-title-lg text-title-lg text-on-surface mb-1">Chiffre d'Affaires par Projet</h3>
           <p className="font-body-sm text-on-surface-variant mb-6">Répartition du CA facturé et payé par boutique.</p>
           

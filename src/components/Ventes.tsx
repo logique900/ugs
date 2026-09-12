@@ -1,7 +1,8 @@
 import { getArticleStock, hasLowStock, isOutOfStock } from '../utils/stockUtils';
 import React, { useState, useMemo } from 'react';
 import { Utilisateur, Vente, Client, Article, Projet, LigneVente, Reglement, MouvementStock } from '../types';
-import { generateInvoicePdf, generateReceiptPdf, generateCreditAgreementPdf } from '../utils/pdfExportEngine';
+import { generateInvoicePdf, generateReceiptPdf, generateCreditAgreementPdf, generatePosTicketPdf } from '../utils/pdfExportEngine';
+import { FacturePrintModal } from './FacturePrintModal';
 
 interface VentesProps {
   currentUser: Utilisateur;
@@ -17,6 +18,7 @@ interface VentesProps {
   onClientsChange?: (clients: Client[]) => void;
   onArticlesChange?: (articles: Article[]) => void;
   onMouvementsChange?: (mouvements: MouvementStock[]) => void;
+  onNavigateToCaisse?: () => void;
 }
 
 export function Ventes({
@@ -32,11 +34,15 @@ export function Ventes({
   onReglementsChange,
   onClientsChange,
   onArticlesChange,
-  onMouvementsChange
+  onMouvementsChange,
+  onNavigateToCaisse
 }: VentesProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [clientFilter, setClientFilter] = useState('all');
+
+  // Modal State for Viewing POS Basket Details
+  const [viewingCartSale, setViewingCartSale] = useState<Vente | null>(null);
 
   // Modal State: Create/Edit Invoice or Quote
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -75,6 +81,7 @@ export function Ventes({
   const [payBank, setPayBank] = useState('BIAT');
   const [payRef, setPayRef] = useState('');
   const [autoPrintReceipt, setAutoPrintReceipt] = useState(true);
+  const [showFacturePrintModal, setShowFacturePrintModal] = useState<Vente | null>(null);
 
   // Modal State: Credit & Installment Schedule (Bouton de Crédit)
   const [creditModalSale, setCreditModalSale] = useState<Vente | null>(null);
@@ -84,6 +91,11 @@ export function Ventes({
   const [creditFirstDate, setCreditFirstDate] = useState<string>(
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
+
+  // Modal State: Relance Devis Client
+  const [relanceModalSale, setRelanceModalSale] = useState<Vente | null>(null);
+  const [relanceMessage, setRelanceMessage] = useState<string>('');
+  const [toastAlert, setToastAlert] = useState<string | null>(null);
 
   const isGlobal = selectedProjectId === 'all';
   const currentProject = isGlobal ? null : projets.find(p => p.id === selectedProjectId);
@@ -325,7 +337,7 @@ export function Ventes({
             return;
           }
           if (line.quantite > availStock) {
-            alert(`⚠️ STOCK INSUFFISANT : La quantité demandée (${line.quantite}) dépasse le stock disponible (${availStock}) pour "${art.designation}".`);
+            alert(`STOCK INSUFFISANT : La quantité demandée (${line.quantite}) dépasse le stock disponible (${availStock}) pour "${art.designation}".`);
             return;
           }
         }
@@ -470,13 +482,30 @@ export function Ventes({
     setIsCreateModalOpen(false);
   };
 
-  // Convert Quote to Commande or Invoice
-  const handleConvertQuote = (quote: Vente, target: 'Commande' | 'Facture') => {
+  // Convert Quote to Commande, Invoice, or Negotiation Status
+  const handleConvertQuote = (quote: Vente, target: 'Commande' | 'Facture' | 'En Négociation' | 'Devis') => {
+    const today = new Date().toISOString().split('T')[0];
+
+    if (target === 'En Négociation' || target === 'Devis') {
+      const updated = ventes.map(v => {
+        if (v.id === quote.id) {
+          return {
+            ...v,
+            statut: target as any
+          };
+        }
+        return v;
+      });
+      onVentesChange(updated);
+      setToastAlert(`Status du devis ${quote.numero} mis à jour : "${target}"`);
+      setTimeout(() => setToastAlert(null), 3000);
+      return;
+    }
+
     const year = new Date().getFullYear();
     const prefix = target === 'Facture' ? 'FAC' : 'CMD';
     const count = ventes.filter(v => v.statut === target || (target === 'Facture' && v.statut === 'Payée')).length + 1;
     const newNumero = `${prefix}-${year}-${count.toString().padStart(4, '0')}`;
-    const today = new Date().toISOString().split('T')[0];
 
     const updated = ventes.map(v => {
       if (v.id === quote.id) {
@@ -490,6 +519,8 @@ export function Ventes({
       return v;
     });
     onVentesChange(updated);
+    setToastAlert(`Devis ${quote.numero} converti avec succès en ${target === 'Facture' ? 'Facture' : 'Commande'} N° ${newNumero}`);
+    setTimeout(() => setToastAlert(null), 4000);
 
     // Update article stock & register stock movements ONLY if going to Facture
     if (target === 'Facture' && quote.lignes && quote.lignes.length > 0) {
@@ -681,6 +712,78 @@ export function Ventes({
     setCreditModalSale(null);
   };
 
+  // Dupliquer un Devis en 1 clic
+  const handleDuplicateQuote = (quote: Vente) => {
+    setEditingSaleId(null);
+    setModalMode('Devis');
+    setEditStatut('Devis');
+    setNewClientId(quote.clientId);
+    setNewDate(new Date().toISOString().split('T')[0]);
+    const due = new Date();
+    due.setDate(due.getDate() + 30);
+    setNewDueDate(due.toISOString().split('T')[0]);
+    setPaymentOption('Credit');
+    setImmediatePaidAmount(0);
+    setNewNotes(`Devis dupliqué depuis ${quote.numero}. ${quote.notes || ''}`);
+    setNewLines((quote.lignes || []).map(l => ({ ...l, id: `l-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}` })));
+    setIsCreateModalOpen(true);
+    setToastAlert(`Devis ${quote.numero} dupliqué ! Modifiez-le puis enregistrez.`);
+    setTimeout(() => setToastAlert(null), 4000);
+  };
+
+  // Modal de Relance Client Devis
+  const handleOpenRelance = (quote: Vente) => {
+    setRelanceModalSale(quote);
+    const client = scopedClients.find(c => c.id === quote.clientId);
+    const msg = `Bonjour ${client?.nom || quote.clientNom || 'Cher client'},\n\nNous revenons vers vous concernant notre devis N° ${quote.numero} émis le ${new Date(quote.date).toLocaleDateString('fr-FR')} pour un montant de ${quote.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT TTC.\n\nCe devis reste valable jusqu'au ${quote.dateEcheance ? new Date(quote.dateEcheance).toLocaleDateString('fr-FR') : 'prochainement'}.\n\nRestant à votre entière disposition pour tout complément d'information ou ajustement commercial.\n\nCordialement,\n${currentUser?.nom || 'L\'Équipe Commerciale ERP Management'}`;
+    setRelanceMessage(msg);
+  };
+
+  // Action de Relance Client
+  const handleSendRelance = (channel: 'email' | 'whatsapp') => {
+    if (!relanceModalSale) return;
+    const client = scopedClients.find(c => c.id === relanceModalSale.clientId);
+    if (channel === 'email' && client?.email) {
+      window.open(`mailto:${client.email}?subject=${encodeURIComponent(`Relance Devis N° ${relanceModalSale.numero}`)}&body=${encodeURIComponent(relanceMessage)}`);
+    } else if (channel === 'whatsapp' && client?.telephone) {
+      const cleanPhone = client.telephone.replace(/\s+/g, '');
+      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(relanceMessage)}`);
+    }
+    setToastAlert(`Relance pour le devis ${relanceModalSale.numero} transmise avec succès !`);
+    setTimeout(() => setToastAlert(null), 4000);
+    setRelanceModalSale(null);
+  };
+
+  // Appliquer une remise globale sur toutes les lignes du Devis
+  const applyGlobalDiscount = (discountPercent: number) => {
+    const updated = newLines.map(line => {
+      const pu = line.prixUnitaireHT || 0;
+      const qte = line.quantite || 1;
+      const tva = line.tauxTVA || 19;
+      const totalHT = qte * pu * (1 - discountPercent / 100);
+      const totalTTC = totalHT * (1 + tva / 100);
+      return {
+        ...line,
+        remisePourcentage: discountPercent,
+        totalHT,
+        totalTTC
+      };
+    });
+    setNewLines(updated);
+  };
+
+  // Calcul de la marge commerciale théorique sur Devis
+  const estimatedCostHT = useMemo(() => {
+    return newLines.reduce((acc, line) => {
+      const art = articles.find(a => a.id === line.articleId);
+      const unitCost = art?.prixAchatHT || (line.prixUnitaireHT * 0.7);
+      return acc + (unitCost * (line.quantite || 1));
+    }, 0);
+  }, [newLines, articles]);
+
+  const marginDT = calculatedTotalHT - estimatedCostHT;
+  const marginPercent = calculatedTotalHT > 0 ? (marginDT / calculatedTotalHT) * 100 : 0;
+
   const getStatusBadge = (statut: string) => {
     switch (statut) {
       case 'Payée':
@@ -712,21 +815,49 @@ export function Ventes({
 
   return (
     <div className="space-y-6">
+      {/* Toast Alert Notification Banner */}
+      {toastAlert && (
+        <div className="p-4 bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-lg flex items-center justify-between animate-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[20px]">check_circle</span>
+            <span>{toastAlert}</span>
+          </div>
+          <button onClick={() => setToastAlert(null)} className="hover:opacity-80 cursor-pointer">
+            <span className="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+      )}
+
       {/* Top Header & Fast Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200/80 shadow-sm">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+            <div className={`w-10 h-10 rounded-xl ${selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'} flex items-center justify-center font-bold`}>
               <span className="material-symbols-outlined text-[22px]">
-                {selectedProjectId === '2' ? 'receipt_long' : 'assignment'}
+                {selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'shopping_basket' : 'assignment'}
               </span>
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-                {selectedProjectId === '2' ? 'Journal de Caisse' : selectedProjectId === '1' ? 'Bons & Devis' : 'Gestion des Ventes'}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  {selectedProjectId !== '1' || currentUser.role === 'caissier' 
+                    ? 'Historique des Ventes (Tickets de Caisse)' 
+                    : 'Factures & Devis'}
+                </h1>
+                {selectedProjectId !== '1' || currentUser.role === 'caissier' ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                    Boutique • Ventes Panier
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                    Dépôt Central • B2B
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                {selectedProjectId === '2' ? 'Historique des tickets et encaissements' : 'Facturation, suivi des devis et encaissements'}
+                {selectedProjectId !== '1' || currentUser.role === 'caissier'
+                  ? 'Toutes les ventes de la boutique sont enregistrées au comptoir via le panier du terminal de caisse.'
+                  : 'Gestion des devis, bons de commande et factures de vente du siège.'}
               </p>
             </div>
           </div>
@@ -734,63 +865,203 @@ export function Ventes({
 
         {/* Action Buttons Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => handleOpenCreateModal('Devis')}
-            disabled={!isProjectActive}
-            className={`flex items-center gap-1.5 px-3.5 py-2.5 font-bold text-xs rounded-xl transition-all ${!isProjectActive ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer'}`}
-          >
-            <span className="material-symbols-outlined text-[18px]">description</span>
-            Nouveau Devis
-          </button>
+          {currentUser.role === 'comptable' ? (
+            <div className="flex items-center gap-2 px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl text-xs font-bold">
+              <span className="material-symbols-outlined text-[18px] text-indigo-600">verified</span>
+              <span>Mode Audit & Contrôle Financier (Lecture seule)</span>
+            </div>
+          ) : selectedProjectId !== '1' || currentUser.role === 'caissier' ? (
+            <button
+              onClick={() => {
+                if (onNavigateToCaisse) {
+                  onNavigateToCaisse();
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl bg-purple-600 hover:bg-purple-500 text-white shadow-md cursor-pointer transition-all hover:scale-102"
+            >
+              <span className="material-symbols-outlined text-[18px]">point_of_sale</span>
+              🛒 Ouvrir Panier / Encaisser (Caisse)
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => handleOpenCreateModal('Devis')}
+                disabled={!isProjectActive}
+                className={`flex items-center gap-1.5 px-3.5 py-2.5 font-bold text-xs rounded-xl transition-all ${!isProjectActive ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer'}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">description</span>
+                Nouveau Devis
+              </button>
 
-          <button
-            onClick={() => handleOpenCreateModal('Facture')}
-            disabled={!isProjectActive}
-            className={`flex items-center gap-1.5 px-3.5 py-2.5 font-bold text-xs rounded-xl transition-all ${!isProjectActive ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-md cursor-pointer'}`}
-          >
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            Nouvelle Facture
-          </button>
+              <button
+                onClick={() => handleOpenCreateModal('Facture')}
+                disabled={!isProjectActive}
+                className={`flex items-center gap-1.5 px-3.5 py-2.5 font-bold text-xs rounded-xl transition-all ${!isProjectActive ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-md cursor-pointer'}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">add</span>
+                Nouvelle Facture
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Facturé TTC</span>
-          <p className="text-2xl font-black text-slate-900 mt-2">
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            {selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'Chiffre d\'Affaires TTC' : 'Total Facturé TTC'}
+          </span>
+          <p className="text-2xl font-bold text-slate-900 mt-2">
             {totalFactureTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
           </p>
-          <span className="text-xs text-slate-500 mt-1 block">{scopedVentes.filter(v => v.statut !== 'Devis').length} factures émises</span>
+          <span className="text-xs text-slate-500 mt-1 block">
+            {scopedVentes.filter(v => v.statut !== 'Devis').length} tickets & ventes
+          </span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Encaissé (Paiements)</span>
-          <p className="text-2xl font-black text-emerald-600 mt-2">
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            {selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'Total Encaissé' : 'Total Encaissé (Paiements)'}
+          </span>
+          <p className="text-2xl font-bold text-emerald-600 mt-2">
             {totalEncaisse.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
           </p>
           <span className="text-xs text-emerald-600 font-semibold mt-1 block">Règlements perçus</span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total à Recouvrer (Crédits)</span>
-          <p className="text-2xl font-black text-rose-600 mt-2">
-            {totalRestantDu.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            {selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'Panier Moyen' : 'Total à Recouvrer (Crédits)'}
+          </span>
+          <p className={`text-2xl font-bold ${selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'text-purple-600' : 'text-rose-600'} mt-2`}>
+            {selectedProjectId !== '1' || currentUser.role === 'caissier' ? (
+              <>
+                {(scopedVentes.filter(v => v.statut !== 'Devis').length > 0 
+                  ? totalFactureTTC / scopedVentes.filter(v => v.statut !== 'Devis').length 
+                  : 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT / Vente</span>
+              </>
+            ) : (
+              <>
+                {totalRestantDu.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
+              </>
+            )}
           </p>
-          <span className="text-xs text-rose-600 font-semibold mt-1 block">En-cours & facilités accordées</span>
+          <span className={`text-xs ${selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'text-purple-600' : 'text-rose-600'} font-semibold mt-1 block`}>
+            {selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'Moyenne par passage caisse' : 'En-cours & facilités accordées'}
+          </span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Devis en Cours</span>
-          <p className="text-2xl font-black text-amber-700 mt-2">
-            {totalDevis.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            {selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'Ventes en Espèces' : 'Devis en Cours'}
+          </span>
+          <p className={`text-2xl font-bold ${selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'text-teal-600' : 'text-amber-700'} mt-2`}>
+            {selectedProjectId !== '1' || currentUser.role === 'caissier' ? (
+              <>
+                {scopedVentes
+                  .filter(v => v.modePaiement === 'Espèces' || (!v.modePaiement && v.statut === 'Payée'))
+                  .reduce((acc, v) => acc + (v.montantPaye || v.montantTTC), 0)
+                  .toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
+              </>
+            ) : (
+              <>
+                {totalDevis.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
+              </>
+            )}
           </p>
-          <span className="text-xs text-amber-700 font-semibold mt-1 block">{scopedVentes.filter(v => v.statut === 'Devis').length} devis actifs</span>
+          <span className={`text-xs ${selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'text-teal-600' : 'text-amber-700'} font-semibold mt-1 block`}>
+            {selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'Paiements directs en caisse' : `${scopedVentes.filter(v => v.statut === 'Devis').length} devis actifs`}
+          </span>
         </div>
       </div>
 
       {/* Main Table Container */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+        {/* Quick Navigation Tabs for Quotes, Orders & Invoices */}
+        <div className="flex items-center gap-1.5 p-3 bg-slate-100/70 border-b border-slate-200 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setStatusFilter('all')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              statusFilter === 'all'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            Tous les tickets / ventes ({scopedVentes.length})
+          </button>
+
+          {!(selectedProjectId !== '1' || currentUser.role === 'caissier') && (
+            <>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('Devis')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'Devis'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-amber-800 hover:bg-amber-100/80'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">description</span>
+                Devis Actifs ({scopedVentes.filter(v => v.statut === 'Devis').length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('En Négociation')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'En Négociation'
+                    ? 'bg-fuchsia-600 text-white shadow-xs'
+                    : 'text-fuchsia-800 hover:bg-fuchsia-100/80'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">forum</span>
+                En Négociation ({scopedVentes.filter(v => v.statut === 'En Négociation').length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('Commande')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'Commande'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-indigo-800 hover:bg-indigo-100/80'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">shopping_bag</span>
+                Commandes ({scopedVentes.filter(v => v.statut === 'Commande').length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('Facture')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'Facture'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-blue-800 hover:bg-blue-100/80'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                Factures Crédit ({scopedVentes.filter(v => v.statut === 'Facture').length})
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter('Payée')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              statusFilter === 'Payée'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-emerald-800 hover:bg-emerald-100/80'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">check_circle</span>
+            Ventes Encaissées ({scopedVentes.filter(v => v.statut === 'Payée').length})
+          </button>
+        </div>
+
         {/* Filters Bar */}
         <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3 bg-slate-50/50">
           <div className="relative w-full md:w-80">
@@ -801,8 +1072,8 @@ export function Ventes({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Rechercher par N° facture, client..."
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500"
+              placeholder="Rechercher par N° ticket, client, article..."
+              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-500"
             />
           </div>
 
@@ -824,9 +1095,15 @@ export function Ventes({
               className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
             >
               <option value="all">Tous les statuts</option>
-              <option value="Devis">Devis</option>
-              <option value="Facture">Factures en attente (Crédit)</option>
-              <option value="Payée">Factures payées</option>
+              <option value="Payée">✅ Tickets & Ventes payées</option>
+              <option value="Facture">💳 Ventes à crédit</option>
+              {!(selectedProjectId !== '1' || currentUser.role === 'caissier') && (
+                <>
+                  <option value="Devis">📑 Devis standards</option>
+                  <option value="En Négociation">💬 En Négociation</option>
+                  <option value="Commande">🛒 Commandes enregistrées</option>
+                </>
+              )}
             </select>
           </div>
         </div>
@@ -836,14 +1113,14 @@ export function Ventes({
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3.5 px-4">N° Document</th>
-                <th className="py-3.5 px-4">Date</th>
+                <th className="py-3.5 px-4">N° Ticket / Réf</th>
+                <th className="py-3.5 px-4">Date & Caissier</th>
                 <th className="py-3.5 px-4">Client</th>
-                <th className="py-3.5 px-4 text-right">Montant HT</th>
-                <th className="py-3.5 px-4 text-right">Montant TTC</th>
-                <th className="py-3.5 px-4 text-right">Réglé / Restant</th>
+                <th className="py-3.5 px-4">Panier d'Articles</th>
+                <th className="py-3.5 px-4 text-center">Règlement</th>
+                <th className="py-3.5 px-4 text-right">Total TTC</th>
                 <th className="py-3.5 px-4 text-center">Statut</th>
-                <th className="py-3.5 px-4 text-right">Boutons d'Actions Rapides</th>
+                <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -852,68 +1129,89 @@ export function Ventes({
                 const paid = vente.montantPaye ?? (vente.statut === 'Payée' ? vente.montantTTC : 0);
                 const remaining = Math.max(0, vente.montantTTC - paid);
                 const isOverdue = vente.statut === 'Facture' && vente.dateEcheance && new Date(vente.dateEcheance) < new Date();
+                const totalArticlesCount = (vente.lignes || []).reduce((sum, l) => sum + (l.quantite || 1), 0);
 
                 return (
                   <tr key={vente.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[16px] text-blue-500">
-                        {vente.statut === 'Devis' ? 'description' : 'receipt_long'}
-                      </span>
-                      {vente.numero}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-500">
-                      {new Date(vente.date).toLocaleDateString('fr-FR')}
-                      {vente.dateEcheance && vente.statut === 'Facture' && (
-                        <span className={`block text-[10px] ${isOverdue ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
-                          Éch. {new Date(vente.dateEcheance).toLocaleDateString('fr-FR')}
+                    <td className="py-3.5 px-4 font-bold text-slate-900">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold ${vente.numero.startsWith('TC-') ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
+                          {vente.numero}
                         </span>
-                      )}
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-600">
+                      <div className="font-semibold text-slate-900">{new Date(vente.date).toLocaleDateString('fr-FR')}</div>
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                        <span className="material-symbols-outlined text-[13px] text-slate-400">person</span>
+                        {vente.auteurNom || 'Caissier'}
+                      </div>
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className="font-semibold text-slate-900">{client?.nom || vente.clientNom || 'Client'}</span>
-                      {client?.matriculeFiscal && (
-                        <span className="block text-[10px] text-slate-400">{client.matriculeFiscal}</span>
+                      <span className="font-semibold text-slate-900">{client?.nom || vente.clientNom || 'Client Comptoir'}</span>
+                      {client?.telephone && (
+                        <span className="block text-[10px] text-slate-400 font-mono">Tél: {client.telephone}</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-right font-medium text-slate-600">
-                      {vente.montantHT.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-black text-slate-900">
-                      {vente.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      {vente.statut === 'Devis' ? (
-                        <span className="text-slate-400">-</span>
-                      ) : (
-                        <div>
-                          <span className={`font-bold ${paid >= vente.montantTTC ? 'text-emerald-600' : 'text-slate-800'}`}>
-                            {paid.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
+                    <td className="py-3.5 px-4 max-w-xs">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-md">
+                            🛒 {totalArticlesCount} article{totalArticlesCount > 1 ? 's' : ''}
                           </span>
-                          {remaining > 0 && (
-                            <span className="block text-[10px] text-rose-600 font-semibold">
-                              Reste: {remaining.toLocaleString('fr-FR')} DT
-                            </span>
-                          )}
                         </div>
-                      )}
+                        <div className="text-[11px] text-slate-600 line-clamp-1">
+                          {(vente.lignes || []).map(l => `${l.quantite}x ${l.designation}`).join(', ')}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                        <span className="material-symbols-outlined text-[14px]">
+                          {vente.modePaiement === 'Espèces' ? 'payments' : vente.modePaiement === 'Chèque' ? 'account_balance' : 'credit_card'}
+                        </span>
+                        {vente.modePaiement || 'Espèces'}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-right font-bold text-slate-900 text-sm">
+                      {vente.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       {getStatusBadge(vente.statut)}
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {/* Download PDF Button */}
+                        {/* Imprimer Ticket Thermique 80mm */}
                         <button
-                          onClick={() => generateInvoicePdf(vente, client, currentProject)}
-                          className="flex items-center gap-1 px-2 py-1 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white border border-red-200 hover:border-red-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer"
-                          title="Télécharger Facture PDF"
+                          onClick={() => generatePosTicketPdf(vente, client, currentProject)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-600 text-purple-700 hover:text-white border border-purple-200 hover:border-purple-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+                          title="Imprimer Ticket de Caisse Thermique (80mm)"
                         >
-                          <span className="material-symbols-outlined text-[13px]">picture_as_pdf</span>
-                          PDF
+                          <span className="material-symbols-outlined text-[14px]">receipt</span>
+                          Ticket 80mm
                         </button>
 
-                        {/* Edit / Négocier Devis */}
-                        {(vente.statut === 'Devis' || vente.statut === 'En Négociation') && (
+                        {/* Voir Panier Détail */}
+                        <button
+                          onClick={() => setViewingCartSale(vente)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                          title="Voir le détail du panier de vente"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">visibility</span>
+                          Panier
+                        </button>
+
+                        {/* Imprimer Facture / Document A4/A5 */}
+                        <button
+                          onClick={() => setShowFacturePrintModal(vente)}
+                          className="flex items-center gap-1 px-2 py-1.5 bg-slate-50 hover:bg-slate-200 text-slate-600 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                          title="Imprimer Document A4 / Format Reçu"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">print</span>
+                        </button>
+
+                        {/* Négocier ou Modifier Devis (si applicable) */}
+                        {currentUser.role !== 'comptable' && (vente.statut === 'Devis' || vente.statut === 'En Négociation') && (
                           <button
                             onClick={() => handleOpenEditModal(vente)}
                             className="flex items-center gap-1 px-2.5 py-1 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-600 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
@@ -924,32 +1222,8 @@ export function Ventes({
                           </button>
                         )}
 
-                        {/* Convert to Commande */}
-                        {(vente.statut === 'Devis' || vente.statut === 'En Négociation') && (
-                          <button
-                            onClick={() => handleConvertQuote(vente, 'Commande')}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                            title="Convertir en Commande"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">shopping_bag</span>
-                            Commande
-                          </button>
-                        )}
-
-                        {/* Convert Quote / Commande to Invoice */}
-                        {(vente.statut === 'Devis' || vente.statut === 'En Négociation' || vente.statut === 'Commande') && (
-                          <button
-                            onClick={() => handleConvertQuote(vente, 'Facture')}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                            title="Convertir en Facture"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">transform</span>
-                            Facturer
-                          </button>
-                        )}
-
-                        {/* BOUTON DE PAIEMENT */}
-                        {vente.statut === 'Facture' && remaining > 0 && (
+                        {/* BOUTON DE PAIEMENT SI CRÉDIT */}
+                        {currentUser.role !== 'comptable' && vente.statut === 'Facture' && remaining > 0 && (
                           <button
                             onClick={() => handleOpenPayment(vente)}
                             className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs transition-all cursor-pointer hover:scale-105"
@@ -957,18 +1231,6 @@ export function Ventes({
                           >
                             <span className="material-symbols-outlined text-[14px]">payments</span>
                             Paiement
-                          </button>
-                        )}
-
-                        {/* BOUTON DE CRÉDIT */}
-                        {vente.statut === 'Facture' && remaining > 0 && (
-                          <button
-                            onClick={() => handleOpenCreditModal(vente)}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-purple-100 hover:bg-purple-600 text-purple-800 hover:text-white border border-purple-200 hover:border-purple-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer hover:scale-105"
-                            title="Planifier ou restructurer un calendrier d'échéances de crédit"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">calendar_month</span>
-                            Crédit
                           </button>
                         )}
                       </div>
@@ -992,7 +1254,7 @@ export function Ventes({
       {/* CREATE MODAL */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-[96vw] max-w-6xl h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[96vw] max-w-6xl h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-blue-600 text-[26px]">
@@ -1119,7 +1381,48 @@ export function Ventes({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Date d'Échéance</label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">
+                      {modalMode === 'Devis' ? "Date Limite Validité" : "Date d'Échéance"}
+                    </label>
+                    {modalMode === 'Devis' && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const d = new Date();
+                            d.setDate(d.getDate() + 15);
+                            setNewDueDate(d.toISOString().split('T')[0]);
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 rounded cursor-pointer"
+                        >
+                          +15j
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const d = new Date();
+                            d.setDate(d.getDate() + 30);
+                            setNewDueDate(d.toISOString().split('T')[0]);
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 rounded cursor-pointer"
+                        >
+                          +30j
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const d = new Date();
+                            d.setDate(d.getDate() + 60);
+                            setNewDueDate(d.toISOString().split('T')[0]);
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 rounded cursor-pointer"
+                        >
+                          +60j
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <input
                     type="date"
                     value={newDueDate}
@@ -1179,7 +1482,7 @@ export function Ventes({
                             : 'bg-white text-slate-700 border border-slate-200'
                         }`}
                       >
-                        📈 Vente à Crédit (Échéances)
+                        Vente à Crédit (Échéances)
                       </button>
                       <button
                         type="button"
@@ -1305,7 +1608,7 @@ export function Ventes({
                           )}
                         </div>
 
-                        <div className="col-span-2 text-right font-black text-slate-900 text-base">
+                        <div className="col-span-2 text-right font-bold text-slate-900 text-base">
                           {(line.totalTTC || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                         </div>
 
@@ -1324,6 +1627,104 @@ export function Ventes({
                 </div>
               </div>
 
+              {/* Devis Quick Discount Actions & Commercial Margin Indicator */}
+              {modalMode === 'Devis' && (
+                <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-amber-900 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[16px]">percent</span>
+                      Appliquer Remise Globale au Devis :
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => applyGlobalDiscount(5)}
+                        className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+                      >
+                        -5%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyGlobalDiscount(10)}
+                        className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+                      >
+                        -10%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyGlobalDiscount(15)}
+                        className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+                      >
+                        -15%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyGlobalDiscount(0)}
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-[11px] rounded-lg cursor-pointer transition-colors"
+                      >
+                        Réinitialiser
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Commercial Margin Calculation Display for Devis */}
+                  <div className="pt-2 border-t border-amber-200/60 flex items-center justify-between text-xs">
+                    <span className="text-slate-600 font-medium">Coût d'Achat Estimé HT : <span className="font-bold text-slate-800">{estimatedCostHT.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span></span>
+                    <span className={`font-bold flex items-center gap-1 px-2 py-0.5 rounded-md ${marginDT >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                      Marge Théorique : {marginDT >= 0 ? '+' : ''}{marginDT.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT ({marginPercent.toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Notes & Commercial Terms */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase">
+                    {modalMode === 'Devis' ? "Conditions Commerciales & Notes du Devis" : "Notes & Observations"}
+                  </label>
+                  {modalMode === 'Devis' && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Validité de l'offre : 30 jours à compter de l'émission.`)}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 rounded-md cursor-pointer"
+                      >
+                        + Validité 30j
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Modalités : 30% d'acompte à la commande, solde à la livraison.`)}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 rounded-md cursor-pointer"
+                      >
+                        + Acompte 30%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Paiement : Comptant à la livraison.`)}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 rounded-md cursor-pointer"
+                      >
+                        + Comptant
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Garantie : 12 mois pièces et main d'œuvre.`)}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 rounded-md cursor-pointer"
+                      >
+                        + Garantie 1 an
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <textarea
+                  rows={2}
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                  placeholder={modalMode === 'Devis' ? "Conditions particulières, délais de livraison, modalités de paiement..." : "Observations éventuelles..."}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 bg-white focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
               {/* Totals Summary */}
               <div className="p-4 bg-blue-50/70 border border-blue-100 rounded-xl space-y-2 text-sm">
                 <div className="flex justify-between font-medium text-slate-600">
@@ -1334,7 +1735,7 @@ export function Ventes({
                   <span>Total TVA Estimée :</span>
                   <span>{(calculatedTotalTTC - calculatedTotalHT).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
                 </div>
-                <div className="flex justify-between font-black text-slate-900 text-base pt-2 border-t border-blue-200">
+                <div className="flex justify-between font-bold text-slate-900 text-base pt-2 border-t border-blue-200">
                   <span>Montant Net TTC :</span>
                   <span className="text-blue-700 text-lg">{calculatedTotalTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
                 </div>
@@ -1363,7 +1764,7 @@ export function Ventes({
       {/* QUICK PAYMENT MODAL (BOUTON DE PAIEMENT) */}
       {paymentModalSale && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-emerald-50/80">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-emerald-600 text-[22px]">payments</span>
@@ -1388,7 +1789,7 @@ export function Ventes({
                   <span>Déjà Réglé :</span>
                   <span className="font-bold text-emerald-600">{(paymentModalSale.montantPaye || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
                 </div>
-                <div className="flex justify-between text-slate-900 font-black border-t border-slate-200 pt-1">
+                <div className="flex justify-between text-slate-900 font-bold border-t border-slate-200 pt-1">
                   <span>Solde Restant Dû :</span>
                   <span className="text-rose-600">
                     {Math.max(0, paymentModalSale.montantTTC - (paymentModalSale.montantPaye || 0)).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
@@ -1430,7 +1831,7 @@ export function Ventes({
                   max={Math.max(0, paymentModalSale.montantTTC - (paymentModalSale.montantPaye || 0))}
                   value={payAmount}
                   onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-base font-black text-slate-900"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-base font-bold text-slate-900"
                   required
                 />
               </div>
@@ -1514,7 +1915,7 @@ export function Ventes({
       {/* CREDIT & INSTALLMENTS MODAL (BOUTON DE CRÉDIT) */}
       {creditModalSale && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-purple-50">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-purple-600 text-[22px]">calendar_month</span>
@@ -1533,19 +1934,19 @@ export function Ventes({
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-[10px] font-bold text-slate-500 uppercase">Montant Total TTC</span>
-                  <p className="text-base font-black text-slate-900 mt-0.5">
+                  <p className="text-base font-bold text-slate-900 mt-0.5">
                     {creditModalSale.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                   </p>
                 </div>
                 <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
                   <span className="text-[10px] font-bold text-emerald-800 uppercase">Acompte Initial</span>
-                  <p className="text-base font-black text-emerald-700 mt-0.5">
+                  <p className="text-base font-bold text-emerald-700 mt-0.5">
                     {creditDownPayment.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                   </p>
                 </div>
                 <div className="p-3 bg-purple-50 rounded-xl border border-purple-200">
                   <span className="text-[10px] font-bold text-purple-800 uppercase">Solde à Financer</span>
-                  <p className="text-base font-black text-purple-700 mt-0.5">
+                  <p className="text-base font-bold text-purple-700 mt-0.5">
                     {Math.max(0, creditModalSale.montantTTC - creditDownPayment).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                   </p>
                 </div>
@@ -1611,7 +2012,7 @@ export function Ventes({
                         <tr key={ech.numero} className="hover:bg-slate-50">
                           <td className="py-2 px-3 font-bold text-slate-800">Échéance N° {ech.numero}</td>
                           <td className="py-2 px-3 text-slate-600">{new Date(ech.date).toLocaleDateString('fr-FR')}</td>
-                          <td className="py-2 px-3 text-right font-black text-purple-700">
+                          <td className="py-2 px-3 text-right font-bold text-purple-700">
                             {ech.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                           </td>
                           <td className="py-2 px-3 text-center">
@@ -1658,6 +2059,169 @@ export function Ventes({
             </div>
           </div>
         </div>
+      )}
+
+      {/* RELANCE CLIENT DEVIS MODAL (COMMUNICATION WHATSAPP / EMAIL) */}
+      {relanceModalSale && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-teal-50/80">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[22px]">contact_phone</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">Relance Commerciale Client</h3>
+                  <span className="text-[11px] text-teal-800 font-semibold">
+                    Devis N° {relanceModalSale.numero} • {relanceModalSale.clientNom}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setRelanceModalSale(null)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[22px]">close</span>
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              {/* Quote Overview Card */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Montant TTC</span>
+                  <span className="text-sm font-bold text-slate-900">
+                    {relanceModalSale.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Émis le</span>
+                  <span className="text-xs font-semibold text-slate-700">
+                    {new Date(relanceModalSale.date).toLocaleDateString('fr-FR')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Validité</span>
+                  <span className="text-xs font-bold text-amber-700">
+                    {relanceModalSale.dateEcheance ? new Date(relanceModalSale.dateEcheance).toLocaleDateString('fr-FR') : '30 jours'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Message Templates Quick Selector */}
+              <div>
+                <span className="font-bold text-slate-700 block mb-1.5 uppercase text-[10px] tracking-wider">
+                  Modèles de Messages Pré-enregistrés :
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const client = scopedClients.find(c => c.id === relanceModalSale.clientId);
+                      setRelanceMessage(`Bonjour ${client?.nom || relanceModalSale.clientNom || 'Cher client'},\n\nNous nous permettons de vous relancer concernant notre devis N° ${relanceModalSale.numero} d'un montant de ${relanceModalSale.montantTTC.toLocaleString('fr-FR')} DT TTC.\n\nCe devis reste valable et nous nous tenons à votre entière disposition pour toute question ou validation.\n\nCordialement,\n${currentUser?.nom || 'L\'Équipe ERP Management'}`);
+                    }}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-lg text-[11px] text-left cursor-pointer transition-colors"
+                  >
+                    👋 Relance Courtoise
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const client = scopedClients.find(c => c.id === relanceModalSale.clientId);
+                      setRelanceMessage(`Bonjour ${client?.nom || relanceModalSale.clientNom || 'Cher client'},\n\nAttention : l'offre commerciale liée au devis N° ${relanceModalSale.numero} (${relanceModalSale.montantTTC.toLocaleString('fr-FR')} DT TTC) arrive bientôt à expiration.\n\nAfin de vous garantir la disponibilité des stocks et les tarifs préférentiels, merci de nous confirmer votre accord dès que possible.\n\nBien cordialement,\n${currentUser?.nom || 'L\'Équipe ERP Management'}`);
+                    }}
+                    className="p-2 bg-amber-50 hover:bg-amber-100 text-amber-900 font-semibold rounded-lg text-[11px] text-left cursor-pointer transition-colors"
+                  >
+                    ⏳ Expiration Proche
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const client = scopedClients.find(c => c.id === relanceModalSale.clientId);
+                      setRelanceMessage(`Bonjour ${client?.nom || relanceModalSale.clientNom || 'Cher client'},\n\nSuite à notre devis N° ${relanceModalSale.numero}, nous souhaitons vous proposer une opportunité spéciale : bénéficiez d'une remise supplémentaire ou de facilités de paiement si validation cette semaine.\n\nDiscutons-en au plus vite !\n\nCordialement,\n${currentUser?.nom || 'L\'Équipe ERP Management'}`);
+                    }}
+                    className="p-2 bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-900 font-semibold rounded-lg text-[11px] text-left cursor-pointer transition-colors"
+                  >
+                    🎁 Geste Commercial
+                  </button>
+                </div>
+              </div>
+
+              {/* Message Textarea */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                  Message Personnalisé :
+                </label>
+                <textarea
+                  rows={5}
+                  value={relanceMessage}
+                  onChange={(e) => setRelanceMessage(e.target.value)}
+                  className="w-full p-3 border border-slate-200 rounded-xl text-xs text-slate-800 focus:border-teal-600 focus:outline-none leading-relaxed"
+                />
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(relanceMessage);
+                  setToastAlert(`📋 Message de relance copié dans le presse-papiers !`);
+                  setTimeout(() => setToastAlert(null), 3500);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs cursor-pointer transition-colors"
+              >
+                <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                Copier Texte
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSendRelance('whatsapp')}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs cursor-pointer shadow-sm transition-all"
+                >
+                  <span className="material-symbols-outlined text-[16px]">chat</span>
+                  WhatsApp
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendRelance('email')}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs cursor-pointer shadow-sm transition-all"
+                >
+                  <span className="material-symbols-outlined text-[16px]">mail</span>
+                  Email Client
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleConvertQuote(relanceModalSale, 'En Négociation');
+                    setRelanceModalSale(null);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-xl text-xs cursor-pointer shadow-sm transition-all"
+                >
+                  <span className="material-symbols-outlined text-[16px]">forum</span>
+                  Passer en Négociation
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Facture Print Modal */}
+      {showFacturePrintModal && (
+        <FacturePrintModal
+          vente={showFacturePrintModal}
+          client={clients.find(c => c.id === showFacturePrintModal.clientId || c.nom === showFacturePrintModal.clientNom)}
+          projet={projets.find(p => p.id === showFacturePrintModal.projetId) || (selectedProjectId ? projets.find(p => p.id === selectedProjectId) : null) || projets[0]}
+          onClose={() => setShowFacturePrintModal(null)}
+        />
       )}
     </div>
   );

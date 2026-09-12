@@ -29,8 +29,16 @@ export function Sidebar({
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   
-  const isAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'directeur';
-  const allowedProjets = isAdmin ? projets : projets.filter(p => currentUser?.projetsAffectes?.includes(p.id) || p.id === currentUser?.projetId);
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'directeur';
+  const isComptable = currentUser?.role === 'comptable';
+  const isAdmin = isSuperAdmin;
+  const hasGlobalScope = isSuperAdmin || isComptable;
+  
+  const allowedProjets = hasGlobalScope 
+    ? projets 
+    : currentUser?.role === 'admin'
+      ? projets.filter(p => p.id === '1')
+      : projets.filter(p => currentUser?.projetsAffectes?.includes(p.id) || p.id === currentUser?.projetId);
   
   const currentProject = allowedProjets.find(p => p.id === selectedProjectId);
   const isGlobal = selectedProjectId === 'all';
@@ -42,91 +50,124 @@ export function Sidebar({
   const getFilteredMenuSections = () => {
     let sections: { title: string; items: { id: TabType; label: string; icon: string; badge?: string }[] }[] = [];
 
-    // --- ARCHITECTURE : SCOLAIRE PLUS (Boutique 2) ---
-    if (selectedProjectId === '2') {
-      if (currentUser?.role === 'agent' || currentUser?.role === 'caissier') {
-        sections = [
-          { title: 'POINT DE VENTE', items: [{ id: 'caisse', label: 'Caisse Rapide', icon: 'point_of_sale' }] },
-          { title: 'RAYONS', items: [{ id: 'articles', label: 'Fournitures', icon: 'school' }, { id: 'stock', label: 'Disponibilité', icon: 'warehouse' }] },
-          { title: 'SUIVI', items: [{ id: 'ventes', label: 'Journal de Caisse', icon: 'receipt_long' }] },
-          { title: 'CLIENTS & CRÉDITS', items: [{ id: 'clients', label: 'Fichier Clients', icon: 'groups' }, { id: 'credits', label: 'Carnet de Crédit', icon: 'menu_book' }] }
-        ];
-      } else {
-        sections = [
-          { title: 'PILOTAGE BOUTIQUE', items: [{ id: 'dashboard', label: 'Synthèse Scolaire', icon: 'dashboard' }] },
-          { title: 'POINT DE VENTE', items: [{ id: 'caisse', label: 'Caisse Rapide', icon: 'point_of_sale' }, { id: 'ventes', label: 'Journal de Caisse', icon: 'receipt_long' }] },
-          { title: 'RAYONS & STOCK', items: [{ id: 'articles', label: 'Fournitures Scolaires', icon: 'school' }, { id: 'stock', label: 'Stock Boutique', icon: 'warehouse' }] },
-          { title: 'CLIENTS & CRÉDITS', items: [{ id: 'clients', label: 'Comptes Clients', icon: 'groups' }, { id: 'credits', label: 'Suivi des Crédits', icon: 'account_balance_wallet' }] },
-          { title: 'ACHATS', items: [{ id: 'achats', label: 'Réapprovisionnement', icon: 'shopping_cart' }] }
-        ];
-      }
+    // --- ARCHITECTURE : RÔLE COMPTABLE (Contrôle Financier & Fiscalité) ---
+    if (isComptable) {
+      sections = [
+        {
+          title: 'SYNTHÈSE FINANCIÈRE',
+          items: [
+            { id: 'dashboard', label: 'Synthèse Financière', icon: 'dashboard' },
+            { id: 'rapports', label: 'Rapports & Fiscalité (TVA)', icon: 'picture_as_pdf' }
+          ]
+        },
+        {
+          title: 'DOCUMENTS COMMERCIAUX & CONTRÔLE',
+          items: [
+            { id: 'ventes', label: 'Factures & Tickets (POS)', icon: 'assignment' },
+            { id: 'livraisons', label: 'Bons de Livraison (BL)', icon: 'local_shipping' },
+            { id: 'bons_sortie', label: 'Bons de Sortie (BS)', icon: 'output' },
+            { id: 'bons_achat', label: 'Bons d\'Achat (BA)', icon: 'shopping_bag' }
+          ]
+        },
+        {
+          title: 'TRÉSORERIE & CONTRÔLE CAISSES',
+          items: [
+            { id: 'caisse', label: 'Audit Caisses & Clôtures (Z)', icon: 'point_of_sale' },
+            { id: 'credits', label: 'Carnet de Crédit & Échéances', icon: 'account_balance_wallet' }
+          ]
+        },
+        {
+          title: 'COMPTES TIERS & CRÉANCES',
+          items: [
+            { id: 'clients', label: 'Comptes Clients & Encours', icon: 'groups' },
+            { id: 'fournisseurs', label: 'Comptes Fournisseurs & Dettes', icon: 'local_shipping' }
+          ]
+        },
+        {
+          title: 'VALORISATION DES STOCKS',
+          items: [
+            { id: 'stock', label: 'Catalogue & Valorisation', icon: 'inventory_2' }
+          ]
+        }
+      ];
+      return sections;
+    }
+
+    // --- ARCHITECTURE : RÔLE CAISSIER ---
+    if (currentUser?.role === 'caissier') {
+      sections = [
+        { title: 'TERMINAL DE VENTE (POS)', items: [{ id: 'caisse', label: 'Caisse & Vente Directe', icon: 'point_of_sale' }] },
+        { title: 'CONSULTATION BOUTIQUE', items: [
+          { id: 'ventes', label: 'Historique des Ventes', icon: 'receipt_long' },
+          { id: 'stock', label: 'Disponibilité du Stock', icon: 'warehouse' },
+          { id: 'clients', label: 'Clients Boutique', icon: 'groups' },
+          { id: 'credits', label: 'Carnet de Crédit', icon: 'account_balance_wallet' }
+        ] }
+      ];
+    }
+    // --- ARCHITECTURE : Société UGS (Dépôt Central) ---
+    // According to the new simplified setup, the admin only manages wholesale (distribution to boutiques).
+    // No POS (Caisse), only factures, bons de livraison, bons de sortie, bons d'achat, stock.
+    else if (selectedProjectId === '1' || currentUser?.role === 'admin') {
+      sections = [
+        { title: 'TABLEAU DE BORD', items: [{ id: 'dashboard', label: 'Vue générale', icon: 'dashboard' }] },
+        { title: 'DOCUMENTS COMMERCIAUX', items: [
+          { id: 'ventes', label: 'Factures & Devis', icon: 'assignment' },
+          { id: 'livraisons', label: 'Bons de Livraison (BL)', icon: 'local_shipping' },
+          { id: 'bons_sortie', label: 'Bons de Sortie (BS)', icon: 'output' },
+          { id: 'bons_achat', label: 'Bons d\'Achat (BA)', icon: 'shopping_bag' }
+        ] },
+        { title: 'ARTICLES & CATALOGUE', items: [
+          { id: 'stock', label: 'Catalogue Articles', icon: 'inventory_2' },
+          { id: 'transferts', label: 'Transferts UGS ➔ Boutiques', icon: 'swap_horiz' }
+        ] },
+        { title: 'TIERS', items: [
+          { id: 'clients', label: 'Clients B2B', icon: 'groups' },
+          { id: 'fournisseurs', label: 'Fournisseurs', icon: 'local_shipping' }
+        ] }
+      ];
     } 
-    // --- ARCHITECTURE : UGS VENTE & INSTALLATION (Boutique 1) ---
-    else if (selectedProjectId === '1') {
-      if (currentUser?.role === 'agent' || currentUser?.role === 'caissier') {
-        sections = [
-          { title: 'COMPTOIR & INTERVENTION', items: [{ id: 'caisse', label: 'Caisse Comptoir', icon: 'point_of_sale' }, { id: 'ventes', label: 'Bons & Devis', icon: 'assignment' }] },
-          { title: 'LOGISTIQUE', items: [{ id: 'stock', label: 'Stock Technique', icon: 'warehouse' }, { id: 'articles', label: 'Matériel & Services', icon: 'build_circle' }] },
-          { title: 'PARTENAIRES', items: [{ id: 'clients', label: 'Fichier Clients', icon: 'groups' }] }
-        ];
-      } else {
-        sections = [
-          { title: 'PILOTAGE UGS', items: [{ id: 'dashboard', label: 'Tableau de bord UGS', icon: 'dashboard' }] },
-          { title: 'COMMERCIAL B2B', items: [{ id: 'ventes', label: 'Ventes & Devis', icon: 'assignment' }, { id: 'credits', label: 'Recouvrement B2B', icon: 'account_balance' }] },
-          { title: 'COMPTOIR', items: [{ id: 'caisse', label: 'Caisse Rapide', icon: 'point_of_sale' }] },
-          { title: 'LOGISTIQUE TECHNIQUE', items: [{ id: 'articles', label: 'Matériel & Services', icon: 'build_circle' }, { id: 'stock', label: 'Stock Magasin', icon: 'warehouse' }, { id: 'bons_sortie', label: 'Bons de Sortie (BS)', icon: 'output' }] },
-          { title: 'APPROVISIONNEMENT', items: [{ id: 'achats', label: 'Commandes Fournisseurs', icon: 'shopping_cart' }, { id: 'bons_achat', label: 'Bons d\'Achat (BA)', icon: 'shopping_bag' }, { id: 'fournisseurs', label: 'Fournisseurs', icon: 'local_shipping' }] },
-          { title: 'CLIENTÈLE', items: [{ id: 'clients', label: 'Clients B2B/B2C', icon: 'groups' }] }
-        ];
-      }
-    } 
+    // --- ARCHITECTURE : BOUTIQUES ---
+    else if (selectedProjectId !== '1' && selectedProjectId !== 'all') {
+      sections = [
+        { title: 'TERMINAL DE VENTE (POS)', items: [{ id: 'caisse', label: 'Caisse & Encaissement', icon: 'point_of_sale' }] },
+        { title: 'PILOTAGE BOUTIQUE', items: [{ id: 'dashboard', label: 'Synthèse', icon: 'dashboard' }] },
+        { title: 'VENTES BOUTIQUE', items: [{ id: 'ventes', label: 'Historique des Ventes', icon: 'receipt_long' }] },
+        { title: 'RAYONS & STOCK', items: [{ id: 'stock', label: 'Produits & Stock', icon: 'warehouse' }] },
+        { title: 'CLIENTS', items: [{ id: 'clients', label: 'Comptes Clients', icon: 'groups' }, { id: 'credits', label: 'Carnet de Crédit', icon: 'account_balance_wallet' }] },
+      ];
+    }
     // --- ARCHITECTURE : GLOBALE / SIÈGE (Toutes les boutiques) ---
     else {
-      if (currentUser?.role === 'agent' || currentUser?.role === 'caissier') {
-        sections = [
-          { title: 'TERMINAL', items: [{ id: 'caisse', label: 'Caisse & Vente', icon: 'point_of_sale' }] },
-          { title: 'SUIVI', items: [{ id: 'ventes', label: 'Historique Ventes', icon: 'receipt_long' }] },
-          { title: 'LOGISTIQUE', items: [{ id: 'stock', label: 'État des Stocks', icon: 'warehouse' }, { id: 'articles', label: 'Catalogue', icon: 'inventory_2' }] },
-          { title: 'PARTENAIRES', items: [{ id: 'clients', label: 'Clients', icon: 'groups' }] }
-        ];
-      } else if (currentUser?.role === 'comptable') {
-        sections = [
-          { title: 'PILOTAGE CENTRAL', items: [{ id: 'dashboard', label: 'Vue Globale', icon: 'dashboard' }] },
-          { title: 'TRÉSORERIE & RECETTES', items: [{ id: 'caisse', label: 'Journal de Caisse', icon: 'account_balance_wallet' }, { id: 'ventes', label: 'Facturation Centralisée', icon: 'receipt_long' }, { id: 'credits', label: 'Recouvrement', icon: 'account_balance' }] },
-          { title: 'DÉPENSES', items: [{ id: 'achats', label: 'Achats Fournisseurs', icon: 'shopping_cart' }] },
-          { title: 'PARTENAIRES', items: [{ id: 'clients', label: 'Clients', icon: 'groups' }, { id: 'fournisseurs', label: 'Fournisseurs', icon: 'local_shipping' }] }
-        ];
-      } else {
-        // Admin / Directeur Global
-        const groupItems: { id: TabType; label: string; icon: string; badge?: string }[] = [
-          { id: 'dashboard', label: 'Société UGS - Dashboard', icon: 'dashboard' }
-        ];
-
-        if (currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'directeur') {
-          groupItems.push({ id: 'statistiques', label: 'Analyses Groupe', icon: 'monitoring' });
-          groupItems.push({ id: 'audit', label: 'Sécurité Centrale', icon: 'security_update_good' });
-        }
-
-        sections = [
-          { title: 'SOCIÉTÉ UGS (CENTRALE)', items: groupItems },
-          { title: 'DISTRIBUTION RÉSEAU', items: [{ id: 'caisse', label: 'Points de Vente (POS)', icon: 'point_of_sale' }, { id: 'ventes', label: 'Ventes Globales', icon: 'receipt_long' }, { id: 'credits', label: 'Recouvrement Clients', icon: 'account_balance' }] },
-          { title: 'LOGISTIQUE & DISTRIB', items: [{ id: 'articles', label: 'Catalogue Central', icon: 'inventory_2' }, { id: 'stock', label: 'Stock Central UGS & Distribution', icon: 'warehouse' }, { id: 'livraisons', label: 'Bons de Livraison (BL)', icon: 'local_shipping' }, { id: 'bons_sortie', label: 'Bons de Sortie (BS)', icon: 'output' }] },
-          { title: 'APPROVISIONNEMENT', items: [{ id: 'achats', label: 'Achats UGS', icon: 'shopping_cart' }, { id: 'bons_achat', label: 'Bons d\'Achat (BA)', icon: 'shopping_bag' }, { id: 'fournisseurs', label: 'Base Fournisseurs', icon: 'local_shipping' }] },
-          { title: 'RELATION CLIENT', items: [{ id: 'clients', label: 'Base Clients Unifiée', icon: 'groups' }] }
-        ];
-      }
+      sections = [
+        { title: 'TABLEAU DE BORD', items: [{ id: 'dashboard', label: 'Vue générale', icon: 'dashboard' }] },
+        { title: 'DOCUMENTS COMMERCIAUX', items: [
+          { id: 'ventes', label: 'Factures & Devis', icon: 'assignment' },
+          { id: 'livraisons', label: 'Bons de Livraison (BL)', icon: 'local_shipping' },
+          { id: 'bons_sortie', label: 'Bons de Sortie (BS)', icon: 'output' },
+          { id: 'bons_achat', label: 'Commandes d\'Achat (BA)', icon: 'shopping_bag' }
+        ] },
+        { title: 'ARTICLES & CATALOGUE', items: [
+          { id: 'stock', label: 'Catalogue Articles', icon: 'inventory_2' },
+          { id: 'transferts', label: 'Transferts UGS ➔ Boutiques', icon: 'swap_horiz' }
+        ] },
+        { title: 'TIERS', items: [
+          { id: 'clients', label: 'Base Clients', icon: 'groups' },
+          { id: 'fournisseurs', label: 'Fournisseurs', icon: 'local_shipping' }
+        ] }
+      ];
     }
 
     const isSuperAdmin = currentUser?.role === 'super_admin';
-
     if (isSuperAdmin) {
       const adminItems = [
         { id: 'projets', label: 'Boutiques', icon: 'storefront' },
-        { id: 'utilisateurs', label: 'Équipe & Accès', icon: 'group' }
+        { id: 'utilisateurs', label: 'Équipe & Accès', icon: 'group' },
+        { id: 'rapports', label: 'Rapports & Exports', icon: 'picture_as_pdf' },
+        { id: 'audit', label: 'Journal d\'Audit', icon: 'manage_search' }
       ];
-
       sections.push({
-        title: 'RÉSEAU & SYSTÈME',
+        title: 'SUPER-ADMIN & AUDIT',
         items: adminItems as any
       });
     }
@@ -143,53 +184,50 @@ export function Sidebar({
       {/* Mobile Overlay */}
       {isMobileOpen && (
         <div 
-          className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 md:hidden transition-opacity"
+          className="fixed inset-0 bg-transparent backdrop-blur-xs z-40 md:hidden transition-opacity"
           onClick={onCloseMobile}
         />
       )}
 
       {/* Main Pro Sidebar */}
       <aside
-        className={`bg-slate-900 text-slate-200 flex flex-col fixed md:sticky top-0 left-0 z-50 transition-all duration-300 ease-in-out shrink-0 md:my-3 md:ml-3 md:h-[calc(100vh-1.5rem)] md:rounded-2xl md:border md:border-slate-800/80 md:shadow-2xl shadow-slate-950/50 ${
+        className={`bg-zinc-950 text-zinc-400 flex flex-col fixed md:sticky top-0 left-0 z-50 transition-all duration-300 ease-in-out shrink-0 md:my-3 md:ml-3 md:h-[calc(100vh-1.5rem)] md:rounded-xl md:border md:border-white/10 md:shadow-2xl shadow-slate-950/50 ${
           effectiveCollapsed ? 'w-20' : 'w-72 max-w-[85vw]'
         } ${
-          isMobileOpen ? 'translate-x-0 h-screen shadow-2xl rounded-r-2xl border-r border-slate-800' : '-translate-x-full md:translate-x-0'
+          isMobileOpen ? 'translate-x-0 h-screen shadow-2xl rounded-r-2xl border-r border-white/10' : '-translate-x-full md:translate-x-0'
         }`}
       >
         {/* Workspace Brand / Project Header */}
-        <div className="p-4 border-b border-slate-800/80 flex items-center justify-between h-18 shrink-0 bg-slate-950/50 md:rounded-t-2xl">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between h-18 shrink-0 bg-white/5 md:rounded-t-2xl">
           {!effectiveCollapsed ? (
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-black text-white shadow-sm shrink-0 ${
-                isGlobal ? 'bg-indigo-600' : 'bg-slate-700'
-              }`}>
-                <span className="material-symbols-outlined text-[24px]">
-                  {isGlobal ? 'domain' : 'folder_managed'}
-                </span>
+              <div className="shrink-0">
+                <img src="/logo.png" alt="UGS" className="w-12 h-12 object-contain" referrerPolicy="no-referrer" />
               </div>
               <div className="overflow-hidden">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-extrabold tracking-widest text-slate-400 uppercase">Espace Actif</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="text-[10px] font-extrabold tracking-widest text-slate-400 uppercase">
+                    {isGlobal ? 'Vue Globale' : currentProject?.id === '1' ? 'Société UGS' : 'Boutique'}
+                  </span>
+                  <span className={`w-2 h-2 rounded-full ${currentProject?.id === '1' ? 'bg-amber-400' : 'bg-emerald-400'} animate-pulse`}></span>
                 </div>
-                <p className="font-extrabold text-xs text-white truncate tracking-tight mt-0.5" title={isGlobal ? 'Système Central' : currentProject?.nom || 'Espace Projet'}>
-                  {isGlobal ? 'Système Central' : currentProject?.nom || 'Espace Projet'}
+                <p className="font-extrabold text-xs text-white truncate tracking-tight mt-0.5" title={isGlobal ? 'Toutes les Boutiques' : currentProject?.nom || 'Espace de Travail'}>
+                  {isGlobal ? 'Toutes les Boutiques' : currentProject?.nom || 'Espace de Travail'}
                 </p>
+                <span className="text-[9px] font-semibold text-slate-400 truncate block">
+                  {isGlobal ? 'Dépôt et Boutiques' : currentProject?.id === '1' ? 'Entrepôt Principal' : 'Boutique de vente'}
+                </span>
               </div>
             </div>
           ) : (
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-black text-white mx-auto shadow-sm ${
-              isGlobal ? 'bg-indigo-600' : 'bg-slate-700'
-            }`} title={isGlobal ? 'Système Central' : currentProject?.nom || 'Espace Projet'}>
-              <span className="material-symbols-outlined text-[22px]">
-                {isGlobal ? 'domain' : 'folder_managed'}
-              </span>
+            <div className="mx-auto" title={isGlobal ? 'Toutes les Boutiques' : currentProject?.nom || 'Espace de Travail'}>
+              <img src="/logo.png" alt="UGS" className="w-10 h-10 object-contain" referrerPolicy="no-referrer" />
             </div>
           )}
 
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden md:flex p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-700"
+            className="hidden md:flex p-2 hover:bg-white/10 text-slate-400 hover:text-white rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-700"
             title={isCollapsed ? 'Déplier le menu' : 'Réduire le menu'}
           >
             <span className="material-symbols-outlined text-[18px]">
@@ -199,20 +237,20 @@ export function Sidebar({
 
           <button
             onClick={onCloseMobile}
-            className="md:hidden p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl cursor-pointer"
+            className="md:hidden p-2 hover:bg-white/10 text-slate-400 hover:text-white rounded-xl cursor-pointer"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>
 
-        {/* Project Switcher Dropdown in Sidebar */}
-        {(isAdmin || allowedProjets.length > 1) && !effectiveCollapsed && (
-          <div className="p-3 bg-slate-950/30 border-b border-slate-800/60">
+        {/* Project Switcher Dropdown in Sidebar for Super Admin, Comptable & Multi-assigned users */}
+        {currentUser?.role !== 'admin' && (hasGlobalScope || allowedProjets.length > 1) && !effectiveCollapsed && (
+          <div className="p-3 bg-slate-950/30 border-b border-white/10/60">
             <div className="flex items-center justify-between mb-1.5 px-1">
-              <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                Périmètre Projet
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Emplacement Actif
               </label>
-              <span className="text-[9px] font-bold text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">Admin</span>
+              <span className="text-[9px] font-bold text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">Multi-Boutiques</span>
             </div>
             <div className="relative">
               <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[16px] pointer-events-none">
@@ -221,13 +259,18 @@ export function Sidebar({
               <select
                 value={selectedProjectId}
                 onChange={(e) => onSelectProject(e.target.value)}
-                disabled={!isAdmin && allowedProjets.length <= 1}
-                className={`w-full pl-8 pr-7 py-2 bg-slate-800/90 hover:bg-slate-800 text-white border border-slate-700/80 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 appearance-none transition-all shadow-xs ${!isAdmin && allowedProjets.length <= 1 ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
+                disabled={!hasGlobalScope && allowedProjets.length <= 1}
+                className={`w-full pl-8 pr-7 py-2 bg-white/10/90 hover:bg-white/10 text-white border border-slate-700/80 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 appearance-none transition-all shadow-xs ${!hasGlobalScope && allowedProjets.length <= 1 ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
               >
-                {isAdmin && <option value="all">🏢 Toutes les boutiques</option>}
-                <optgroup label={isAdmin ? "Boutiques Actives" : "Mes Boutiques"}>
-                  {allowedProjets.map(p => (
-                    <option key={p.id} value={p.id}>📁 {p.nom}</option>
+                {hasGlobalScope && <option value="all">🌐 Toutes les boutiques et le dépôt</option>}
+                <optgroup label="DÉPÔT CENTRAL">
+                  {allowedProjets.filter(p => p.id === '1').map(p => (
+                    <option key={p.id} value={p.id}>{p.nom}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="BOUTIQUES DE VENTE">
+                  {allowedProjets.filter(p => p.id !== '1').map(p => (
+                    <option key={p.id} value={p.id}>{p.nom}</option>
                   ))}
                 </optgroup>
               </select>
@@ -244,7 +287,7 @@ export function Sidebar({
             <div key={idx} className="space-y-1">
               {!effectiveCollapsed && (
                 <div className="px-3 flex items-center mb-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500/80">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500/80">
                     {section.title}
                   </span>
                 </div>
@@ -258,29 +301,29 @@ export function Sidebar({
                       onTabChange(item.id);
                       onCloseMobile();
                     }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-xs transition-all cursor-pointer group relative ${
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all cursor-pointer group relative overflow-hidden ${
                       isActive
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'text-slate-400 hover:bg-slate-800/80 hover:text-white border border-transparent'
+                        ? 'bg-blue-600/15 text-blue-100 shadow-sm'
+                        : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                     } ${effectiveCollapsed ? 'justify-center px-2' : ''}`}
                     title={effectiveCollapsed ? item.label : undefined}
                   >
-                    <span className={`material-symbols-outlined text-[20px] shrink-0 transition-transform group-hover:scale-110 ${
-                      isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'
+                    {/* Vertical Active Indicator */}
+                    {isActive && (
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+                    )}
+                    <span className={`material-symbols-outlined text-[20px] shrink-0 transition-transform ${
+                      isActive ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-300'
                     }`}>
                       {item.icon}
                     </span>
-                    {!effectiveCollapsed && <span className="truncate tracking-wide">{item.label}</span>}
+                    {!effectiveCollapsed && <span className="truncate">{item.label}</span>}
                     {!effectiveCollapsed && item.badge && (
-                      <span className={`ml-auto px-2 py-0.5 rounded-md text-[9px] font-black tracking-widest uppercase shadow-sm ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700/60'
+                      <span className={`ml-auto px-2 py-0.5 rounded-md text-[10px] font-bold tracking-widest shadow-sm ${
+                        isActive ? 'bg-blue-500/20 text-blue-200' : 'bg-white/10 text-slate-400'
                       }`}>
                         {item.badge}
                       </span>
-                    )}
-                    {/* Active Indicator Glow / Dot when collapsed */}
-                    {effectiveCollapsed && isActive && (
-                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]"></span>
                     )}
                   </button>
                 );
@@ -290,23 +333,20 @@ export function Sidebar({
         </div>
 
         {/* Footer Profile Snippet */}
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950/70 space-y-2.5 md:rounded-b-2xl">
+        <div className="p-4 border-t border-slate-800 bg-transparent space-y-3">
           {/* User Profile Footer Badge */}
-          <div className={`flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 shadow-xs ${
-            effectiveCollapsed ? 'justify-center' : ''
+          <div className={`flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700/50 shadow-sm ${
+            effectiveCollapsed ? 'justify-center p-2' : ''
           }`}>
-            <div className="w-9 h-9 rounded-xl bg-slate-700 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
+            <div className="w-10 h-10 rounded-full bg-slate-700 text-slate-100 font-bold text-sm flex items-center justify-center shrink-0 shadow-inner">
               {currentUser?.nom?.charAt(0) || 'U'}
             </div>
             {!effectiveCollapsed && (
               <div className="overflow-hidden flex-1">
-                <p className="text-xs font-bold text-white truncate">{currentUser?.nom || 'Utilisateur'}</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  <span className="text-[10px] text-slate-400 capitalize truncate font-medium">
-                    {currentUser?.role?.replace('_', ' ') || 'Membre'}
-                  </span>
-                </div>
+                <p className="text-sm font-bold text-slate-100 truncate">{currentUser?.nom || 'Admin Magasin Principal'}</p>
+                <p className="text-[11px] text-slate-400 capitalize truncate font-medium">
+                  {currentUser?.role?.replace('_', ' ') || 'Administrateur'}
+                </p>
               </div>
             )}
           </div>
@@ -315,12 +355,12 @@ export function Sidebar({
           {onLogout && (
             <button
               onClick={onLogout}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl font-bold text-xs hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-transparent transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-all cursor-pointer ${
                 effectiveCollapsed ? 'justify-center px-2' : ''
               }`}
               title="Se déconnecter"
             >
-              <span className="material-symbols-outlined text-[18px]">logout</span>
+              <span className="material-symbols-outlined text-[20px]">logout</span>
               {!effectiveCollapsed && <span className="truncate">Déconnexion</span>}
             </button>
           )}

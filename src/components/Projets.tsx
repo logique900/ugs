@@ -124,15 +124,15 @@ export function Projets({
       description: '', 
       responsable: '', 
       statut: 'Active',
-      adresse: '',
-      ville: 'Tunis',
-      gouvernorat: 'Tunis',
-      telephone: '+216 ',
-      email: '',
-      entrepriseNom: 'ERP TUNISIE SARL',
-      matriculeFiscal: '1234567/A/M/000',
-      banque: 'BIAT',
-      rib: '08 001 0001234567890 45'
+      adresse: '112, OMAR IBN KHATAB ZRIG, GABES S3',
+      ville: 'Gabès',
+      gouvernorat: 'Gabès',
+      telephone: '+216 75 655 555',
+      email: 'contact@univers-gsm.tn',
+      entrepriseNom: 'SOCIETE UNIVERS GSM DE SUD',
+      matriculeFiscal: '1532846 G/A/M/000',
+      banque: 'Attijari Bank',
+      rib: '04 705 012 0051487155 82'
     });
     setIsModalOpen(true);
   };
@@ -207,8 +207,8 @@ export function Projets({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="font-display-lg text-2xl md:text-3xl font-black text-on-surface flex items-center gap-3">
-            <span className="w-10 h-10 rounded-2xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center">
+          <h1 className="font-display-lg text-2xl md:text-3xl font-bold text-on-surface flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[24px]">storefront</span>
             </span>
             Boutiques & Succursales
@@ -231,39 +231,39 @@ export function Projets({
 
       {/* Quick Summary KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant shadow-xs flex items-center gap-4">
+        <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-xs flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
             <span className="material-symbols-outlined text-[24px]">store</span>
           </div>
           <div>
             <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Total Boutiques</p>
-            <p className="text-2xl font-black text-on-surface mt-0.5">{totalBoutiques}</p>
+            <p className="text-2xl font-bold text-on-surface mt-0.5">{totalBoutiques}</p>
           </div>
         </div>
 
-        <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant shadow-xs flex items-center gap-4">
+        <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-xs flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
             <span className="material-symbols-outlined text-[24px]">check_circle</span>
           </div>
           <div>
             <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Boutiques Actives</p>
-            <p className="text-2xl font-black text-emerald-600 mt-0.5">{activeBoutiques} / {totalBoutiques}</p>
+            <p className="text-2xl font-bold text-emerald-600 mt-0.5">{activeBoutiques} / {totalBoutiques}</p>
           </div>
         </div>
 
-        <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant shadow-xs flex items-center gap-4">
+        <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-xs flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
             <span className="material-symbols-outlined text-[24px]">payments</span>
           </div>
           <div>
             <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">CA Réalisé Global</p>
-            <p className="text-2xl font-black text-on-surface mt-0.5">{totalCA.toLocaleString('fr-FR')} DT</p>
+            <p className="text-2xl font-bold text-on-surface mt-0.5">{totalCA.toLocaleString('fr-FR')} DT</p>
           </div>
         </div>
       </div>
 
       {/* Filter & View Bar */}
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="relative flex-1 max-w-md">
           <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
           <input
@@ -334,7 +334,7 @@ export function Projets({
             return (
               <div 
                 key={projet.id}
-                className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-4 group"
+                className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-4 group"
               >
                 <div>
                   {/* Card Header: Statut & Date */}
@@ -354,7 +354,7 @@ export function Projets({
                   </div>
 
                   {/* Boutique Title & Description */}
-                  <h3 className="text-lg font-black text-on-surface group-hover:text-indigo-600 transition-colors">
+                  <h3 className="text-lg font-bold text-on-surface group-hover:text-indigo-600 transition-colors">
                     {projet.nom}
                   </h3>
                   <p className="text-xs text-on-surface-variant mt-1 line-clamp-2 min-h-[32px]">
@@ -369,7 +369,7 @@ export function Projets({
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-on-surface-variant font-medium">CA Réalisé:</span>
-                      <span className="font-black text-emerald-600">{caRealise.toLocaleString('fr-FR')} DT</span>
+                      <span className="font-bold text-emerald-600">{caRealise.toLocaleString('fr-FR')} DT</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-on-surface-variant font-medium">Volume Tiers & Stock:</span>
@@ -392,7 +392,7 @@ export function Projets({
                     <button
                       type="button"
                       onClick={() => setSelectedProjectModal(projet)}
-                      className="flex-1 py-2.5 px-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                      className="flex-1 py-2.5 px-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-[18px]">open_in_new</span>
                       <span>Ouvrir Espace & Détails du Projet</span>
@@ -451,7 +451,7 @@ export function Projets({
         </div>
       ) : (
         /* Table View */
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl overflow-hidden shadow-xs">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left font-body-md whitespace-nowrap">
               <thead className="bg-surface-container-low border-b border-outline-variant text-on-surface-variant font-label-md text-xs uppercase tracking-wider">
@@ -533,10 +533,10 @@ export function Projets({
       {/* Modal Détails Projet / Espace Métier */}
       {selectedProjectModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
             <div className="p-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black shadow-sm">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-sm">
                   <span className="material-symbols-outlined text-[22px]">storefront</span>
                 </div>
                 <div>
@@ -581,7 +581,7 @@ export function Projets({
       {/* Modal Création / Modification Boutique */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 bg-surface-container-low border-b border-outline-variant flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center font-bold">
@@ -717,7 +717,7 @@ export function Projets({
 
               {/* Mentions Légales & Fiscale */}
               <div className="pt-4 border-t border-outline-variant space-y-3">
-                <h4 className="text-xs font-black uppercase tracking-wider text-indigo-600">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-600">
                   Données de Facturation & Entreprise
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

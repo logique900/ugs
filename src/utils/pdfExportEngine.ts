@@ -3,10 +3,13 @@ import autoTable from 'jspdf-autotable';
 import { Vente, Achat, Client, Fournisseur, Article, MouvementStock, Projet, Reglement, CreditEcheance } from '../types';
 
 // Helper colors
-const COLOR_PRIMARY = [180, 20, 30] as const; // Dark crimson / Bordeaux (#B4141E)
-const COLOR_SECONDARY = [30, 41, 59] as const; // Slate 800
+const COLOR_PRIMARY = [30, 27, 75] as const;  // Indigo 950 (#1e1b4b)
+const COLOR_ACCENT = [225, 29, 72] as const;   // Rose accent (#E11D48)
+const COLOR_DARK = [30, 27, 75] as const;      // Indigo 950
+const COLOR_SECONDARY = [71, 85, 105] as const; // Slate 600
 const COLOR_MUTED = [100, 116, 139] as const; // Slate 500
 const COLOR_BG_LIGHT = [248, 250, 252] as const; // Slate 50
+const COLOR_BORDER = [226, 232, 240] as const; // Slate 200
 
 // Helper to format currency cleanly for jsPDF
 const fmt = (num?: number) => {
@@ -15,6 +18,28 @@ const fmt = (num?: number) => {
   const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return `${integerPart},${parts[1]} DT`;
 };
+
+/**
+ * Apply clean running footers with pagination across all pages
+ */
+function applyPdfFooters(doc: jsPDF, documentTitle: string) {
+  const totalPages = (doc as any).internal.getNumberOfPages();
+  const pageWidth = doc.internal.pageSize.width;
+  const pageHeight = doc.internal.pageSize.height;
+
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+    doc.setLineWidth(0.3);
+    doc.line(14, pageHeight - 12, pageWidth - 14, pageHeight - 12);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    doc.text(`UGS Distribution • ERP Multi-Projets • ${documentTitle} • Document Officiel`, 14, pageHeight - 7);
+    doc.text(`Page ${i} / ${totalPages}`, pageWidth - 14, pageHeight - 7, { align: 'right' });
+  }
+}
 
 /**
  * Helper to convert number to words in French for invoices
@@ -67,84 +92,99 @@ function numberToWords(amount: number): string {
  */
 export function generateInvoicePdf(vente: Vente, client?: Client, projet?: Projet | null) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const isDevis = vente.statut === 'Devis';
-  const docType = isDevis ? 'DEVIS COMMERCIAL' : 'FACTURE DE VENTE';
+  const isDevis = vente.statut === 'Devis' || vente.statut === 'En Négociation';
+  const isCommande = vente.statut === 'Commande';
+  const docType = isDevis ? 'DEVIS COMMERCIAL' : isCommande ? 'COMMANDE CLIENT' : 'FACTURE DE VENTE';
 
-  const cName = projet?.entrepriseNom || 'UGS DISTRIBUTION - ERP CENTRAL';
-  const cMF = projet?.matriculeFiscal || '1234567/A/M/000';
-  const cAddress = projet?.adresse || 'Zone Industrielle Voie 12, Tunis';
-  const cPhone = projet?.telephone || '+216 71 000 111';
-  const cEmail = projet?.email || 'facturation@ugs-distribution.com';
-  const cBank = projet?.banque || 'BIAT';
-  const cRib = projet?.rib || '08 001 0001234567890 45';
+  const cName = projet?.entrepriseNom || 'SOCIETE UNIVERS GSM DE SUD';
+  const cMF = projet?.matriculeFiscal || '1532846 G/A/M/000';
+  const cAddress = projet?.adresse || '112, OMAR IBN KHATAB ZRIG, GABES S3';
+  const cPhone = projet?.telephone || '75 655 555';
+  const cEmail = projet?.email || 'contact@univers-gsm.tn';
+  const cBank = projet?.banque || 'Attijari Bank';
+  const cRib = projet?.rib || '04 705 012 0051487155 82';
 
-  // Header Banner
-  doc.setFillColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.rect(0, 0, 210, 34, 'F');
+  // Header Banner - specific styling for Devis vs Invoice
+  const bannerColor = isDevis ? [217, 119, 6] : isCommande ? [79, 70, 229] : COLOR_PRIMARY;
+  const bannerAccent = isDevis ? [245, 158, 11] : isCommande ? [99, 102, 241] : COLOR_ACCENT;
+
+  doc.setFillColor(bannerColor[0], bannerColor[1], bannerColor[2]);
+  doc.rect(0, 0, 210, 32, 'F');
+
+  // Decorative Bottom Bar
+  doc.setFillColor(bannerAccent[0], bannerAccent[1], bannerAccent[2]);
+  doc.rect(0, 32, 210, 1.5, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.text(cName.toUpperCase(), 14, 13);
+  doc.setFontSize(14);
+  doc.text(cName.toUpperCase(), 14, 12);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
-  doc.text(`Matricule Fiscal : ${cMF} • Tél : ${cPhone}`, 14, 21);
-  doc.text(`Espace Chantier / Projet : ${projet?.nom || 'Projet Principal'} • Email : ${cEmail}`, 14, 27);
+  doc.text(`Matricule Fiscal : ${cMF} • Tél : ${cPhone}`, 14, 19);
+  doc.text(`Espace Chantier / Projet : ${projet?.nom || 'Projet Principal'} • Email : ${cEmail}`, 14, 25);
+
+  // Add Company Logo
+  try {
+    doc.addImage('/logo.png', 'PNG', 115, 3, 40, 40);
+  } catch (e) {
+    console.error('Logo not found', e);
+  }
 
   // Document Title & Number (Right)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.text(docType, 196, 13, { align: 'right' });
-  doc.setFontSize(11);
-  doc.text(`N° ${vente.numero}`, 196, 21, { align: 'right' });
+  doc.text(docType, 196, 12, { align: 'right' });
+  doc.setFontSize(10.5);
+  doc.text(`N° ${vente.numero}`, 196, 19, { align: 'right' });
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Date : ${new Date(vente.date).toLocaleDateString('fr-FR')}`, 196, 27, { align: 'right' });
+  doc.text(`Date : ${new Date(vente.date).toLocaleDateString('fr-FR')}`, 196, 25, { align: 'right' });
 
-  let currentY = 40;
+  let currentY = 39;
 
   // Box Issuer Info (Left)
-  doc.setDrawColor(203, 213, 225);
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(14, currentY, 88, 36, 2, 2, 'FD');
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
+  doc.roundedRect(14, currentY, 88, 36, 2.5, 2.5, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text('ÉMETTEUR (FOURNISSEUR / SOCIÉTÉ)', 18, currentY + 5);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.text(cName, 18, currentY + 11);
-  doc.setFont('helvetica', 'normal');
-  doc.text(cAddress, 18, currentY + 16);
-  doc.text(`Matricule Fiscal : ${cMF}`, 18, currentY + 21);
-  doc.text(`Email : ${cEmail} | Tél : ${cPhone}`, 18, currentY + 26);
-  doc.text(`Banque : ${cBank} • RIB : ${cRib}`, 18, currentY + 31);
-
-  // Box Client Info (Right)
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(108, currentY, 88, 36, 2, 2, 'FD');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text('CLIENT / FACTURÉ À', 112, currentY + 5);
+  doc.setFontSize(8.5);
+  doc.setTextColor(bannerColor[0], bannerColor[1], bannerColor[2]);
+  doc.text('ÉMETTEUR (FOURNISSEUR / SOCIÉTÉ)', 18, currentY + 6);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-  doc.text(client?.nom || 'Client Particulier', 112, currentY + 11);
+  doc.text(cName, 18, currentY + 12);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.text(`Code Client : ${client?.code || 'CLI-00' + vente.clientId}`, 112, currentY + 16);
-  doc.text(`Adresse : ${client?.adresse || 'Non renseignée'}, ${client?.ville || ''}`, 112, currentY + 21);
-  doc.text(`Matricule Fiscal / CIN : ${client?.matriculeFiscal || 'Non spécifié'}`, 112, currentY + 26);
-  doc.text(`Téléphone : ${client?.telephone || 'Non renseigné'}`, 112, currentY + 31);
+  doc.text(cAddress, 18, currentY + 17);
+  doc.text(`Matricule Fiscal : ${cMF}`, 18, currentY + 22);
+  doc.text(`Email : ${cEmail} | Tél : ${cPhone}`, 18, currentY + 27);
+  doc.text(`Banque : ${cBank} • RIB : ${cRib}`, 18, currentY + 32);
 
-  currentY += 44;
+  // Box Client Info (Right)
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
+  doc.roundedRect(108, currentY, 88, 36, 2.5, 2.5, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(bannerColor[0], bannerColor[1], bannerColor[2]);
+  doc.text(isDevis ? 'DESTINATAIRE DU DEVIS' : 'CLIENT / FACTURÉ À', 112, currentY + 6);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
+  doc.text(client?.nom || 'Client Particulier', 112, currentY + 12);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(`Code Client : ${client?.code || 'CLI-00' + vente.clientId}`, 112, currentY + 17);
+  doc.text(`Adresse : ${client?.adresse || 'Non renseignée'}, ${client?.ville || ''}`, 112, currentY + 22);
+  doc.text(`Matricule Fiscal / CIN : ${client?.matriculeFiscal || 'Non spécifié'}`, 112, currentY + 27);
+  doc.text(`Téléphone : ${client?.telephone || 'Non renseigné'}`, 112, currentY + 32);
+
+  currentY += 42;
 
   // Articles Table
   const tableRows = vente.lignes && vente.lignes.length > 0 
@@ -160,7 +200,7 @@ export function generateInvoicePdf(vente: Vente, client?: Client, projet?: Proje
         fmt(lig.totalTTC)
       ])
     : [
-        ['1', 'ART-01', 'Prestation / Marchandises selon commande', '1', fmt(vente.montantHT), '0%', '19%', fmt(vente.montantHT), fmt(vente.montantTTC)]
+        ['1', 'ART-01', 'Prestation / Marchandises selon devis', '1', fmt(vente.montantHT), '0%', '19%', fmt(vente.montantHT), fmt(vente.montantTTC)]
       ];
 
   autoTable(doc, {
@@ -169,7 +209,7 @@ export function generateInvoicePdf(vente: Vente, client?: Client, projet?: Proje
     body: tableRows,
     theme: 'grid',
     headStyles: {
-      fillColor: [180, 20, 30],
+      fillColor: [bannerColor[0], bannerColor[1], bannerColor[2]],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       fontSize: 8,
@@ -203,15 +243,15 @@ export function generateInvoicePdf(vente: Vente, client?: Client, projet?: Proje
   }
 
   // Amount in words banner
-  doc.setDrawColor(226, 232, 240);
-  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
   doc.roundedRect(14, finalY, 182, 10, 1.5, 1.5, 'FD');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-  doc.text('Arrêtée la présente facture à la somme de :', 17, finalY + 6);
+  doc.text(isDevis ? 'Arrêté le présent devis à la somme de :' : isCommande ? 'Arrêtée la présente commande à la somme de :' : 'Arrêtée la présente facture à la somme de :', 17, finalY + 6.5);
   doc.setFont('helvetica', 'italic');
-  doc.text(numberToWords(vente.montantTTC), 75, finalY + 6);
+  doc.text(numberToWords(vente.montantTTC), 75, finalY + 6.5);
 
   finalY += 13;
 
@@ -220,17 +260,26 @@ export function generateInvoicePdf(vente: Vente, client?: Client, projet?: Proje
   doc.roundedRect(14, finalY, 105, 42, 2, 2, 'FD');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text('MODALITÉS ET CONDITIONS DE RÈGLEMENT', 17, finalY + 6);
+  doc.setTextColor(bannerColor[0], bannerColor[1], bannerColor[2]);
+  doc.text(isDevis ? 'CONDITIONS COMMERCIALES & VALIDITÉ' : 'MODALITÉS ET CONDITIONS DE RÈGLEMENT', 17, finalY + 6);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-  doc.text(`• Mode de règlement : ${vente.modePaiement || 'Virement Bancaire'}`, 17, finalY + 12);
-  doc.text(`• Date d'échéance : ${vente.dateEcheance ? new Date(vente.dateEcheance).toLocaleDateString('fr-FR') : 'À réception'}`, 17, finalY + 17);
-  doc.text(`• Statut du document : ${vente.statut.toUpperCase()}`, 17, finalY + 22);
-  doc.text(`• Observations : ${vente.notes || 'Paiement sans escompte. Tout retard entraîne pénalités.'}`, 17, finalY + 27, { maxWidth: 98 });
-  doc.text(`• Coordonnées Bancaires (RIB) : ${cBank} - ${cRib}`, 17, finalY + 36);
+  
+  if (isDevis) {
+    doc.text(`• Validité de l'offre : 30 jours à compter de la date d'émission`, 17, finalY + 12);
+    doc.text(`• Date limite de validité : ${vente.dateEcheance ? new Date(vente.dateEcheance).toLocaleDateString('fr-FR') : '30 jours'}`, 17, finalY + 17);
+    doc.text(`• Modalité de paiement : ${vente.modePaiement || 'Comptant à la livraison / Virement'}`, 17, finalY + 22);
+    doc.text(`• Observations : ${vente.notes || 'Offre sous réserve de disponibilité des stocks à la confirmation.'}`, 17, finalY + 27, { maxWidth: 98 });
+    doc.text(`• Coordonnées Bancaires (RIB) : ${cBank} - ${cRib}`, 17, finalY + 36);
+  } else {
+    doc.text(`• Mode de règlement : ${vente.modePaiement || 'Virement Bancaire'}`, 17, finalY + 12);
+    doc.text(`• Date d'échéance : ${vente.dateEcheance ? new Date(vente.dateEcheance).toLocaleDateString('fr-FR') : 'À réception'}`, 17, finalY + 17);
+    doc.text(`• Statut du document : ${vente.statut.toUpperCase()}`, 17, finalY + 22);
+    doc.text(`• Observations : ${vente.notes || 'Paiement sans escompte. Tout retard entraîne pénalités.'}`, 17, finalY + 27, { maxWidth: 98 });
+    doc.text(`• Coordonnées Bancaires (RIB) : ${cBank} - ${cRib}`, 17, finalY + 36);
+  }
 
   // Financial Totals Summary (Right)
   const montantPaye = vente.montantPaye ?? (vente.statut === 'Payée' ? vente.montantTTC : 0);
@@ -253,23 +302,33 @@ export function generateInvoicePdf(vente: Vente, client?: Client, projet?: Proje
   doc.text('Droit de Timbre :', 126, finalY + 19);
   doc.text('1,000 DT', 193, finalY + 19, { align: 'right' });
 
-  doc.setDrawColor(180, 20, 30);
+  doc.setDrawColor(bannerColor[0], bannerColor[1], bannerColor[2]);
   doc.line(126, finalY + 22, 193, finalY + 22);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text('NET À PAYER TTC :', 126, finalY + 27);
+  doc.setTextColor(bannerColor[0], bannerColor[1], bannerColor[2]);
+  doc.text(isDevis ? 'TOTAL DEVIS TTC :' : 'NET À PAYER TTC :', 126, finalY + 27);
   doc.text(fmt(vente.montantTTC), 193, finalY + 27, { align: 'right' });
 
   doc.setFontSize(7.5);
-  doc.setTextColor(16, 185, 129);
-  doc.text('Montant Réglé :', 126, finalY + 33);
-  doc.text(fmt(montantPaye), 193, finalY + 33, { align: 'right' });
+  if (isDevis) {
+    doc.setTextColor(100, 116, 139);
+    doc.text('Acompte souhaité (30%) :', 126, finalY + 33);
+    doc.text(fmt(vente.montantTTC * 0.3), 193, finalY + 33, { align: 'right' });
 
-  doc.setTextColor(soldeRestant > 0 ? 220 : 71, soldeRestant > 0 ? 38 : 85, soldeRestant > 0 ? 38 : 105);
-  doc.text('SOLDE RESTANT DÛ :', 126, finalY + 39);
-  doc.text(fmt(soldeRestant), 193, finalY + 39, { align: 'right' });
+    doc.setTextColor(71, 85, 105);
+    doc.text('Solde à la livraison :', 126, finalY + 39);
+    doc.text(fmt(vente.montantTTC * 0.7), 193, finalY + 39, { align: 'right' });
+  } else {
+    doc.setTextColor(16, 185, 129);
+    doc.text('Montant Réglé :', 126, finalY + 33);
+    doc.text(fmt(montantPaye), 193, finalY + 33, { align: 'right' });
+
+    doc.setTextColor(soldeRestant > 0 ? 220 : 71, soldeRestant > 0 ? 38 : 85, soldeRestant > 0 ? 38 : 105);
+    doc.text('SOLDE RESTANT DÛ :', 126, finalY + 39);
+    doc.text(fmt(soldeRestant), 193, finalY + 39, { align: 'right' });
+  }
 
   // Signatures Footer
   finalY += 48;
@@ -281,19 +340,26 @@ export function generateInvoicePdf(vente: Vente, client?: Client, projet?: Proje
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-  doc.text('Cachet et Signature du Client', 25, finalY);
-  doc.text('Direction Financière & Comptabilité', 130, finalY);
+  
+  if (isDevis) {
+    doc.text('Bon pour Accord et Signature Client', 20, finalY);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'italic');
+    doc.text('(précédé de la mention manuscrite "Lu et Approuvé")', 17, finalY + 4);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text('Cachet Commercial UGS DISTRIBUTION', 125, finalY);
+  } else {
+    doc.text('Cachet et Signature du Client', 25, finalY);
+    doc.text('Direction Financière & Comptabilité', 130, finalY);
+  }
 
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(14, finalY + 4, 82, 18, 2, 2);
-  doc.roundedRect(114, finalY + 4, 82, 18, 2, 2);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.roundedRect(14, finalY + 6, 82, 18, 2, 2);
+  doc.roundedRect(114, finalY + 6, 82, 18, 2, 2);
 
-  // Bottom Notice
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(7);
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text(`${cName} • MF : ${cMF} • RIB : ${cRib} • Document conforme aux normes comptables et fiscales en vigueur`, 105, 288, { align: 'center' });
-
+  applyPdfFooters(doc, `${docType} N° ${vente.numero}`);
   doc.save(`${docType.replace(/\s+/g, '_')}_${vente.numero}.pdf`);
 }
 
@@ -304,50 +370,61 @@ export function generatePurchaseOrderPdf(achat: Achat, fournisseur?: Fournisseur
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   // Header Banner
-  doc.setFillColor(15, 23, 42); // Dark Slate header
-  doc.rect(0, 0, 210, 34, 'F');
+  doc.setFillColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2]);
+  doc.rect(0, 0, 210, 32, 'F');
+
+  // Decorative Accent
+  doc.setFillColor(14, 165, 233); // Sky Blue (#0EA5E9)
+  doc.rect(0, 32, 210, 1.5, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('UGS DISTRIBUTION - APPROVISIONNEMENT', 14, 15);
+  doc.setFontSize(15);
+  doc.text('SOCIETE UNIVERS GSM DE SUD', 14, 13);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`BON DE COMMANDE ACHAT • Espace Projet : ${projet?.nom || 'Projet Principal'}`, 14, 22);
-  doc.text(`Édité le : ${new Date().toLocaleDateString('fr-FR')} • Service Achats & Chantiers`, 14, 28);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text(`N° ${achat.numero}`, 145, 18);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Date commande : ${new Date(achat.date).toLocaleDateString('fr-FR')}`, 145, 26);
-
-  let currentY = 44;
-
-  // Box Société
-  doc.setDrawColor(226, 232, 240);
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(14, currentY, 88, 36, 3, 3, 'FD');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text('COMMANDITAIRE / LIVRAISON', 18, currentY + 6);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
-  doc.text('UGS Distribution & Travaux SAS', 18, currentY + 12);
-  doc.text('Dépôt Central & Réception Matériaux', 18, currentY + 17);
-  doc.text(`Projet Affecté : ${projet?.nom || 'Alpha BTP'}`, 18, currentY + 22);
-  doc.text('Contact Chantier : +216 71 000 111', 18, currentY + 27);
-  doc.text('Email : achats@ugs-distribution.com', 18, currentY + 32);
+  doc.text(`BON DE COMMANDE ACHAT • Espace Projet : ${projet?.nom || 'Projet Principal'}`, 14, 20);
+  doc.text(`Édité le : ${new Date().toLocaleDateString('fr-FR')} • Service Achats & Chantiers`, 14, 26);
+
+  // Add Company Logo
+  try {
+    doc.addImage('/logo.png', 'PNG', 155, 3, 40, 40);
+  } catch (e) {
+    console.error('Logo not found', e);
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(`N° ${achat.numero}`, 196, 14, { align: 'right' });
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Date commande : ${new Date(achat.date).toLocaleDateString('fr-FR')}`, 196, 22, { align: 'right' });
+
+  let currentY = 40;
+
+  // Box Société
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
+  doc.roundedRect(14, currentY, 88, 36, 2.5, 2.5, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2]);
+  doc.text('COMMANDITAIRE / LIVRAISON', 18, currentY + 6);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text('SOCIETE UNIVERS GSM DE SUD', 18, currentY + 12);
+  doc.text('112, OMAR IBN KHATAB ZRIG, GABES S3', 18, currentY + 17);
+  doc.text(`Projet : ${projet?.nom || 'Site Gabès'}`, 18, currentY + 22);
+  doc.text('Contact : +216 75 655 555', 18, currentY + 27);
+  doc.text('Email : contact@ugs-distribution.tn', 18, currentY + 32);
 
   // Box Fournisseur
-  doc.roundedRect(108, currentY, 88, 36, 3, 3, 'FD');
+  doc.roundedRect(108, currentY, 88, 36, 2.5, 2.5, 'FD');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(9);
+  doc.setTextColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2]);
   doc.text('FOURNISSEUR / SOUS-TRAITANT', 112, currentY + 6);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
@@ -358,7 +435,7 @@ export function generatePurchaseOrderPdf(achat: Achat, fournisseur?: Fournisseur
   doc.text(`Matricule Fiscal : ${fournisseur?.matriculeFiscal || 'Non spécifié'}`, 112, currentY + 27);
   doc.text(`Contact : ${fournisseur?.contactNom || 'Service Commercial'} (${fournisseur?.telephone || ''})`, 112, currentY + 32);
 
-  currentY += 44;
+  currentY += 42;
 
   const tableRows = achat.lignes && achat.lignes.length > 0
     ? achat.lignes.map((lig, idx) => [
@@ -405,8 +482,8 @@ export function generatePurchaseOrderPdf(achat: Achat, fournisseur?: Fournisseur
   let finalY = doc.lastAutoTable.finalY + 8;
 
   // Summary Totals
-  doc.setDrawColor(226, 232, 240);
-  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
   doc.roundedRect(125, finalY, 71, 30, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'normal');
@@ -426,6 +503,7 @@ export function generatePurchaseOrderPdf(achat: Achat, fournisseur?: Fournisseur
   doc.text('TOTAL TTC COMMANDE :', 128, finalY + 24);
   doc.text(fmt(achat.montantTTC), 192, finalY + 24, { align: 'right' });
 
+  applyPdfFooters(doc, `Bon de Commande Achats N° ${achat.numero}`);
   doc.save(`Bon_Commande_${achat.numero}.pdf`);
 }
 
@@ -438,35 +516,45 @@ export function generateClientStatementPdf(client: Client, ventes: Vente[], regl
   // Header Banner
   doc.setFillColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.rect(0, 0, 210, 32, 'F');
+  doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+  doc.rect(0, 32, 210, 1.5, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('RELEVÉ DE COMPTE & SITUATION CLIENT', 14, 15);
+  doc.setFontSize(15);
+  doc.text('RELEVÉ DE COMPTE & SITUATION CLIENT', 14, 13);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`UGS Distribution • ERP Multi-Projets • Édité le ${new Date().toLocaleDateString('fr-FR')}`, 14, 23);
+  doc.setFontSize(8.5);
+  doc.text(`ERP Management Distribution • ERP Multi-Projets • Édité le ${new Date().toLocaleDateString('fr-FR')}`, 14, 21);
+  doc.text(`Projet / Chantier : ${projet?.nom || 'Consolidé / Global'}`, 14, 26);
+
+  // Add Company Logo
+  try {
+    doc.addImage('/logo.png', 'PNG', 155, 3, 40, 40);
+  } catch (e) {
+    console.error('Logo not found', e);
+  }
 
   // Client Details Card
   let currentY = 40;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(14, currentY, 182, 32, 3, 3, 'FD');
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.roundedRect(14, currentY, 182, 32, 2.5, 2.5, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.text(client.nom, 18, currentY + 7);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
   doc.text(`Code : ${client.code || 'CLI-00' + client.id} • Catégorie : ${client.categorie || 'PME'} • Solvabilité : ${client.scoreSolvabilite || 80}/100`, 18, currentY + 14);
   doc.text(`Matricule Fiscal / CIN : ${client.matriculeFiscal || 'N/A'} • Tél : ${client.telephone}`, 18, currentY + 20);
   doc.text(`Plafond de Crédit Autorisé : ${fmt(client.plafondCredit || 20000)} • Délai accordé : ${client.delaiPaiement || 30} jours`, 18, currentY + 26);
 
-  currentY += 40;
+  currentY += 38;
 
   // Compute Totals
   const totalFactures = ventes.reduce((acc, v) => acc + v.montantTTC, 0);
@@ -477,29 +565,29 @@ export function generateClientStatementPdf(client: Client, ventes: Vente[], regl
   doc.setFillColor(239, 246, 255); // Blue
   doc.roundedRect(14, currentY, 56, 18, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(30, 64, 175);
-  doc.text('TOTAL FACTURÉ', 18, currentY + 6);
-  doc.setFontSize(10);
+  doc.text('TOTAL FACTURÉ TTC', 18, currentY + 6);
+  doc.setFontSize(9.5);
   doc.text(fmt(totalFactures), 18, currentY + 13);
 
   doc.setFillColor(240, 253, 244); // Green
   doc.roundedRect(77, currentY, 56, 18, 2, 2, 'F');
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(22, 101, 52);
   doc.text('TOTAL ENCAISSÉ', 81, currentY + 6);
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.text(fmt(totalPaye), 81, currentY + 13);
 
   doc.setFillColor(254, 242, 242); // Red
   doc.roundedRect(140, currentY, 56, 18, 2, 2, 'F');
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(153, 27, 27);
   doc.text('SOLDE RESTANT DÛ', 144, currentY + 6);
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.text(fmt(soldeDu), 144, currentY + 13);
 
-  currentY += 26;
+  currentY += 24;
 
   // Transactions list
   const historyRows = ventes.map(v => [
@@ -522,10 +610,10 @@ export function generateClientStatementPdf(client: Client, ventes: Vente[], regl
       fillColor: [180, 20, 30],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 8.5
+      fontSize: 8
     },
     bodyStyles: {
-      fontSize: 8
+      fontSize: 7.5
     },
     columnStyles: {
       0: { halign: 'center', cellWidth: 20 },
@@ -539,6 +627,7 @@ export function generateClientStatementPdf(client: Client, ventes: Vente[], regl
     }
   });
 
+  applyPdfFooters(doc, `Relevé de Compte Client - ${client.nom}`);
   doc.save(`Releve_Compte_${client.nom.replace(/\s+/g, '_')}.pdf`);
 }
 
@@ -551,15 +640,24 @@ export function generateAgingBalancePdf(echeances: CreditEcheance[], clients: Cl
   // Header Banner Landscape (297mm width)
   doc.setFillColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.rect(0, 0, 297, 30, 'F');
+  doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+  doc.rect(0, 30, 297, 1.5, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('BALANCE ÂGÉE DES CRÉANCES & ÉCHÉANCIER DE RECOUVREMENT', 14, 14);
+  doc.setFontSize(15);
+  doc.text('BALANCE ÂGÉE DES CRÉANCES & ÉCHÉANCIER DE RECOUVREMENT', 14, 13);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`Système ERP Central • Multi-Projets • Périmètre : ${projet?.nom || 'Tous les Projets'} • Date d'analyse : ${new Date().toLocaleDateString('fr-FR')}`, 14, 22);
+  doc.setFontSize(8.5);
+  doc.text(`Système ERP Central • Multi-Projets • Périmètre : ${projet?.nom || 'Tous les Projets'} • Date d'analyse : ${new Date().toLocaleDateString('fr-FR')}`, 14, 21);
+
+  // Add Company Logo
+  try {
+    doc.addImage('/logo.png', 'PNG', 245, 3, 40, 40);
+  } catch (e) {
+    console.error('Logo not found', e);
+  }
 
   // Group by client and calculate buckets
   const totalNonEchu = echeances.filter(e => e.joursRetard <= 0).reduce((acc, e) => acc + e.soldeRestant, 0);
@@ -569,25 +667,25 @@ export function generateAgingBalancePdf(echeances: CreditEcheance[], clients: Cl
   const totalGlobalDu = totalNonEchu + total1a30 + total31a60 + totalPlus60;
 
   // Aging Summary Box
-  let currentY = 38;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(14, currentY, 269, 20, 2, 2, 'FD');
+  let currentY = 37;
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.roundedRect(14, currentY, 269, 18, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(30, 41, 59);
 
-  doc.text(`Non Échues (< 0j) : ${fmt(totalNonEchu)}`, 20, currentY + 8);
-  doc.text(`Retard 1-30j : ${fmt(total1a30)}`, 85, currentY + 8);
-  doc.text(`Retard 31-60j : ${fmt(total31a60)}`, 145, currentY + 8);
-  doc.text(`Retard > 60j : ${fmt(totalPlus60)}`, 210, currentY + 8);
+  doc.text(`Non Échues (< 0j) : ${fmt(totalNonEchu)}`, 20, currentY + 7);
+  doc.text(`Retard 1-30j : ${fmt(total1a30)}`, 85, currentY + 7);
+  doc.text(`Retard 31-60j : ${fmt(total31a60)}`, 145, currentY + 7);
+  doc.text(`Retard > 60j : ${fmt(totalPlus60)}`, 210, currentY + 7);
 
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.setFontSize(10);
-  doc.text(`TOTAL EN-COURS GLOBAL : ${fmt(totalGlobalDu)}`, 20, currentY + 16);
+  doc.setFontSize(9.5);
+  doc.text(`TOTAL EN-COURS GLOBAL : ${fmt(totalGlobalDu)}`, 20, currentY + 14);
 
-  currentY += 26;
+  currentY += 23;
 
   const rows = echeances.map((e, idx) => [
     (idx + 1).toString(),
@@ -599,9 +697,9 @@ export function generateAgingBalancePdf(echeances: CreditEcheance[], clients: Cl
     fmt(e.montantTTC),
     fmt(e.montantPaye),
     fmt(e.soldeRestant),
-    e.joursRetard <= 0 ? fmt(e.soldeRestant) : '0.00 DT',
-    e.joursRetard > 0 && e.joursRetard <= 30 ? fmt(e.soldeRestant) : '0.00 DT',
-    e.joursRetard > 30 ? fmt(e.soldeRestant) : '0.00 DT',
+    e.joursRetard <= 0 ? fmt(e.soldeRestant) : '0,00 DT',
+    e.joursRetard > 0 && e.joursRetard <= 30 ? fmt(e.soldeRestant) : '0,00 DT',
+    e.joursRetard > 30 ? fmt(e.soldeRestant) : '0,00 DT',
     e.statut
   ]);
 
@@ -637,6 +735,7 @@ export function generateAgingBalancePdf(echeances: CreditEcheance[], clients: Cl
     }
   });
 
+  applyPdfFooters(doc, `Balance Âgée des Créances Clients`);
   doc.save(`Balance_Agee_Creances_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
@@ -647,47 +746,56 @@ export function generateDunningLetterPdf(client: Client, facturesEnRetard: Vente
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   const totalImpaye = facturesEnRetard.reduce((acc, f) => acc + (f.montantTTC - (f.montantPaye || 0)), 0);
-  const penaliteForfaitaire = niveau >= 2 ? 40 : 0; // 40 DT de frais de recouvrement légaux
+  const penaliteForfaitaire = niveau >= 2 ? 40 : 0; // 40 DT de frais de recouvrement
   const totalARegler = totalImpaye + penaliteForfaitaire;
 
   // Header Banner
   doc.setFillColor(niveau === 3 ? 153 : niveau === 2 ? 180 : 30, niveau === 3 ? 27 : niveau === 2 ? 20 : 41, niveau === 3 ? 27 : niveau === 2 ? 30 : 59);
-  doc.rect(0, 0, 210, 34, 'F');
+  doc.rect(0, 0, 210, 32, 'F');
+  doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+  doc.rect(0, 32, 210, 1.5, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   const titreNiveau = niveau === 3 ? 'MISE EN DEMEURE DE PAYER (NIVEAU 3)' : niveau === 2 ? 'LETTRE DE RELANCE FERME (NIVEAU 2)' : 'RAPPEL D\'ÉCHÉANCE ET RELANCE (NIVEAU 1)';
-  doc.text(titreNiveau, 14, 15);
+  doc.text(titreNiveau, 14, 13);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`UGS Distribution • Service Recouvrement • Réf : REL-${client.id}-${niveau}-${Date.now().toString().slice(-4)}`, 14, 23);
-  doc.text(`Date d'envoi : ${new Date().toLocaleDateString('fr-FR')} • Lettre Recommandée / Notification Officielle`, 14, 29);
+  doc.setFontSize(8.5);
+  doc.text(`ERP Management Distribution • Service Recouvrement • Réf : REL-${client.id}-${niveau}-${Date.now().toString().slice(-4)}`, 14, 21);
+  doc.text(`Date d'envoi : ${new Date().toLocaleDateString('fr-FR')} • Lettre Recommandée / Notification Officielle`, 14, 26);
 
-  let currentY = 44;
+  // Add Company Logo
+  try {
+    doc.addImage('/logo.png', 'PNG', 155, 3, 40, 40);
+  } catch (e) {
+    console.error('Logo not found', e);
+  }
+
+  let currentY = 40;
 
   // Client Box
-  doc.setDrawColor(226, 232, 240);
-  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
   doc.roundedRect(105, currentY, 91, 34, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
   doc.setTextColor(30, 41, 59);
   doc.text(client.nom, 110, currentY + 7);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.text(`À l'attention de : ${client.contactNom || 'Direction Financière'}`, 110, currentY + 13);
   doc.text(`Adresse : ${client.adresse}, ${client.ville || ''}`, 110, currentY + 19);
   doc.text(`Matricule Fiscal : ${client.matriculeFiscal || 'N/A'}`, 110, currentY + 25);
   doc.text(`Téléphone : ${client.telephone}`, 110, currentY + 30);
 
-  currentY += 42;
+  currentY += 40;
 
   // Objet
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
+  doc.setFontSize(10);
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.text(`OBJET : ${titreNiveau} - FACTURES EN SOUFFRANCE`, 14, currentY);
 
@@ -695,7 +803,7 @@ export function generateDunningLetterPdf(client: Client, facturesEnRetard: Vente
 
   // Corps du texte
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
 
   const intro = niveau === 1
@@ -706,7 +814,7 @@ export function generateDunningLetterPdf(client: Client, facturesEnRetard: Vente
 
   doc.text(intro, 14, currentY, { maxWidth: 182 });
 
-  currentY += 18;
+  currentY += 16;
 
   // Table of overdue invoices
   const rows = facturesEnRetard.map(f => [
@@ -727,11 +835,11 @@ export function generateDunningLetterPdf(client: Client, facturesEnRetard: Vente
       fillColor: [180, 20, 30],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 8.5,
+      fontSize: 8,
       halign: 'center'
     },
     bodyStyles: {
-      fontSize: 8
+      fontSize: 7.5
     },
     columnStyles: {
       0: { halign: 'center', cellWidth: 32 },
@@ -749,37 +857,38 @@ export function generateDunningLetterPdf(client: Client, facturesEnRetard: Vente
   // Total Box
   doc.setFillColor(254, 242, 242);
   doc.setDrawColor(239, 68, 68);
-  doc.roundedRect(14, finalY, 182, 22, 2, 2, 'FD');
+  doc.roundedRect(14, finalY, 182, 20, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(153, 27, 27);
   doc.text(`TOTAL EXIGIBLE IMMÉDIATEMENT : ${fmt(totalARegler)}`, 20, finalY + 8);
   
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text(`(Dont ${fmt(totalImpaye)} de principal facturé + ${fmt(penaliteForfaitaire)} d'indemnité forfaitaire de recouvrement)`, 20, finalY + 15);
+  doc.setFontSize(7.5);
+  doc.text(`(Dont ${fmt(totalImpaye)} de principal facturé + ${fmt(penaliteForfaitaire)} d'indemnité forfaitaire de recouvrement)`, 20, finalY + 14);
 
-  finalY += 30;
+  finalY += 26;
 
   // Bank coordinates for payment
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(30, 41, 59);
   doc.text('Coordonnées pour virement bancaire immédiat :', 14, finalY);
   
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.text('• Banque : Banque Internationale Arabe de Tunisie (BIAT)', 14, finalY + 6);
-  doc.text('• RIB Virement : 08 001 0001234567890 45', 14, finalY + 11);
-  doc.text(`• Réf. obligatoire au virement : RELANCE-${client.code || client.id}`, 14, finalY + 16);
+  doc.setFontSize(8);
+  doc.text('• Banque : Attijari Bank', 14, finalY + 5);
+  doc.text('• RIB Virement : 04 705 012 0051487155 82', 14, finalY + 10);
+  doc.text(`• Réf. obligatoire au virement : RELANCE-${client.code || client.id}`, 14, finalY + 15);
 
-  finalY += 28;
+  finalY += 24;
   doc.setFont('helvetica', 'bold');
   doc.text('Direction Générale & Pôle Recouvrement ERP', 120, finalY);
-  doc.setDrawColor(203, 213, 225);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
   doc.roundedRect(115, finalY + 3, 75, 18, 2, 2);
 
+  applyPdfFooters(doc, `Lettre de Relance - ${client.nom}`);
   doc.save(`Lettre_Relance_Niveau${niveau}_${client.nom.replace(/\s+/g, '_')}.pdf`);
 }
 
@@ -790,29 +899,48 @@ export function generateStockInventoryPdf(articles: Article[], mouvements?: Mouv
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
   // Banner
-  doc.setFillColor(15, 23, 42);
+  doc.setFillColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2]);
   doc.rect(0, 0, 297, 30, 'F');
+  doc.setFillColor(14, 165, 233); // Sky blue
+  doc.rect(0, 30, 297, 1.5, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('INVENTAIRE PHYSIQUE & VALORISATION DES STOCKS', 14, 14);
+  doc.setFontSize(15);
+  doc.text('INVENTAIRE PHYSIQUE & VALORISATION DES STOCKS', 14, 13);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`UGS Distribution • ERP Logistique • Espace Projet : ${projet?.nom || 'Tous les Chantiers'} • Date : ${new Date().toLocaleDateString('fr-FR')}`, 14, 22);
+  doc.setFontSize(8.5);
+  doc.text(`ERP Management Distribution • ERP Logistique • Espace Projet : ${projet?.nom || 'Tous les Chantiers'} • Date : ${new Date().toLocaleDateString('fr-FR')}`, 14, 21);
 
-  const valeurAchatTotale = articles.reduce((acc, a) => acc + (a.stock * a.prixAchatHT), 0);
-  const valeurVenteTotale = articles.reduce((acc, a) => acc + (a.stock * a.prixVenteHT), 0);
+  // Add Company Logo
+  try {
+    doc.addImage('/logo.png', 'PNG', 245, 3, 40, 40);
+  } catch (e) {
+    console.error('Logo not found', e);
+  }
+
+  const projId = projet?.id;
+  const getStock = (a: Article): number => {
+    if (typeof a.stock === 'number') return a.stock;
+    if (a.stocks && typeof a.stocks === 'object') {
+      if (projId && a.stocks[projId] !== undefined) return a.stocks[projId] || 0;
+      return Object.values(a.stocks).reduce((sum, v) => sum + (Number(v) || 0), 0);
+    }
+    return 0;
+  };
+
+  const valeurAchatTotale = articles.reduce((acc, a) => acc + (getStock(a) * (a.prixAchatHT || 0)), 0);
+  const valeurVenteTotale = articles.reduce((acc, a) => acc + (getStock(a) * (a.prixVenteHT || 0)), 0);
   const margePotentielle = valeurVenteTotale - valeurAchatTotale;
 
-  let currentY = 38;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
+  let currentY = 37;
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
   doc.roundedRect(14, currentY, 269, 18, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(30, 41, 59);
   doc.text(`Nombre de références : ${articles.length}`, 20, currentY + 7);
   doc.text(`Valorisation Coût Achat (PMP) : ${fmt(valeurAchatTotale)}`, 85, currentY + 7);
@@ -821,20 +949,26 @@ export function generateStockInventoryPdf(articles: Article[], mouvements?: Mouv
   doc.setTextColor(16, 185, 129);
   doc.text(`Marge brute théorique : ${fmt(margePotentielle)}`, 20, currentY + 14);
 
-  currentY += 24;
+  currentY += 23;
 
-  const rows = articles.map((a, idx) => [
-    (idx + 1).toString(),
-    a.code,
-    a.designation,
-    a.famille,
-    a.stock.toString(),
-    fmt(a.prixAchatHT),
-    fmt(a.prixVenteHT),
-    fmt(a.stock * a.prixAchatHT),
-    fmt(a.stock * a.prixVenteHT),
-    a.stock <= (a.seuilAlerte || 10) ? 'RÉAPPRO' : 'OPTIMAL'
-  ]);
+  const rows = articles.map((a, idx) => {
+    const st = getStock(a);
+    const pAchat = a.prixAchatHT || 0;
+    const pVente = a.prixVenteHT || 0;
+    const minSt = (a.stockMinimums && projId ? a.stockMinimums[projId] : a.stockMinimum) || a.seuilAlerte || 10;
+    return [
+      (idx + 1).toString(),
+      a.code || '-',
+      a.designation || '-',
+      a.famille || '-',
+      st.toString(),
+      fmt(pAchat),
+      fmt(pVente),
+      fmt(st * pAchat),
+      fmt(st * pVente),
+      st <= minSt ? 'RÉAPPRO' : 'OPTIMAL'
+    ];
+  });
 
   autoTable(doc, {
     startY: currentY,
@@ -865,6 +999,7 @@ export function generateStockInventoryPdf(articles: Article[], mouvements?: Mouv
     }
   });
 
+  applyPdfFooters(doc, `Inventaire & Valorisation des Stocks`);
   doc.save(`Inventaire_Stock_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
@@ -876,20 +1011,29 @@ export function generateReceiptPdf(reglement: Reglement, projet?: Projet | null)
 
   doc.setFillColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.rect(0, 0, 148, 26, 'F');
+  doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+  doc.rect(0, 26, 148, 1, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.text(`REÇU D'${reglement.type.toUpperCase()}`, 10, 12);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text(`UGS Distribution ERP • Pièce N° ${reglement.numeroPiece}`, 10, 19);
+  doc.setFontSize(8.0);
+  doc.text(`UGS Distribution • Pièce N° ${reglement.numeroPiece}`, 10, 19);
 
-  let currentY = 34;
+  // Add Company Logo
+  try {
+    doc.addImage('/logo.png', 'PNG', 105, 3, 35, 35);
+  } catch (e) {
+    console.error('Logo not found', e);
+  }
 
-  doc.setDrawColor(226, 232, 240);
-  doc.setFillColor(248, 250, 252);
+  let currentY = 32;
+
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
   doc.roundedRect(10, currentY, 128, 48, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'normal');
@@ -913,7 +1057,7 @@ export function generateReceiptPdf(reglement: Reglement, projet?: Projet | null)
   doc.text(`Notes / Observations :`, 14, currentY + 36);
   doc.text(reglement.notes || 'Règlement validé et imputé en comptabilité', 70, currentY + 36, { maxWidth: 64 });
 
-  currentY += 56;
+  currentY += 54;
 
   // Montant Encart
   doc.setFillColor(240, 253, 244);
@@ -921,7 +1065,7 @@ export function generateReceiptPdf(reglement: Reglement, projet?: Projet | null)
   doc.roundedRect(10, currentY, 128, 18, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(22, 101, 52);
   doc.text('MONTANT ENCAISSÉ / PAYÉ :', 16, currentY + 11);
   doc.setFontSize(12);
@@ -933,12 +1077,13 @@ export function generateReceiptPdf(reglement: Reglement, projet?: Projet | null)
   doc.setFontSize(8);
   doc.setTextColor(30, 41, 59);
   doc.text('Signature du Tiers', 20, currentY);
-  doc.text('Cachet de la Caisse ERP', 90, currentY);
+  doc.text('Cachet de la Caisse UGS', 90, currentY);
 
-  doc.setDrawColor(203, 213, 225);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
   doc.roundedRect(10, currentY + 3, 58, 20, 2, 2);
   doc.roundedRect(80, currentY + 3, 58, 20, 2, 2);
 
+  applyPdfFooters(doc, `Reçu de Paiement N° ${reglement.numeroPiece}`);
   doc.save(`Recu_${reglement.numeroPiece}.pdf`);
 }
 
@@ -959,42 +1104,51 @@ export function generateCreditAgreementPdf(
 
   // Header Banner
   doc.setFillColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.rect(0, 0, 210, 34, 'F');
+  doc.rect(0, 0, 210, 32, 'F');
+  doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+  doc.rect(0, 32, 210, 1.5, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('CONVENTION D\'OCTROI DE CRÉDIT & ÉCHÉANCIER', 14, 15);
+  doc.setFontSize(15);
+  doc.text('CONVENTION D\'OCTROI DE CRÉDIT & ÉCHÉANCIER', 14, 13);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
-  doc.text('UGS DISTRIBUTION - CONTRAT DE FACILITÉ DE PAIEMENT CLIENT', 14, 22);
-  doc.text(`Projet : ${projet?.nom || 'Projet Central'} • Réf Dossier : ${ref}`, 14, 28);
+  doc.text('ERP Management DISTRIBUTION - CONTRAT DE FACILITÉ DE PAIEMENT CLIENT', 14, 20);
+  doc.text(`Projet : ${projet?.nom || 'Projet Central'} • Réf Dossier : ${ref}`, 14, 26);
 
-  let currentY = 42;
+  // Add Company Logo
+  try {
+    doc.addImage('/logo.png', 'PNG', 155, 3, 40, 40);
+  } catch (e) {
+    console.error('Logo not found', e);
+  }
+
+  let currentY = 40;
 
   // Box Parties
-  doc.setDrawColor(226, 232, 240);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
   doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
-  doc.roundedRect(14, currentY, 88, 36, 3, 3, 'FD');
+  doc.roundedRect(14, currentY, 88, 36, 2.5, 2.5, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.text('ORGANISME PRÊTEUR', 18, currentY + 6);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-  doc.text('UGS Distribution & Négoce Pro', 18, currentY + 12);
-  doc.text('Matricule Fiscal : 1234567/A/M/000', 18, currentY + 17);
-  doc.text('Zone Industrielle Voie 12, Tunis', 18, currentY + 22);
-  doc.text('Contact : credit-management@ugs.tn', 18, currentY + 27);
+  doc.text('SOCIETE UNIVERS GSM DE SUD', 18, currentY + 12);
+  doc.text('Matricule Fiscal : 1532846 G/A/M/000', 18, currentY + 17);
+  doc.text('112, OMAR IBN KHATAB ZRIG, GABES S3', 18, currentY + 22);
+  doc.text('RIB : 04 705 012 0051487155 82 - Attijari Bank', 18, currentY + 27);
 
   // Box Client (Right)
-  doc.roundedRect(108, currentY, 88, 36, 3, 3, 'FD');
+  doc.roundedRect(108, currentY, 88, 36, 2.5, 2.5, 'FD');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.text('BÉNÉFICIAIRE DU CRÉDIT (CLIENT)', 112, currentY + 6);
 
@@ -1008,7 +1162,7 @@ export function generateCreditAgreementPdf(
   doc.text(`MF / CIN : ${client.matriculeFiscal || 'Non spécifié'}`, 112, currentY + 22);
   doc.text(`Plafond autorisé : ${fmt(client.plafondCredit || 20000)}`, 112, currentY + 27);
 
-  currentY += 44;
+  currentY += 42;
 
   // Synthesis Cards
   doc.setFillColor(241, 245, 249);
@@ -1022,7 +1176,7 @@ export function generateCreditAgreementPdf(
   doc.text('ACOMPTE VERSÉ (COMPTANT)', 81, currentY + 6);
   doc.text('SOLDE FINANCÉ À CRÉDIT', 144, currentY + 6);
 
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
   doc.text(fmt(montantTotal), 18, currentY + 16);
@@ -1031,11 +1185,11 @@ export function generateCreditAgreementPdf(
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.text(fmt(soldeFinancer), 144, currentY + 16);
 
-  currentY += 30;
+  currentY += 28;
 
   // Installments Table
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
+  doc.setFontSize(10);
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
   doc.text('CALENDRIER DES ÉCHÉANCES DE PAIEMENT CONVENUES', 14, currentY);
 
@@ -1089,14 +1243,14 @@ export function generateCreditAgreementPdf(
 
   // Signature Block
   const sigY = nextY + 24;
-  doc.setDrawColor(203, 213, 225);
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
   doc.roundedRect(14, sigY, 86, 26, 2, 2);
   doc.roundedRect(110, sigY, 86, 26, 2, 2);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-  doc.text('Pour UGS Distribution (Accordé)', 20, sigY + 6);
+  doc.text('Pour ERP Management Distribution (Accordé)', 20, sigY + 6);
   doc.text(`Pour le Client : ${client.nom}`, 116, sigY + 6);
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
@@ -1104,5 +1258,156 @@ export function generateCreditAgreementPdf(
   doc.text('Signature & Cachet de la Direction', 20, sigY + 20);
   doc.text('Mention manuscrite "Bon pour accord de paiement"', 116, sigY + 20);
 
+  applyPdfFooters(doc, `Convention de Crédit - ${client.nom}`);
   doc.save(`Convention_Credit_${client.nom.replace(/[^a-zA-Z0-9]/g, '_')}_${ref}.pdf`);
+}
+
+/**
+ * 9. TICKET DE CAISSE THERMIQUE (80mm) / REÇU DE VENTE COMPTOIR
+ */
+export function generatePosTicketPdf(vente: Vente, client?: Client, projet?: Projet | null) {
+  // Standard 80mm receipt width (approx 80mm x 200mm dynamic)
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: [80, 220]
+  });
+
+  const cName = projet?.entrepriseNom || 'SOCIETE UNIVERS GSM DE SUD';
+  const cMF = projet?.matriculeFiscal || '1532846 G/A/M/000';
+  const cAddress = projet?.adresse || '112, OMAR IBN KHATAB ZRIG, GABES S3';
+  const cPhone = projet?.telephone || '75 655 555';
+  const boutiqueNom = projet?.nom || 'Boutique Univers GSM';
+
+  let currentY = 10;
+
+  // Header
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text(cName.toUpperCase(), 40, currentY, { align: 'center' });
+
+  currentY += 4.5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(boutiqueNom, 40, currentY, { align: 'center' });
+
+  currentY += 4;
+  doc.text(cAddress, 40, currentY, { align: 'center' });
+
+  currentY += 4;
+  doc.text(`MF: ${cMF} • Tél: ${cPhone}`, 40, currentY, { align: 'center' });
+
+  currentY += 4;
+  // Dotted separator
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineDashPattern([1, 1], 0);
+  doc.line(6, currentY, 74, currentY);
+
+  currentY += 5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text('TICKET DE CAISSE', 40, currentY, { align: 'center' });
+
+  currentY += 4.5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(51, 65, 85);
+  doc.text(`Ticket N° : ${vente.numero}`, 6, currentY);
+  doc.text(`Date : ${new Date(vente.date).toLocaleDateString('fr-FR')}`, 74, currentY, { align: 'right' });
+
+  currentY += 4;
+  doc.text(`Caissier : ${vente.auteurNom || 'Caissier'}`, 6, currentY);
+  doc.text(`Client : ${client?.nom || vente.clientNom || 'Client Comptoir'}`, 74, currentY, { align: 'right' });
+
+  currentY += 4;
+  doc.line(6, currentY, 74, currentY);
+
+  currentY += 3;
+
+  // Articles Table for 80mm ticket
+  const rows = (vente.lignes || []).map(l => [
+    l.designation,
+    l.quantite.toString(),
+    ((l.prixUnitaireHT || 0) * (1 + (l.tauxTVA || 19) / 100)).toFixed(3),
+    (l.totalTTC || 0).toFixed(3)
+  ]);
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['Désignation', 'Qté', 'P.U TTC', 'Total TTC']],
+    body: rows,
+    theme: 'plain',
+    margin: { left: 5, right: 5 },
+    headStyles: {
+      fillColor: [241, 245, 249],
+      textColor: [15, 23, 42],
+      fontStyle: 'bold',
+      fontSize: 7,
+      halign: 'left'
+    },
+    bodyStyles: {
+      fontSize: 6.8,
+      textColor: [30, 41, 59]
+    },
+    columnStyles: {
+      0: { cellWidth: 34 },
+      1: { cellWidth: 8, halign: 'center' },
+      2: { cellWidth: 14, halign: 'right' },
+      3: { cellWidth: 14, halign: 'right', fontStyle: 'bold' }
+    }
+  });
+
+  // @ts-ignore
+  let finalY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 3 : currentY + 30;
+
+  doc.setLineDashPattern([1, 1], 0);
+  doc.line(6, finalY, 74, finalY);
+
+  finalY += 4.5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Total HT :', 6, finalY);
+  doc.text(`${(vente.montantHT || 0).toFixed(3)} DT`, 74, finalY, { align: 'right' });
+
+  finalY += 3.5;
+  doc.text('TVA Totale :', 6, finalY);
+  doc.text(`${((vente.montantTTC || 0) - (vente.montantHT || 0)).toFixed(3)} DT`, 74, finalY, { align: 'right' });
+
+  finalY += 5;
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(6, finalY - 3.5, 68, 8, 1, 1, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('TOTAL À PAYER TTC :', 8, finalY + 1.5);
+  doc.text(`${(vente.montantTTC || 0).toFixed(3)} DT`, 72, finalY + 1.5, { align: 'right' });
+
+  finalY += 8;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Règlement : ${vente.modePaiement || 'Espèces'}`, 6, finalY);
+  doc.text(`Reçu : ${(vente.montantPaye ?? vente.montantTTC).toFixed(3)} DT`, 74, finalY, { align: 'right' });
+
+  finalY += 6;
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineDashPattern([1, 1], 0);
+  doc.line(6, finalY, 74, finalY);
+
+  finalY += 5;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Merci pour votre confiance et à bientôt !', 40, finalY, { align: 'center' });
+
+  finalY += 3.5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text('Les articles achetés ne sont ni repris ni échangés sans ticket.', 40, finalY, { align: 'center' });
+
+  doc.save(`Ticket_Caisse_${vente.numero}.pdf`);
 }

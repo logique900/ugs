@@ -105,7 +105,7 @@ export function AdminProjectDetails({
           <div className="xl:col-span-1 space-y-6">
             
             {/* Informations */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
               <h3 className="font-bold text-slate-900 flex items-center gap-2 mb-5 pb-3 border-b border-slate-100">
                 <span className="material-symbols-outlined text-indigo-600">info</span>
                 Informations
@@ -135,7 +135,7 @@ export function AdminProjectDetails({
             </div>
 
             {/* Utilisateurs */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
               <h3 className="font-bold text-slate-900 flex items-center gap-2 mb-5 pb-3 border-b border-slate-100">
                 <span className="material-symbols-outlined text-indigo-600">group</span>
                 Utilisateurs
@@ -162,7 +162,7 @@ export function AdminProjectDetails({
           <div className="xl:col-span-2 space-y-6">
             
             {/* Activité */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
               <h3 className="font-bold text-slate-900 flex items-center gap-2 mb-5 pb-3 border-b border-slate-100">
                 <span className="material-symbols-outlined text-emerald-600">trending_up</span>
                 Activité
@@ -170,30 +170,30 @@ export function AdminProjectDetails({
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="col-span-2 md:col-span-1 p-4 bg-emerald-50 rounded-xl border border-emerald-100">
                   <span className="block text-emerald-600 text-[11px] font-bold uppercase tracking-wider mb-1">CA (HT)</span>
-                  <span className="text-emerald-700 font-black text-lg">{caRealise.toLocaleString('fr-FR')} DT</span>
+                  <span className="text-emerald-700 font-bold text-lg">{caRealise.toLocaleString('fr-FR')} DT</span>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-center">
                   <span className="block text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Ventes</span>
-                  <span className="text-slate-900 font-black text-xl">{totalVentes}</span>
+                  <span className="text-slate-900 font-bold text-xl">{totalVentes}</span>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-center">
                   <span className="block text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Commandes</span>
-                  <span className="text-slate-900 font-black text-xl">{totalCommandes}</span>
+                  <span className="text-slate-900 font-bold text-xl">{totalCommandes}</span>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-center">
                   <span className="block text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Devis</span>
-                  <span className="text-slate-900 font-black text-xl">{totalDevis}</span>
+                  <span className="text-slate-900 font-bold text-xl">{totalDevis}</span>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-center">
                   <span className="block text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Factures</span>
-                  <span className="text-slate-900 font-black text-xl">{totalFactures}</span>
+                  <span className="text-slate-900 font-bold text-xl">{totalFactures}</span>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Produits */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                 <h3 className="font-bold text-slate-900 flex items-center gap-2 mb-5 pb-3 border-b border-slate-100">
                   <span className="material-symbols-outlined text-blue-600">inventory_2</span>
                   Produits
@@ -201,7 +201,7 @@ export function AdminProjectDetails({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-blue-50/50 rounded-xl border border-blue-100">
                     <span className="text-blue-800 font-bold text-sm">Nombre de produits</span>
-                    <span className="font-black text-blue-700 text-lg">{totalProduits}</span>
+                    <span className="font-bold text-blue-700 text-lg">{totalProduits}</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                     <span className="text-slate-600 font-medium text-sm">Produits actifs</span>
@@ -215,7 +215,7 @@ export function AdminProjectDetails({
               </div>
 
               {/* Stock */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                 <h3 className="font-bold text-slate-900 flex items-center gap-2 mb-5 pb-3 border-b border-slate-100">
                   <span className="material-symbols-outlined text-amber-600">shelves</span>
                   Stock
@@ -223,7 +223,7 @@ export function AdminProjectDetails({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-amber-50/50 rounded-xl border border-amber-100">
                     <span className="text-amber-800 font-bold text-sm">Stock total (unités)</span>
-                    <span className="font-black text-amber-700 text-lg">{stockTotal.toLocaleString('fr-FR')}</span>
+                    <span className="font-bold text-amber-700 text-lg">{stockTotal.toLocaleString('fr-FR')}</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                     <span className="text-slate-600 font-medium text-sm">Produits en rupture</span>

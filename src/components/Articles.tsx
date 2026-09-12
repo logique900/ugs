@@ -146,7 +146,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
     stockMinimum: 10,
     stockMaximum: 100,
     stockSecurite: 5,
-    depotPrincipal: 'Dépôt Central',
+    depotPrincipal: 'Société UGS',
     emplacement: '',
     statut: 'Actif',
     projetId: selectedProjectId === 'all' ? projets[0]?.id : selectedProjectId
@@ -285,7 +285,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       stockMinimum: 10,
       stockMaximum: 100,
       stockSecurite: 5,
-      depotPrincipal: 'Dépôt Central',
+      depotPrincipal: 'Société UGS',
       emplacement: '',
       statut: 'Actif',
       projetId: selectedProjectId === 'all' ? projets[0]?.id : selectedProjectId
@@ -596,15 +596,17 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
   const handleExportCSV = () => {
     const headers = ['Code', 'Désignation', 'Famille', 'Achat HT', 'Marge (%)', 'Vente HT', 'Stock'];
     const rows = filteredArticles.map(a => {
-      const mb = a.margeBeneficiaire ?? (a.prixAchatHT > 0 ? ((a.prixVenteHT - a.prixAchatHT) / a.prixAchatHT) * 100 : 0);
+      const pAchat = a.prixAchatHT || 0;
+      const pVente = a.prixVenteHT || 0;
+      const mb = a.margeBeneficiaire ?? (pAchat > 0 ? ((pVente - pAchat) / pAchat) * 100 : 0);
       return [
-        a.code,
-        `"${a.designation.replace(/"/g, '""')}"`,
-        `"${a.famille.replace(/"/g, '""')}"`,
-        a.prixAchatHT.toString(),
+        a.code || '',
+        `"${(a.designation || '').replace(/"/g, '""')}"`,
+        `"${(a.famille || '').replace(/"/g, '""')}"`,
+        pAchat.toString(),
         `${mb.toFixed(2)}%`,
-        a.prixVenteHT.toString(),
-        getArticleStock(a, selectedProjectId).toString()
+        pVente.toString(),
+        (getArticleStock(a, selectedProjectId) ?? 0).toString()
       ];
     });
     
@@ -621,33 +623,84 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
   };
 
   const handleExportPDF = () => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     
-    doc.setFontSize(18);
-    doc.text('Catalogue des Articles', 14, 22);
+    // Header Banner
+    doc.setFillColor(15, 23, 42); // Dark slate
+    doc.rect(0, 0, 210, 32, 'F');
+    doc.setFillColor(225, 29, 72); // Rose accent line
+    doc.rect(0, 32, 210, 1.5, 'F');
     
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 14, 30);
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text("CATALOGUE ET TARIF DES ARTICLES", 14, 13);
     
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(203, 213, 225);
+    const scopeLabel = selectedProjectId ? projets.find(p => p.id === selectedProjectId)?.nom || 'Projet Séquencé' : 'Tous les Projets (Consolidé)';
+    doc.text(`ERP Management Distribution • Périmètre : ${scopeLabel} • Édité le ${new Date().toLocaleDateString('fr-FR')}`, 14, 21);
+
+    // Summary Box KPI
+    const totalRef = filteredArticles.length;
+    const totalValAchat = filteredArticles.reduce((acc, a) => acc + ((getArticleStock(a, selectedProjectId) ?? 0) * (a.prixAchatHT || 0)), 0);
+    const totalValVente = filteredArticles.reduce((acc, a) => acc + ((getArticleStock(a, selectedProjectId) ?? 0) * (a.prixVenteHT || 0)), 0);
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, 39, 182, 16, 2, 2, 'FD');
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text(`Références : ${totalRef}`, 18, 49);
+    doc.text(`Valeur Stock Achat : ${totalValAchat.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 65, 49);
+    doc.text(`Valeur Stock Vente : ${totalValVente.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, 130, 49);
+
     autoTable(doc, {
-      startY: 36,
-      head: [['Code', 'Désignation', 'Famille', 'Achat HT', 'Marge (%)', 'Vente HT', 'Stock']],
+      startY: 60,
+      head: [['Code', 'Désignation', 'Famille', 'Achat HT', 'Marge %', 'Vente HT', 'Stock']],
       body: filteredArticles.map(a => {
-        const mb = a.margeBeneficiaire ?? (a.prixAchatHT > 0 ? ((a.prixVenteHT - a.prixAchatHT) / a.prixAchatHT) * 100 : 0);
+        const pAchat = a.prixAchatHT || 0;
+        const pVente = a.prixVenteHT || 0;
+        const mb = a.margeBeneficiaire ?? (pAchat > 0 ? ((pVente - pAchat) / pAchat) * 100 : 0);
         return [
-          a.code,
-          a.designation,
-          a.famille,
-          `${a.prixAchatHT.toFixed(3)} DT`,
+          a.code || '-',
+          a.designation || '-',
+          a.famille || '-',
+          `${pAchat.toFixed(3)} DT`,
           `${mb.toFixed(1)}%`,
-          `${a.prixVenteHT.toFixed(3)} DT`,
-          getArticleStock(a, selectedProjectId).toString()
+          `${pVente.toFixed(3)} DT`,
+          (getArticleStock(a, selectedProjectId) ?? 0).toString()
         ];
       }),
       theme: 'grid',
-      headStyles: { fillColor: [220, 38, 38] },
+      headStyles: { fillColor: [180, 20, 30], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+      bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 22 },
+        1: { cellWidth: 65 },
+        2: { cellWidth: 32 },
+        3: { halign: 'right', cellWidth: 22 },
+        4: { halign: 'center', cellWidth: 16 },
+        5: { halign: 'right', cellWidth: 22 },
+        6: { halign: 'center', cellWidth: 14 }
+      }
     });
+
+    // Page Numbers Footer
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, 285, 196, 285);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`ERP Management DISTRIBUTION ERP • Catalogue Général des Articles`, 14, 290);
+      doc.text(`Page ${i} / ${totalPages}`, 196, 290, { align: 'right' });
+    }
     
     doc.save(`catalogue_articles_${new Date().toISOString().split('T')[0]}.pdf`);
     setIsExportMenuOpen(false);
@@ -659,15 +712,15 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="font-display-lg text-xl sm:text-display-lg text-on-surface flex items-center gap-2 flex-wrap">
-            {selectedProjectId === 'all' ? 'Catalogue Central UGS' : 'Gestion des Articles'}
+            {selectedProjectId === 'all' ? 'Catalogue Général' : 'Articles & Produits'}
             <span className="text-xs sm:text-sm font-medium px-2.5 py-0.5 bg-primary/10 text-primary rounded-full border border-primary/20">
               {selectedProjectId === 'all' ? 'Centrale' : 'Boutique'}
             </span>
           </h1>
           <p className="font-body-lg text-xs sm:text-body-lg text-on-surface-variant mt-1">
             {selectedProjectId === 'all' 
-              ? 'Référentiel maître des produits distribués par la Société UGS.' 
-              : 'Gérez votre catalogue local et optimisez votre stock boutique.'}
+              ? 'Liste de tous les articles et produits de votre entreprise.' 
+              : 'Gérez les articles et les stocks de votre boutique.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -703,10 +756,10 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
           <button 
             onClick={() => setIsMultiBoutiqueModalOpen(true)}
             className="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-label-md text-label-md transition-all shadow-sm cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-            title="Gestion des stocks multi-boutiques"
+            title="Stock et transferts entre boutiques"
           >
             <span className="material-symbols-outlined text-[18px] mr-2">domain</span>
-            Stocks Multi-Boutiques
+            Stock par Boutique
           </button>
           
           {/* Category Management Button */}
@@ -722,10 +775,10 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
             <button 
               disabled
               className="inline-flex items-center justify-center px-4 py-2.5 bg-slate-200 text-slate-400 rounded-lg font-label-md text-label-md cursor-not-allowed border border-slate-300 opacity-60"
-              title="🔒 Accès restreint : Gestion des catégories réservée à l'Administrateur"
+              title="Réservé à l'administrateur"
             >
               <span className="material-symbols-outlined text-[18px] mr-2">lock</span>
-              Catégories (Restreint)
+              Catégories (Verrouillé)
             </button>
           )}
 
@@ -742,10 +795,10 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
             <button 
               disabled
               className="inline-flex items-center justify-center px-4 py-2.5 bg-slate-200 text-slate-400 rounded-lg font-label-md text-label-md cursor-not-allowed border border-slate-300 opacity-60"
-              title="🔒 Accès restreint : Création d'articles réservée à l'Administrateur"
+              title="Réservé à l'administrateur"
             >
               <span className="material-symbols-outlined text-[18px] mr-2">lock</span>
-              Nouvel Article (Restreint)
+              Nouvel Article (Verrouillé)
             </button>
           )}
         </div>
@@ -756,7 +809,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* KPI Dashboard */}
         <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant shadow-sm flex flex-col justify-between relative overflow-hidden group">
+          <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <span className="material-symbols-outlined text-6xl text-primary">inventory_2</span>
             </div>
@@ -767,18 +820,18 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
             </div>
           </div>
 
-          <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant shadow-sm flex flex-col justify-between">
-            <p className="text-on-surface-variant font-label-md mb-2">Valeur du Stock (Achat HT)</p>
+          <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
+            <p className="text-on-surface-variant font-label-md mb-2">Valeur du Stock (Achat)</p>
             <div className="flex items-end justify-between">
               <h3 className="text-2xl font-display-md font-bold text-on-surface">{kpis.stockValue.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} <span className="text-base text-on-surface-variant">DT</span></h3>
               <div className="text-right">
-                <p className="text-[10px] text-on-surface-variant uppercase">Revenu Est.</p>
+                <p className="text-[10px] text-on-surface-variant uppercase">Vente estimée</p>
                 <span className="text-xs font-bold text-green-600">+{kpis.expectedRevenue.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} DT</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant shadow-sm flex flex-col justify-between">
+          <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
             <p className="text-on-surface-variant font-label-md mb-2">Marge Moyenne</p>
             <div className="flex items-end justify-between">
               <h3 className="text-3xl font-display-md font-bold text-on-surface">{kpis.avgMargin.toFixed(1)}%</h3>
@@ -786,26 +839,26 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
             </div>
           </div>
 
-          <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant shadow-sm flex flex-col justify-between border-l-4 border-l-orange-500">
-            <p className="text-on-surface-variant font-label-md mb-2">Alertes Stock</p>
+          <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between border-l-4 border-l-orange-500">
+            <p className="text-on-surface-variant font-label-md mb-2">Alertes de Stock</p>
             <div className="flex items-end gap-3">
               <div className="flex-1">
                 <h3 className="text-2xl font-display-md font-bold text-orange-600">{kpis.lowStockCount}</h3>
-                <p className="text-[10px] font-bold text-orange-600/70 uppercase">Stock Faible</p>
+                <p className="text-[10px] font-bold text-orange-600/70 uppercase">Stock Bas</p>
               </div>
               <div className="w-px h-8 bg-outline-variant"></div>
               <div className="flex-1">
                 <h3 className="text-2xl font-display-md font-bold text-error">{kpis.outOfStockCount}</h3>
-                <p className="text-[10px] font-bold text-error/70 uppercase">Épuisés</p>
+                <p className="text-[10px] font-bold text-error/70 uppercase">En Rupture</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Chart Section */}
-        <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant shadow-sm flex flex-col">
+        <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex flex-col">
           <div className="flex justify-between items-center mb-4">
-            <p className="text-on-surface font-bold text-sm">Valeur Stock par Famille</p>
+            <p className="text-on-surface font-bold text-sm">Valeur du Stock par Catégorie</p>
             <span className="material-symbols-outlined text-on-surface-variant text-[18px]">bar_chart</span>
           </div>
           <div className="flex-1 min-h-[160px] w-full">
@@ -835,7 +888,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       </div>
 
       {/* Advanced Data Table Area */}
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl overflow-hidden shadow-sm">
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
         {/* Filters Toolbar & Search */}
         <div className="p-4 border-b border-outline-variant bg-surface flex flex-col gap-3">
           <div className="flex flex-col lg:flex-row items-center gap-4">
@@ -843,7 +896,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
               <input
                 type="text"
-                placeholder="Recherche rapide par nom, SKU ou code-barres..."
+                placeholder="Rechercher par nom, référence ou code-barres..."
                 className="block w-full pl-10 pr-10 py-2.5 border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest text-on-surface font-body-md transition-shadow shadow-2xs"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -1012,7 +1065,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   />
                 </th>
                 <th className="px-4 py-4 font-semibold">Code</th>
-                <th className="px-4 py-4 font-semibold">Désignation & Famille</th>
+                <th className="px-4 py-4 font-semibold">Article & Catégorie</th>
                 {selectedProjectId === 'all' && <th className="px-4 py-4 font-semibold">Projet</th>}
                 <th className="px-4 py-4 font-semibold text-right">
                   {canViewPurchasePrice ? 'Achat HT' : 'Achat (🔒)'}
@@ -1050,11 +1103,11 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         <span className="text-on-surface font-bold">{article.designation}</span>
                         <div className="flex items-center gap-2">
                           {article.typeArticle === 'Service' ? (
-                            <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-purple-100 text-purple-700 rounded border border-purple-200 inline-flex items-center gap-1">
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 bg-purple-100 text-purple-700 rounded border border-purple-200 inline-flex items-center gap-1">
                               <span className="material-symbols-outlined text-[12px]">design_services</span> Service
                             </span>
                           ) : (
-                            <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-200 inline-flex items-center gap-1">
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-200 inline-flex items-center gap-1">
                               <span className="material-symbols-outlined text-[12px]">inventory_2</span> Produit
                             </span>
                           )}
@@ -1076,7 +1129,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         <span className="text-on-surface-variant font-medium">{article.prixAchatHT.toFixed(3)}</span>
                       ) : (
                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                          🔒 Restreint
+                          Restreint
                         </span>
                       )}
                     </td>
@@ -1088,7 +1141,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     <td className="px-4 py-4 text-right">
                       {canViewMargins ? (
                         <div className="flex flex-col items-end">
-                          <span className="text-xs font-black text-slate-800">
+                          <span className="text-xs font-bold text-slate-800">
                             {(article.prixVenteHT - article.prixAchatHT).toFixed(3)} DT
                           </span>
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mt-0.5 ${
@@ -1102,7 +1155,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         </div>
                       ) : (
                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                          🔒 Restreint
+                          Restreint
                         </span>
                       )}
                     </td>
@@ -1118,7 +1171,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       <div className="flex flex-col items-end">
                         {selectedProjectId === 'all' ? (
                           <div className="flex flex-col items-end gap-1">
-                            <span className="text-sm font-black text-slate-900">
+                            <span className="text-sm font-bold text-slate-900">
                               {getArticleStock(article, 'all')} <span className="text-[10px] font-normal text-slate-500">(Total)</span>
                             </span>
                             <div className="flex flex-col items-end gap-0.5">
@@ -1134,7 +1187,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           </div>
                         ) : (
                           <>
-                            <span className={`text-sm font-black ${
+                            <span className={`text-sm font-bold ${
                               getArticleStock(article, selectedProjectId) === 0 ? 'text-error' : 
                               getArticleStock(article, selectedProjectId) < (article.stockMinimums?.[selectedProjectId] || 15) ? 'text-orange-500' : 'text-green-600'
                             }`}>
@@ -1143,7 +1196,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                             {getArticleStock(article, selectedProjectId) === 0 ? (
                               <span className="text-[10px] font-bold uppercase text-error">Rupture</span>
                             ) : getArticleStock(article, selectedProjectId) < (article.stockMinimums?.[selectedProjectId] || 15) ? (
-                              <span className="text-[10px] font-bold uppercase text-orange-500">À Réappro.</span>
+                              <span className="text-[10px] font-bold uppercase text-orange-500">Stock Bas</span>
                             ) : (
                               <span className="text-[10px] font-bold uppercase text-green-600">En Stock</span>
                             )}
@@ -1162,12 +1215,12 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                             const newStatus = article.statut === 'Inactif' ? 'Actif' : 'Inactif';
                             onArticlesChange(articles.map(a => a.id === article.id ? { ...a, statut: newStatus } : a));
                           }}
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase inline-flex items-center gap-1 cursor-pointer transition-all border shadow-2xs ${
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase inline-flex items-center gap-1 cursor-pointer transition-all border shadow-2xs ${
                             article.statut === 'Inactif'
                               ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
                               : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                           }`}
-                          title={article.statut === 'Inactif' ? "Cliquer pour réactiver ce produit" : "Cliquer pour désactiver ce produit"}
+                          title={article.statut === 'Inactif' ? "Cliquer pour réactiver cet article" : "Cliquer pour désactiver cet article"}
                         >
                           <span className="material-symbols-outlined text-[14px]">
                             {article.statut === 'Inactif' ? 'block' : 'check_circle'}
@@ -1179,7 +1232,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase inline-flex items-center gap-1 border opacity-75 ${
                             article.statut === 'Inactif' ? 'bg-slate-100 text-slate-600 border-slate-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           }`}
-                          title="🔒 Seul un Administrateur peut modifier le statut"
+                          title="Seul un administrateur peut modifier le statut"
                         >
                           <span className="material-symbols-outlined text-[13px]">lock</span>
                           {article.statut === 'Inactif' ? 'INACTIF' : 'ACTIF'}
@@ -1192,7 +1245,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       <button
                         onClick={() => setViewingArticle(article)}
                         className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer" 
-                        title="Voir la fiche produit"
+                        title="Voir la fiche article"
                       >
                         <span className="material-symbols-outlined text-[18px]">visibility</span>
                       </button>
@@ -1202,7 +1255,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         <button 
                           onClick={() => handleOpenEditModal(article)}
                           className="p-1.5 text-slate-600 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer" 
-                          title="Modifier la fiche produit"
+                          title="Modifier l'article"
                         >
                           <span className="material-symbols-outlined text-[18px]">edit</span>
                         </button>
@@ -1210,7 +1263,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         <button 
                           disabled
                           className="p-1.5 text-slate-300 cursor-not-allowed rounded-lg" 
-                          title="🔒 Modification restreinte"
+                          title="Modification réservée à l'administrateur"
                         >
                           <span className="material-symbols-outlined text-[18px]">lock</span>
                         </button>
@@ -1221,7 +1274,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         <button 
                           onClick={() => handleDeleteArticle(article.id)}
                           className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" 
-                          title="Désactiver ce produit"
+                          title="Désactiver cet article"
                         >
                           <span className="material-symbols-outlined text-[18px]">block</span>
                         </button>
@@ -1229,7 +1282,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         <button 
                           disabled
                           className="p-1.5 text-slate-300 cursor-not-allowed rounded-lg" 
-                          title="🔒 Désactivation réservée à l'Administrateur"
+                          title="Désactivation réservée à l'administrateur"
                         >
                           <span className="material-symbols-outlined text-[18px]">lock</span>
                         </button>
@@ -1244,7 +1297,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           setIsModalOpen(true);
                         }}
                         className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer" 
-                        title="Historique des modifications & traçabilité"
+                        title="Historique des modifications"
                       >
                         <span className="material-symbols-outlined text-[18px]">history</span>
                       </button>
@@ -1253,7 +1306,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       <button
                         onClick={() => setPrintLabelArticle(article)}
                         className="p-1.5 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
-                        title="Imprimer Étiquette Code-Barres 1D (Code 128 / EAN-13)"
+                        title="Imprimer l'étiquette code-barres"
                       >
                         <span className="material-symbols-outlined text-[18px]">barcode</span>
                       </button>
@@ -1286,22 +1339,22 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       {/* Advanced Professional Add/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] h-full">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] h-full">
             
             {/* Modal Header */}
             <div className="px-6 py-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3.5">
-                <div className="w-11 h-11 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold">
+                <div className="w-11 h-11 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[24px]">
                     {editingArticle ? 'edit_square' : 'inventory_2'}
                   </span>
                 </div>
                 <div>
-                  <h3 className="text-base font-black tracking-tight text-white">
-                    {editingArticle ? "Modification de la Fiche Article" : "Référencer un Nouveau Produit"}
+                  <h3 className="text-base font-bold tracking-tight text-white">
+                    {editingArticle ? "Modifier l'Article" : "Ajouter un Article"}
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {editingArticle ? `Mise à jour des paramètres de l'article ${editingArticle.code}` : 'Renseignez les informations commerciales, tarifaires et logistiques'}
+                    {editingArticle ? `Modifier les informations de l'article ${editingArticle.code}` : "Remplissez les détails, le prix et le stock de l'article"}
                   </p>
                 </div>
               </div>
@@ -1325,7 +1378,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 }`}
               >
                 <span className="material-symbols-outlined text-[18px]">badge</span>
-                1. Identification & Général
+                1. Informations générales
               </button>
               <button
                 type="button"
@@ -1337,7 +1390,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 }`}
               >
                 <span className="material-symbols-outlined text-[18px]">payments</span>
-                2. Tarification & Taxes
+                2. Prix & TVA
               </button>
               <button
                 type="button"
@@ -1349,7 +1402,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 }`}
               >
                 <span className="material-symbols-outlined text-[18px]">warehouse</span>
-                3. Stocks & Seuils
+                3. Stock & Alertes
               </button>
               <button
                 type="button"
@@ -1361,14 +1414,14 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 }`}
               >
                 <span className="material-symbols-outlined text-[18px]">history</span>
-                4. Historique & Traçabilité
+                4. Historique des modifications
               </button>
             </div>
 
             {/* Modal Body Form */}
             <form onSubmit={handleSaveArticle} className="flex-1 overflow-y-auto p-6 space-y-6">
               {formError && (
-                <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center gap-3 text-rose-700">
+                <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3 text-rose-700">
                   <span className="material-symbols-outlined text-[22px] shrink-0 text-rose-600">error</span>
                   <p className="text-xs font-bold leading-relaxed">{formError}</p>
                 </div>
@@ -1428,7 +1481,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                          Référence / SKU <span className="text-rose-500">*</span>
+                          Référence de l'article <span className="text-rose-500">*</span>
                         </label>
                         <input 
                           type="text"
@@ -1443,19 +1496,19 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         {liveSkuDupArticle ? (
                           <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
                             <span className="material-symbols-outlined text-[14px]">cancel</span>
-                            ❌ SKU déjà utilisé par le produit "{liveSkuDupArticle.designation}"
+                            ❌ Référence déjà utilisée par l'article "{liveSkuDupArticle.designation}"
                           </p>
                         ) : liveSkuCode ? (
                           <p className="text-[11px] font-bold text-emerald-600 mt-1 flex items-center gap-1">
                             <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                            ✓ SKU unique & disponible
+                            Référence disponible
                           </p>
                         ) : null}
                       </div>
 
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                          Nom Commercial / Désignation <span className="text-rose-500">*</span>
+                          Nom de l'article <span className="text-rose-500">*</span>
                         </label>
                         <input 
                           type="text"
@@ -1471,7 +1524,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                          Catégorie / Famille <span className="text-rose-500">*</span>
+                          Catégorie <span className="text-rose-500">*</span>
                         </label>
                         <select
                           required
@@ -1489,7 +1542,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
                           <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                            Code-barres 1D (EAN-13 / Code 128)
+                            Code-barres (EAN-13 / Code 128)
                           </label>
                           <div className="flex items-center gap-1">
                             <button
@@ -1502,7 +1555,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                                 }));
                               }}
                               className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-300 rounded text-[10px] font-bold cursor-pointer transition-all"
-                              title="Générer un code EAN-13 numérique unique à 13 chiffres (ex: 2000000001234)"
+                              title="Générer un code numérique à 13 chiffres"
                             >
                               + EAN-13
                             </button>
@@ -1516,7 +1569,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                                 }));
                               }}
                               className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-300 rounded text-[10px] font-bold cursor-pointer transition-all"
-                              title="Générer un code Code 128 alphanumérique unique (ex: PRD89234)"
+                              title="Générer un code court"
                             >
                               + Code 128
                             </button>
@@ -1539,7 +1592,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         ) : liveBarcodes.length > 0 ? (
                           <p className="text-[11px] font-bold text-emerald-600 mt-1 flex items-center gap-1">
                             <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                            ✓ Code-barres unique & valide
+                            Code-barres valide
                           </p>
                         ) : null}
                       </div>
@@ -1548,7 +1601,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   {/* Statut Selector */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      Statut du Produit
+                      Statut
                     </label>
                     <div className="grid grid-cols-2 gap-3">
                       <button
@@ -1562,9 +1615,9 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       >
                         <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
                           <span className="material-symbols-outlined text-[18px] text-emerald-600">check_circle</span>
-                          ACTIF (Opérationnel)
+                          Actif (En vente)
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-1">Recherchable, proposable dans les nouvelles ventes, devis & commandes.</p>
+                        <p className="text-[10px] text-slate-500 mt-1">Disponible pour la vente et les commandes.</p>
                       </button>
 
                       <button
@@ -1578,16 +1631,16 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       >
                         <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
                           <span className="material-symbols-outlined text-[18px] text-slate-500">block</span>
-                          INACTIF (Archivé)
+                          Inactif (Masqué)
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-1">Masqué des nouvelles ventes. Historique des anciennes ventes conservé.</p>
+                        <p className="text-[10px] text-slate-500 mt-1">Ne s'affiche plus en caisse ni dans les ventes.</p>
                       </button>
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      Description Détaillée
+                      Description
                     </label>
                     <textarea 
                       rows={3}
@@ -1599,7 +1652,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   </div>
 
                   {((formData.codeBarres && formData.codeBarres.length > 0) || formData.code) && (
-                    <div className="p-4 bg-slate-100 rounded-2xl border border-slate-200 flex flex-col items-center justify-center gap-2">
+                    <div className="p-4 bg-slate-100 rounded-xl border border-slate-200 flex flex-col items-center justify-center gap-2">
                       <span className="text-[11px] font-bold text-slate-500 uppercase font-mono">Aperçu Code-barres 1D (Code 128 / EAN-13)</span>
                       <div className="bg-white p-3 rounded-xl shadow-xs border border-slate-200 flex flex-col items-center">
                         <Barcode1D
@@ -1621,7 +1674,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                        <span>Prix d'Achat HT (DT)</span>
+                        <span>Prix d'achat HT (DT)</span>
                         <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded">Coût</span>
                       </label>
                       <input 
@@ -1654,13 +1707,13 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           ❌ Le prix d'achat ne peut pas être négatif ({formData.prixAchatHT} DT).
                         </p>
                       ) : (
-                        <p className="text-[11px] text-slate-500 mt-1">Coût d'acquisition unitaire HT.</p>
+                        <p className="text-[11px] text-slate-500 mt-1">Prix payé au fournisseur hors taxes.</p>
                       )}
                     </div>
 
                     <div>
                       <label className="block text-xs font-bold text-indigo-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                        <span>Marge Bénéficiaire (%)</span>
+                        <span>Marge bénéficiaire (%)</span>
                         <span className="text-[10px] text-indigo-600 font-extrabold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">% Bénéfice</span>
                       </label>
                       <div className="relative">
@@ -1668,7 +1721,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           type="number"
                           step="0.1"
                           placeholder="Ex: 33.3"
-                          className="w-full px-4 py-2.5 pr-8 bg-indigo-50/40 border border-indigo-300 rounded-xl text-sm font-black text-indigo-950 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
+                          className="w-full px-4 py-2.5 pr-8 bg-indigo-50/40 border border-indigo-300 rounded-xl text-sm font-bold text-indigo-950 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
                           value={formData.margeBeneficiaire ?? ''}
                           onChange={(e) => {
                             const mb = parseFloat(e.target.value) || 0;
@@ -1685,12 +1738,12 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                         />
                         <span className="absolute right-3 top-3 text-xs font-extrabold text-indigo-400">%</span>
                       </div>
-                      <p className="text-[11px] text-indigo-600 font-medium mt-1">Recalcule automatiquement le Prix de Vente.</p>
+                      <p className="text-[11px] text-indigo-600 font-medium mt-1">Calcule automatiquement le prix de vente.</p>
                     </div>
 
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Prix de Vente HT (DT) <span className="text-rose-500">*</span>
+                        Prix de vente HT (DT) <span className="text-rose-500">*</span>
                       </label>
                       <input 
                         type="number"
@@ -1720,7 +1773,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           ❌ Prix de vente négatif non autorisé ({formData.prixVenteHT} DT).
                         </p>
                       ) : (
-                        <p className="text-[11px] text-slate-500 mt-1">Prix de facturation unitaire HT.</p>
+                        <p className="text-[11px] text-slate-500 mt-1">Prix de vente proposé au client HT.</p>
                       )}
                     </div>
                   </div>
@@ -1732,15 +1785,15 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     if (pa > 0 && pv >= 0 && pv < pa) {
                       const loss = pa - pv;
                       return (
-                        <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-amber-950 space-y-2.5 animate-in fade-in duration-200">
+                        <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl text-amber-950 space-y-2.5 animate-in fade-in duration-200">
                           <div className="flex items-start gap-2.5">
                             <span className="material-symbols-outlined text-amber-600 text-[22px] shrink-0 mt-0.5">warning</span>
                             <div className="text-xs leading-relaxed">
                               <p className="font-extrabold uppercase tracking-wider text-amber-950">
-                                ⚠ Avertissement : Vente à perte
+                                ⚠ Attention : Vente à perte
                               </p>
                               <p className="mt-1 font-semibold text-amber-900">
-                                Le prix de vente (<strong>{pv.toFixed(3)} DT</strong>) est inférieur au prix d'achat (<strong>{pa.toFixed(3)} DT</strong>), générant une perte unitaire de <strong className="text-rose-700">-{loss.toFixed(3)} DT</strong>.
+                                Le prix de vente (<strong>{pv.toFixed(3)} DT</strong>) est inférieur au prix d'achat (<strong>{pa.toFixed(3)} DT</strong>), générant une perte de <strong className="text-rose-700">-{loss.toFixed(3)} DT</strong> par unité.
                               </p>
                             </div>
                           </div>
@@ -1755,7 +1808,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                               className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer" 
                             />
                             <span className="text-xs font-extrabold text-amber-950">
-                              [X] Je confirme vouloir enregistrer ce produit malgré la vente à perte.
+                              Je confirme vouloir enregistrer malgré la vente à perte.
                             </span>
                           </label>
                         </div>
@@ -1767,7 +1820,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Prix Promotionnel HT (DT) <span className="text-slate-400 font-normal">(Optionnel)</span>
+                        Prix promotionnel HT (DT) <span className="text-slate-400 font-normal">(Optionnel)</span>
                       </label>
                       <input 
                         type="number"
@@ -1804,35 +1857,35 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     const tauxMarge = pa > 0 ? (margeVal / pa) * 100 : 0; // % du coût d'achat
 
                     return (
-                      <div className="p-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl shadow-md space-y-3">
+                      <div className="p-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-xl shadow-md space-y-3">
                         <div className="flex items-center justify-between border-b border-white/10 pb-2">
                           <span className="text-xs font-bold text-indigo-200 uppercase tracking-wider flex items-center gap-1.5">
                             <span className="material-symbols-outlined text-[16px] text-emerald-400">payments</span>
-                            Analyse de Marge & Rentabilité Estimée
+                            Calcul du Bénéfice & Marge
                           </span>
                           <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
                             margeVal > 0 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                           }`}>
-                            {margeVal > 0 ? 'Rentable' : pa > 0 ? 'Vente à Perte' : 'Prix d\'Achat non défini'}
+                            {margeVal > 0 ? 'Rentable' : pa > 0 ? 'Vente à Perte' : 'Prix d\'achat non défini'}
                           </span>
                         </div>
 
                         <div className="grid grid-cols-3 gap-3 text-center">
                           <div className="p-2.5 bg-white/5 rounded-xl border border-white/10">
-                            <p className="text-[10px] font-bold text-slate-300 uppercase">Marge Brute HT</p>
-                            <p className={`text-base font-black mt-0.5 ${margeVal < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            <p className="text-[10px] font-bold text-slate-300 uppercase">Bénéfice par article</p>
+                            <p className={`text-base font-bold mt-0.5 ${margeVal < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                               {margeVal >= 0 ? `+${margeVal.toFixed(3)}` : margeVal.toFixed(3)} DT
                             </p>
                           </div>
                           <div className="p-2.5 bg-white/5 rounded-xl border border-white/10">
-                            <p className="text-[10px] font-bold text-slate-300 uppercase">Taux de Marque (% PV)</p>
-                            <p className="text-base font-black text-indigo-300 mt-0.5">
+                            <p className="text-[10px] font-bold text-slate-300 uppercase">Marge sur la vente</p>
+                            <p className="text-base font-bold text-indigo-300 mt-0.5">
                               {tauxMarque.toFixed(1)} %
                             </p>
                           </div>
                           <div className="p-2.5 bg-white/5 rounded-xl border border-white/10">
-                            <p className="text-[10px] font-bold text-slate-300 uppercase">Taux de Marge (% PA)</p>
-                            <p className="text-base font-black text-amber-300 mt-0.5">
+                            <p className="text-[10px] font-bold text-slate-300 uppercase">Marge sur l'achat</p>
+                            <p className="text-base font-bold text-amber-300 mt-0.5">
                               {tauxMarge.toFixed(1)} %
                             </p>
                           </div>
@@ -1840,7 +1893,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
                         {pa > 0 && pv > 0 && (
                           <p className="text-[11px] text-slate-300 italic text-center pt-1 border-t border-white/10">
-                            Pour un produit acheté à <strong>{pa.toFixed(3)} DT</strong> et vendu à <strong>{pv.toFixed(3)} DT</strong>, vous dégagez une marge de <strong>{margeVal.toFixed(3)} DT</strong> par unité.
+                            Pour un article acheté à <strong>{pa.toFixed(3)} DT</strong> et vendu à <strong>{pv.toFixed(3)} DT</strong>, vous gagnez <strong>{margeVal.toFixed(3)} DT</strong> par unité.
                           </p>
                         )}
                       </div>
@@ -1855,7 +1908,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Stock Global / Quantité Totale Disponible <span className="text-rose-500">*</span>
+                        Quantité totale disponible <span className="text-rose-500">*</span>
                       </label>
                       <input 
                         type="number"
@@ -1872,7 +1925,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           ❌ Quantité en stock négative non autorisée ({formData.stocks}).
                         </p>
                       ) : (
-                        <p className="text-[11px] text-slate-500 mt-1">Quantité physique globale disponible.</p>
+                        <p className="text-[11px] text-slate-500 mt-1">Nombre total d'unités disponibles.</p>
                       )}
                     </div>
                     <div>
@@ -1891,10 +1944,10 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   </div>
 
                   {/* Multi-Boutique Allocation Section (BF-PROD-007) */}
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
                     <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-[16px] text-blue-600">domain</span>
-                      Répartition du Stock par Boutique / Point de Vente :
+                      Quantités par boutique :
                     </span>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1939,10 +1992,10 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
                     <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-[16px] text-amber-600">warning</span>
-                      Seuils Minimums d'Alerte par Boutique :
+                      Niveau d'alerte par boutique :
                     </span>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1986,7 +2039,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Stock Sécurité
+                        Stock de sécurité
                       </label>
                       <input 
                         type="number"
@@ -1998,7 +2051,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Stock Maximum
+                        Stock maximum
                       </label>
                       <input 
                         type="number"
@@ -2010,12 +2063,12 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     </div>
                   </div>
 
-                  <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex gap-3 items-start">
+                  <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl flex gap-3 items-start">
                     <span className="material-symbols-outlined text-amber-600 text-[20px] shrink-0 mt-0.5">warning</span>
                     <div>
-                      <p className="text-xs font-bold text-amber-900">Gestion des Alertes de Réapprovisionnement</p>
+                      <p className="text-xs font-bold text-amber-900">Alerte de réapprovisionnement</p>
                       <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
-                        Le système déclenchera une alerte automatique sur le tableau de bord lorsque la quantité en stock descendra en dessous du seuil minimum de {formData.stockMinimums?.[selectedProjectId] || 10} unités.
+                        Une alerte s'affiche dès que la quantité passe sous le seuil minimum de {formData.stockMinimums?.[selectedProjectId] || 10} unités.
                       </p>
                     </div>
                   </div>
@@ -2028,7 +2081,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   {editingArticle && (editingArticle.historiqueModifications || []).length > 0 ? (
                     <div className="space-y-3">
                       {(editingArticle.historiqueModifications || []).map((mod, i) => (
-                        <div key={mod.id || i} className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2.5 shadow-2xs">
+                        <div key={mod.id || i} className="p-4 bg-slate-50 border border-slate-200/90 rounded-xl space-y-2.5 shadow-2xs">
                           <div className="flex items-center justify-between text-xs">
                             <div className="flex items-center gap-2 font-bold text-slate-800">
                               <span className="material-symbols-outlined text-[16px] text-indigo-600">person</span>
@@ -2047,17 +2100,17 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
                           <div className="p-3 bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
                             <div>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase block">Champ Modifié</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block">Information modifiée</span>
                               <span className="font-extrabold text-indigo-950">{mod.champModifie}</span>
                             </div>
                             <div>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase block">Avant (Ancienne Valeur)</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block">Ancienne valeur</span>
                               <span className="font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded inline-block mt-0.5">
                                 {mod.ancienneValeur}
                               </span>
                             </div>
                             <div>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase block">Après (Nouvelle Valeur)</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block">Nouvelle valeur</span>
                               <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded inline-block mt-0.5">
                                 {mod.nouvelleValeur}
                               </span>
@@ -2066,18 +2119,18 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
                           {mod.remarque && (
                             <p className="text-[11px] text-slate-600 italic bg-white/60 p-2 rounded-lg border border-slate-100">
-                              💡 Note : {mod.remarque}
+                              Note : {mod.remarque}
                             </p>
                           )}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl text-slate-500 text-xs space-y-2">
+                    <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl text-slate-500 text-xs space-y-2">
                       <span className="material-symbols-outlined text-[36px] text-slate-400 block mx-auto">history</span>
                       <p className="font-bold text-slate-700">Aucune modification enregistrée pour cet article à ce jour.</p>
                       <p className="text-slate-500 max-w-md mx-auto">
-                        Toute modification future (changement de prix, de catégorie, de statut, de désignation...) sera automatiquement horodatée et archivée ici sous le nom de votre compte.
+                        Toute modification future (prix, catégorie, statut, nom...) sera automatiquement enregistrée ici.
                       </p>
                     </div>
                   )}
@@ -2087,7 +2140,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               {/* Modal Footer Actions */}
               <div className="pt-5 mt-6 border-t border-slate-200 flex items-center justify-between shrink-0">
                 <div className="text-xs text-slate-500 font-medium">
-                  Champs marqués d'une <span className="text-rose-500 font-bold">*</span> sont obligatoires
+                  Les champs avec <span className="text-rose-500 font-bold">*</span> sont obligatoires
                 </div>
                 <div className="flex items-center gap-3">
                   <button 
@@ -2114,14 +2167,14 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       {/* Category Management Modal (BF-PROD-004) */}
       {isCategoryModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[88vh]">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[88vh]">
             <div className="px-6 py-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[22px]">category</span>
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Gestion des Catégories</h3>
+                  <h3 className="text-base font-bold text-white">Gestion des Catégories</h3>
                   <p className="text-xs text-slate-400">Liste des catégories de produits et statut d'activation</p>
                 </div>
               </div>
@@ -2136,31 +2189,31 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
               {/* Category KPI Summary */}
               <div className="grid grid-cols-3 gap-3">
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
                   <div>
                     <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Catégories</p>
-                    <p className="text-lg font-black text-slate-900 mt-0.5">{categoriesList.length}</p>
+                    <p className="text-lg font-bold text-slate-900 mt-0.5">{categoriesList.length}</p>
                   </div>
                   <span className="material-symbols-outlined text-slate-400 text-[24px]">category</span>
                 </div>
-                <div className="p-3.5 bg-emerald-50/60 border border-emerald-200/60 rounded-2xl flex items-center justify-between">
+                <div className="p-3.5 bg-emerald-50/60 border border-emerald-200/60 rounded-xl flex items-center justify-between">
                   <div>
                     <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Catégories Actives</p>
-                    <p className="text-lg font-black text-emerald-900 mt-0.5">{categoriesList.filter(c => c.statut === 'Actif').length}</p>
+                    <p className="text-lg font-bold text-emerald-900 mt-0.5">{categoriesList.filter(c => c.statut === 'Actif').length}</p>
                   </div>
                   <span className="material-symbols-outlined text-emerald-600 text-[24px]">check_circle</span>
                 </div>
-                <div className="p-3.5 bg-rose-50/60 border border-rose-200/60 rounded-2xl flex items-center justify-between">
+                <div className="p-3.5 bg-rose-50/60 border border-rose-200/60 rounded-xl flex items-center justify-between">
                   <div>
                     <p className="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Inactives</p>
-                    <p className="text-lg font-black text-rose-900 mt-0.5">{categoriesList.filter(c => c.statut === 'Inactif').length}</p>
+                    <p className="text-lg font-bold text-rose-900 mt-0.5">{categoriesList.filter(c => c.statut === 'Inactif').length}</p>
                   </div>
                   <span className="material-symbols-outlined text-rose-500 text-[24px]">block</span>
                 </div>
               </div>
 
               {/* Add Category Form */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[18px] text-indigo-600">add_circle</span> Créer une nouvelle catégorie
                 </h4>
@@ -2212,7 +2265,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       return (
                         <div 
                           key={cat.id} 
-                          className={`p-3.5 border rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-all ${
+                          className={`p-3.5 border rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-all ${
                             cat.statut === 'Inactif' ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200 shadow-2xs hover:border-indigo-300'
                           }`}
                         >
@@ -2250,7 +2303,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                                 </div>
                                 <div>
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs font-black text-slate-900">{cat.nom}</span>
+                                    <span className="text-xs font-bold text-slate-900">{cat.nom}</span>
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                       cat.statut === 'Actif' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                                     }`}>
@@ -2320,20 +2373,20 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       {/* BF-PROD-010: Single Article Deactivation Modal (Protection de l'Historique Commercial) */}
       {deactivatingArticle && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
             
             {/* Header */}
             <div className="px-6 py-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[24px]">shield</span>
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-white">
-                    Protection de l'Historique Commercial
+                    Désactiver l'article
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Prévention des suppressions accidentelles
+                    Garde l'historique des anciennes ventes
                   </p>
                 </div>
               </div>
@@ -2347,38 +2400,38 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
             {/* Content */}
             <div className="p-6 space-y-4">
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-2">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider">Produit Ciblé</span>
-                  <span className="px-2 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-black rounded-md uppercase">
-                    SKU: {deactivatingArticle.code}
+                  <span className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider">Article</span>
+                  <span className="px-2 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-bold rounded-md uppercase">
+                    Réf : {deactivatingArticle.code}
                   </span>
                 </div>
                 <h4 className="text-base font-extrabold text-amber-950">{deactivatingArticle.designation}</h4>
               </div>
 
               {/* Commercial History Stats Box */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                 <p className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-indigo-600 text-[18px]">analytics</span>
-                  Historique Commercial Détecté sur ce Produit :
+                  Activité enregistrée pour cet article :
                 </p>
 
                 <div className="grid grid-cols-3 gap-2.5 text-center">
                   <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-                    <span className="block text-xl font-black text-slate-900">
+                    <span className="block text-xl font-bold text-slate-900">
                       {deactivatingArticle.statsCommerciales?.ventesCount ?? 250}
                     </span>
                     <span className="text-[10px] font-bold text-slate-500 uppercase">Ventes</span>
                   </div>
                   <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-                    <span className="block text-xl font-black text-slate-900">
+                    <span className="block text-xl font-bold text-slate-900">
                       {deactivatingArticle.statsCommerciales?.facturesCount ?? 15}
                     </span>
                     <span className="text-[10px] font-bold text-slate-500 uppercase">Factures</span>
                   </div>
                   <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-                    <span className="block text-xl font-black text-slate-900">
+                    <span className="block text-xl font-bold text-slate-900">
                       {deactivatingArticle.statsCommerciales?.devisCount ?? 8}
                     </span>
                     <span className="text-[10px] font-bold text-slate-500 uppercase">Devis</span>
@@ -2387,11 +2440,11 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               </div>
 
               {/* Explanation Message */}
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
                 <span className="material-symbols-outlined text-blue-600 text-[22px] shrink-0 mt-0.5">info</span>
                 <div className="text-xs text-blue-900 leading-relaxed">
                   <strong className="block font-bold text-blue-950 mb-0.5">Conservation des données :</strong>
-                  Pour garantir la conservation et l'intégrité de vos anciennes ventes, factures et devis, la suppression définitive est évitée. Le produit sera placé au statut <strong>INACTIF</strong>. Il restera lisible dans vos pièces historiques sans être proposé pour les nouvelles ventes.
+                  Pour ne pas fausser vos anciennes factures et devis, cet article sera passé au statut <strong>Inactif</strong> au lieu d'être supprimé. Il restera visible dans votre historique mais ne pourra plus être vendu.
                 </div>
               </div>
             </div>
@@ -2436,7 +2489,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 className="px-5 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <span className="material-symbols-outlined text-[16px] text-amber-400">block</span>
-                Désactiver le Produit (INACTIF)
+                Désactiver l'article
               </button>
             </div>
           </div>
@@ -2446,18 +2499,18 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       {/* Bulk Article Deactivation Modal */}
       {isBulkDeactivateModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
             <div className="px-6 py-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[24px]">shield</span>
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-white">
-                    Désactivation Groupée ({selectedArticles.length} article(s))
+                    Désactiver {selectedArticles.length} article(s)
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Protection de l'historique commercial des produits sélectionnés
+                    Conservation de l'historique des ventes
                   </p>
                 </div>
               </div>
@@ -2471,15 +2524,15 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
             <div className="p-6 space-y-4">
               <p className="text-xs text-slate-700 leading-relaxed font-medium">
-                Pour protéger l'intégrité de vos données, la suppression définitive est remplacée par la <strong>désactivation</strong>. Les {selectedArticles.length} articles ci-dessous seront basculés au statut <strong>INACTIF</strong> sans effacer leurs historiques de ventes.
+                Pour préserver vos anciennes factures, les {selectedArticles.length} articles ci-dessous seront basculés au statut <strong>Inactif</strong> au lieu d'être supprimés.
               </p>
 
-              <div className="max-h-48 overflow-y-auto p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+              <div className="max-h-48 overflow-y-auto p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
                 {articles.filter(a => selectedArticles.includes(a.id)).map(a => (
                   <div key={a.id} className="text-xs flex items-center justify-between p-2 bg-white rounded-xl border border-slate-200/60 shadow-2xs">
                     <span className="font-bold text-slate-900">{a.designation}</span>
                     <span className="text-[10px] text-amber-800 font-extrabold bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-md">
-                      Actif → INACTIF
+                      Actif → Inactif
                     </span>
                   </div>
                 ))}
@@ -2503,7 +2556,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 className="px-5 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <span className="material-symbols-outlined text-[16px] text-amber-400">block</span>
-                Désactiver les {selectedArticles.length} Articles
+                Désactiver les articles sélectionnés
               </button>
             </div>
           </div>
@@ -2513,25 +2566,25 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       {/* BF-PROD-014: Consultation du détail d'un produit (Fiche Produit Détaillée) */}
       {viewingArticle && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-3xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[24px]">contact_page</span>
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-md">
-                      FICHE PRODUIT
+                    <span className="text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-md">
+                      FICHE ARTICLE
                     </span>
-                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                       viewingArticle.statut === 'Inactif' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                     }`}>
-                      {viewingArticle.statut || 'ACTIF'}
+                      {viewingArticle.statut || 'Actif'}
                     </span>
                   </div>
-                  <h3 className="text-lg font-black text-white mt-1">
+                  <h3 className="text-lg font-bold text-white mt-1">
                     {viewingArticle.designation}
                   </h3>
                 </div>
@@ -2547,20 +2600,20 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* FICHE PRODUIT — Attributes Summary Grid (BF-PROD-014) */}
-              <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
-                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200/80 pb-2">
+              <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200/80 pb-2">
                   <span className="material-symbols-outlined text-indigo-600 text-[18px]">badge</span>
-                  Informations de Base
+                  Informations générales
                 </h4>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
                   <div>
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Nom du Produit</span>
-                    <strong className="text-slate-900 text-sm font-black">{viewingArticle.designation}</strong>
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Nom de l'article</span>
+                    <strong className="text-slate-900 text-sm font-bold">{viewingArticle.designation}</strong>
                   </div>
 
                   <div>
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Référence / SKU</span>
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Référence</span>
                     <strong className="text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-md font-mono font-bold text-xs inline-block">
                       {viewingArticle.code} {viewingArticle.referenceInterne ? `(${viewingArticle.referenceInterne})` : ''}
                     </strong>
@@ -2572,26 +2625,26 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   </div>
 
                   <div>
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Prix d'Achat HT</span>
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Prix d'achat HT</span>
                     {canViewPurchasePrice ? (
-                      <strong className="text-slate-800 text-sm font-black">{viewingArticle.prixAchatHT.toFixed(3)} DT</strong>
+                      <strong className="text-slate-800 text-sm font-bold">{viewingArticle.prixAchatHT.toFixed(3)} DT</strong>
                     ) : (
                       <span className="text-rose-600 font-extrabold text-xs bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                        🔒 Masqué (Accès Caissier)
+                        Masqué (Accès Caissier)
                       </span>
                     )}
                   </div>
 
                   <div>
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Prix de Vente HT</span>
-                    <strong className="text-emerald-700 text-sm font-black">{viewingArticle.prixVenteHT.toFixed(3)} DT</strong>
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Prix de vente HT</span>
+                    <strong className="text-emerald-700 text-sm font-bold">{viewingArticle.prixVenteHT.toFixed(3)} DT</strong>
                   </div>
 
                   <div>
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Marge Bénéficiaire (%)</span>
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Marge bénéficiaire (%)</span>
                     {canViewMargins ? (
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <strong className="text-indigo-700 text-sm font-black">
+                        <strong className="text-indigo-700 text-sm font-bold">
                           {(viewingArticle.margeBeneficiaire ?? (viewingArticle.prixAchatHT > 0 ? ((viewingArticle.prixVenteHT - viewingArticle.prixAchatHT) / viewingArticle.prixAchatHT) * 100 : 0)).toFixed(1)} %
                         </strong>
                         <span className="text-[11px] font-semibold text-slate-500">
@@ -2600,17 +2653,17 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                       </div>
                     ) : (
                       <span className="text-rose-600 font-extrabold text-xs bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                        🔒 Masqué (Accès Caissier)
+                        Masqué (Accès Caissier)
                       </span>
                     )}
                   </div>
 
                   <div>
                     <span className="text-slate-400 font-bold block text-[10px] uppercase">Statut</span>
-                    <span className={`inline-block font-black text-[11px] px-2.5 py-0.5 rounded-full uppercase ${
+                    <span className={`inline-block font-bold text-[11px] px-2.5 py-0.5 rounded-full uppercase ${
                       viewingArticle.statut === 'Inactif' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
                     }`}>
-                      {viewingArticle.statut || 'ACTIF'}
+                      {viewingArticle.statut || 'Actif'}
                     </span>
                   </div>
                 </div>
@@ -2618,8 +2671,8 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 {/* Code-barres */}
                 <div className="pt-2 border-t border-slate-200/60 flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div>
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Code-barres Identifiant</span>
-                    <span className="font-mono text-xs font-black text-slate-800">
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Code-barres</span>
+                    <span className="font-mono text-xs font-bold text-slate-800">
                       {viewingArticle.codeBarres && viewingArticle.codeBarres.length > 0 ? viewingArticle.codeBarres[0] : 'Non défini'}
                     </span>
                   </div>
@@ -2632,13 +2685,13 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               </div>
 
               {/* Stock par boutique (BF-PROD-014) */}
-              <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                     <span className="material-symbols-outlined text-indigo-600 text-[18px]">store</span>
-                    Stock par Boutique
+                    Stock par boutique
                   </h4>
-                  <span className="text-xs font-black text-slate-800">
+                  <span className="text-xs font-bold text-slate-800">
                     Total : <span className="text-indigo-600 text-sm">{getArticleStock(viewingArticle, selectedProjectId)} unités</span>
                   </span>
                 </div>
@@ -2652,9 +2705,9 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                     <div key={idx} className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
                       <div>
                         <strong className="text-xs font-bold text-slate-900 block">{dep.nom}</strong>
-                        <span className="text-[10px] text-slate-400 block">Emplacement: {dep.emplacement || 'Rayon A'}</span>
+                        <span className="text-[10px] text-slate-400 block">Emplacement : {dep.emplacement || 'Rayon A'}</span>
                       </div>
-                      <span className="text-base font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
+                      <span className="text-base font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
                         {dep.quantite}
                       </span>
                     </div>
@@ -2663,16 +2716,16 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               </div>
 
               {/* Historique Commercial & Opérationnel (BF-PROD-014) */}
-              <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
-                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200/80 pb-2">
+              <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200/80 pb-2">
                   <span className="material-symbols-outlined text-indigo-600 text-[18px]">history</span>
-                  Historique Commercial & Mouvements
+                  Historique des ventes et mouvements
                 </h4>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
                   <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Ventes</span>
-                    <span className="text-lg font-black text-slate-900">
+                    <span className="text-lg font-bold text-slate-900">
                       {viewingArticle.statsCommerciales?.ventesCount ?? 250}
                     </span>
                     <span className="text-[9px] text-emerald-600 font-bold block mt-0.5">15 Factures</span>
@@ -2680,19 +2733,19 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
 
                   <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Mouvements Stock</span>
-                    <span className="text-lg font-black text-indigo-600">38</span>
+                    <span className="text-lg font-bold text-indigo-600">38</span>
                     <span className="text-[9px] text-slate-500 font-bold block mt-0.5">Entrées / Sorties</span>
                   </div>
 
                   <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Commandes</span>
-                    <span className="text-lg font-black text-amber-600">12</span>
+                    <span className="text-lg font-bold text-amber-600">12</span>
                     <span className="text-[9px] text-slate-500 font-bold block mt-0.5">Fournisseurs</span>
                   </div>
 
                   <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Devis</span>
-                    <span className="text-lg font-black text-purple-600">
+                    <span className="text-lg font-bold text-purple-600">
                       {viewingArticle.statsCommerciales?.devisCount ?? 8}
                     </span>
                     <span className="text-[9px] text-purple-600 font-bold block mt-0.5">Devis Clients</span>
@@ -2702,7 +2755,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                 {/* Audit trail summary */}
                 {(viewingArticle.historiqueModifications || []).length > 0 && (
                   <div className="pt-2 border-t border-slate-200/60">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Journal de Traçabilité Modificative</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Historique des modifications</span>
                     <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
                       {(viewingArticle.historiqueModifications || []).map((m, i) => (
                         <div key={i} className="p-2 bg-white rounded-xl border border-slate-200/80 text-[11px] flex justify-between items-center">
@@ -2737,7 +2790,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
                 >
                   <span className="material-symbols-outlined text-[16px]">edit</span>
-                  Modifier la Fiche Produit
+                  Modifier l'article
                 </button>
               )}
             </div>
@@ -2748,19 +2801,19 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       {/* BF-PROD-015: Modale de Gestion des Stocks Multi-Boutiques */}
       {isMultiBoutiqueModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-5xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-5xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[24px]">domain</span>
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-white">
-                    Gestion des Stocks Multi-Boutiques
+                  <h3 className="text-lg font-bold text-white">
+                    Stock par boutique
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Consultation et transferts d'inventaire entre les points de vente.
+                    Consultez les stocks et effectuez des transferts entre boutiques.
                   </p>
                 </div>
               </div>
@@ -2785,15 +2838,15 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               )}
 
               {/* Multi-Boutique Inventory Table */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-700 text-[11px] font-black uppercase tracking-wider border-b border-slate-200">
-                      <th className="p-3.5">PRODUIT (Master)</th>
+                    <tr className="bg-slate-100 text-slate-700 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
+                      <th className="p-3.5">Article</th>
                       <th className="p-3.5 text-center">Boutique Sfax Centre (SF001)</th>
                       <th className="p-3.5 text-center">Boutique Sfax Nord (SF002)</th>
                       <th className="p-3.5 text-center">Boutique Gabès (GB001)</th>
-                      <th className="p-3.5 text-center">Stock Global Total</th>
+                      <th className="p-3.5 text-center">Total général</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
@@ -2808,15 +2861,15 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           <td className="p-3.5">
                             <strong className="text-slate-900 block font-bold">{art.designation}</strong>
                             <span className="text-[10px] text-amber-800 font-mono font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                              SKU: {art.code}
+                              Réf : {art.code}
                             </span>
-                            <span className="text-[10px] text-slate-500 ml-2">Prix: {art.prixVenteHT.toFixed(3)} DT</span>
+                            <span className="text-[10px] text-slate-500 ml-2">Prix : {art.prixVenteHT.toFixed(3)} DT</span>
                           </td>
 
                           {/* Sfax Centre (SF001) */}
                           <td className="p-3.5 text-center font-bold">
                             <div className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-xl">
-                              <span className="text-blue-900 font-black">{sfaxCentreQty}</span>
+                              <span className="text-blue-900 font-bold">{sfaxCentreQty}</span>
                               <span className="text-[10px] text-blue-600 font-medium">unités</span>
                             </div>
                           </td>
@@ -2824,7 +2877,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           {/* Sfax Nord (SF002) */}
                           <td className="p-3.5 text-center font-bold">
                             <div className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded-xl">
-                              <span className="text-slate-900 font-black">{sfaxNordQty}</span>
+                              <span className="text-slate-900 font-bold">{sfaxNordQty}</span>
                               <span className="text-[10px] text-slate-500 font-medium">unités</span>
                             </div>
                           </td>
@@ -2832,13 +2885,13 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                           {/* Gabès (GB001) */}
                           <td className="p-3.5 text-center font-bold">
                             <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl">
-                              <span className="text-amber-900 font-black">{gabesQty}</span>
+                              <span className="text-amber-900 font-bold">{gabesQty}</span>
                               <span className="text-[10px] text-amber-700 font-medium">unités</span>
                             </div>
                           </td>
 
                           {/* Total Stock */}
-                          <td className="p-3.5 text-center font-black">
+                          <td className="p-3.5 text-center font-bold">
                             <span className="text-indigo-600 text-sm font-extrabold">{totalQty} DT</span>
                           </td>
                         </tr>
@@ -2865,18 +2918,18 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
       {/* Transfert Inter-Boutiques Modal */}
       {transferModalArticle && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
             <div className="px-6 py-5 bg-indigo-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[24px]">swap_horiz</span>
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">
-                    Transfert Inter-Boutiques
+                  <h3 className="text-base font-bold text-white">
+                    Transférer un article
                   </h3>
                   <p className="text-xs text-indigo-200 mt-0.5">
-                    Produit : <strong className="text-amber-300">{transferModalArticle.designation}</strong>
+                    Article : <strong className="text-amber-300">{transferModalArticle.designation}</strong>
                   </p>
                 </div>
               </div>
@@ -2889,53 +2942,97 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
             </div>
 
             <div className="p-6 space-y-4 text-xs">
+              <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-indigo-700 block">Type d'article</span>
+                  <span className="font-extrabold text-slate-900 text-sm">
+                    {transferModalArticle.typeArticle === 'Service' ? 'Service / Prestation immatérielle' : 'Produit physique'}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-500 block">Référence</span>
+                  <span className="font-mono font-bold text-indigo-900">{transferModalArticle.code || transferModalArticle.id}</span>
+                </div>
+              </div>
+
               <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Boutique Source (Départ)
+                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Boutique d'origine *</span>
+                  {transferModalArticle.typeArticle !== 'Service' && (
+                    <span className="text-[11px] font-semibold text-slate-600">
+                      Disponible : <strong className="text-indigo-700 font-bold">{getArticleStock(transferModalArticle, transferFromBoutique)} unités</strong>
+                    </span>
+                  )}
                 </label>
                 <select
                   value={transferFromBoutique}
                   onChange={(e) => setTransferFromBoutique(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-indigo-600 cursor-pointer"
                 >
-                  <option value="1">Boutique Sfax Centre (SF001)</option>
-                  <option value="2">Boutique Sfax Nord (SF002)</option>
-                  <option value="3">Boutique Gabès (GB001)</option>
+                  {projets.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.id === '1' ? `${p.nom} (Société UGS)` : `${p.nom}`}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Boutique Destination (Arrivée)
+                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Boutique de destination *</span>
+                  {transferModalArticle.typeArticle !== 'Service' && (
+                    <span className="text-[11px] font-semibold text-slate-600">
+                      Stock actuel : <strong className="text-emerald-700 font-bold">{getArticleStock(transferModalArticle, transferToBoutique)} unités</strong>
+                    </span>
+                  )}
                 </label>
                 <select
                   value={transferToBoutique}
                   onChange={(e) => setTransferToBoutique(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-indigo-600 cursor-pointer"
                 >
-                  <option value="1">Boutique Sfax Centre (SF001)</option>
-                  <option value="2">Boutique Sfax Nord (SF002)</option>
-                  <option value="3">Boutique Gabès (GB001)</option>
+                  {projets.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.id === '1' ? `${p.nom} (Société UGS)` : `${p.nom}`}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Quantité à Transférer (Unités)
-                </label>
-                <input 
-                  type="number"
-                  min="1"
-                  max="500"
-                  value={transferQuantity}
-                  onChange={(e) => setTransferQuantity(parseInt(e.target.value) || 1)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-black text-slate-900 text-sm focus:outline-none focus:border-indigo-600"
-                />
-              </div>
+              {transferModalArticle.typeArticle !== 'Service' ? (
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Quantité à transférer *
+                  </label>
+                  <input 
+                    type="number"
+                    min="1"
+                    max={Math.max(1, getArticleStock(transferModalArticle, transferFromBoutique))}
+                    value={transferQuantity}
+                    onChange={(e) => setTransferQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 text-sm focus:outline-none focus:border-indigo-600"
+                  />
+                  {transferQuantity > getArticleStock(transferModalArticle, transferFromBoutique) && (
+                    <p className="mt-1 text-xs text-rose-600 font-bold">
+                      ⚠ La quantité demandée dépasse le stock disponible à la source ({getArticleStock(transferModalArticle, transferFromBoutique)} unités).
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs">
+                  <div className="flex items-center gap-2 font-bold mb-1">
+                    <span className="material-symbols-outlined text-[16px]">info</span>
+                    <span>Affectation de Service Central</span>
+                  </div>
+                  <p>
+                    Ce service sera immédiatement déployé et activé pour la boutique réceptrice <strong>{projets.find(p => p.id === transferToBoutique)?.nom || 'sélectionnée'}</strong>.
+                  </p>
+                </div>
+              )}
 
               {transferFromBoutique === transferToBoutique && (
-                <p className="p-2 bg-rose-50 text-rose-700 rounded-xl font-bold border border-rose-200">
-                  ⚠ La boutique source et la boutique destination doivent être différentes.
+                <p className="p-2.5 bg-rose-50 text-rose-700 rounded-xl font-bold border border-rose-200">
+                  ⚠ La boutique d'origine et la boutique de destination doivent être différentes.
                 </p>
               )}
             </div>
@@ -2949,13 +3046,22 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               </button>
 
               <button
-                disabled={transferFromBoutique === transferToBoutique}
+                disabled={
+                  transferFromBoutique === transferToBoutique ||
+                  (transferModalArticle.typeArticle !== 'Service' && transferQuantity > getArticleStock(transferModalArticle, transferFromBoutique))
+                }
                 onClick={() => {
                   const updatedArticles = articles.map(a => {
                     if (a.id === transferModalArticle.id) {
-                      let updated = updateArticleStock(a, transferFromBoutique, -transferQuantity);
-                      updated = updateArticleStock(updated, transferToBoutique, transferQuantity);
-                      return updated;
+                      if (a.typeArticle === 'Service') {
+                        // For services, ensure boutique has presence/stock enabled
+                        let updated = updateArticleStock(a, transferToBoutique, 1);
+                        return updated;
+                      } else {
+                        let updated = updateArticleStock(a, transferFromBoutique, -transferQuantity);
+                        updated = updateArticleStock(updated, transferToBoutique, transferQuantity);
+                        return updated;
+                      }
                     }
                     return a;
                   });
@@ -2963,8 +3069,9 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
                   setTransferModalArticle(null);
                   setTransferQuantity(1);
                 }}
-                className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                className="px-6 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-colors cursor-pointer shadow-sm disabled:opacity-50 flex items-center gap-1.5"
               >
+                <span className="material-symbols-outlined text-[16px]">swap_horiz</span>
                 Confirmer le transfert
               </button>
             </div>

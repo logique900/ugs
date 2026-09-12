@@ -1,6 +1,6 @@
 {
-  "name": "Gestion Commerciale",
-  "description": "Système ERP complet de gestion commerciale multi-projets avec Exports PDF avancés, Gestion des Crédits et Créances, Actions Rapides et Pilotage Financier",
+  "name": "UGS Distribution",
+  "description": "Système ERP complet de gestion commerciale, facturation, bons de livraison et stocks pour SOCIETE UNIVERS GSM DE SUD.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -127,14 +127,14 @@ export function Categories({
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-[1600px] mx-auto animate-in fade-in duration-200">
       {/* Header Section */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-600/20 shrink-0">
+          <div className="w-14 h-14 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-600/20 shrink-0">
             <span className="material-symbols-outlined text-[30px]">category</span>
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black text-slate-900">Système de Gestion des Catégories</h1>
+              <h1 className="text-xl font-bold text-slate-900">Système de Gestion des Catégories</h1>
               <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-extrabold text-xs">
                 Classification Produits
               </span>
@@ -142,7 +142,7 @@ export function Categories({
             <p className="text-xs text-slate-500 mt-1 font-medium flex items-center gap-2">
               <span>Boutique / Projet :</span>
               <span className="px-2 py-0.5 rounded-lg bg-slate-100 font-bold text-slate-800 border border-slate-200">
-                {isGlobal ? '🏢 Toutes les boutiques (Vue Globale)' : `📁 ${currentProject?.nom || 'Projet Actif'}`}
+                {isGlobal ? 'Toutes les boutiques (Vue Globale)' : `📁 ${currentProject?.nom || 'Projet Actif'}`}
               </span>
             </p>
           </div>
@@ -161,40 +161,40 @@ export function Categories({
 
       {/* KPI Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Catégories</p>
-            <p className="text-2xl font-black text-slate-900 mt-1">{categories.length}</p>
+            <p className="text-2xl font-bold text-slate-900 mt-1">{categories.length}</p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
             <span className="material-symbols-outlined text-[24px]">category</span>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-emerald-600">Catégories Actives</p>
-            <p className="text-2xl font-black text-emerald-900 mt-1">{activeCount}</p>
+            <p className="text-2xl font-bold text-emerald-900 mt-1">{activeCount}</p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
             <span className="material-symbols-outlined text-[24px]">check_circle</span>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-rose-500">Désactivées</p>
-            <p className="text-2xl font-black text-rose-900 mt-1">{inactiveCount}</p>
+            <p className="text-2xl font-bold text-rose-900 mt-1">{inactiveCount}</p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
             <span className="material-symbols-outlined text-[24px]">block</span>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Articles Classés</p>
-            <p className="text-2xl font-black text-slate-900 mt-1">{scopedArticles.length}</p>
+            <p className="text-2xl font-bold text-slate-900 mt-1">{scopedArticles.length}</p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
             <span className="material-symbols-outlined text-[24px]">inventory_2</span>
@@ -203,10 +203,10 @@ export function Categories({
       </div>
 
       {/* Form: Nouvelle Catégorie */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
           <span className="material-symbols-outlined text-indigo-600 text-[20px]">add_circle</span>
-          <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">Ajouter une catégorie</h2>
+          <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Ajouter une catégorie</h2>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -263,7 +263,7 @@ export function Categories({
       </div>
 
       {/* Toolbar & Filters */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="relative flex-1 w-full">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
           <input
@@ -291,15 +291,15 @@ export function Categories({
 
       {/* Categories List */}
       <div className="space-y-3">
-        <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 px-1">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 px-1">
           Liste des Catégories ({filteredCategories.length})
         </h3>
 
         {filteredCategories.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500 space-y-2">
+          <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 space-y-2">
             <span className="material-symbols-outlined text-[48px] text-slate-300">category</span>
             <p className="text-sm font-bold text-slate-800">Aucune catégorie trouvée</p>
-            <p className="text-xs text-slate-500">Modifiez la recherche ou créez une nouvelle catégorie.</p>
+            
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3">
@@ -313,7 +313,7 @@ export function Categories({
               return (
                 <div
                   key={cat.id}
-                  className={`bg-white border rounded-2xl transition-all shadow-2xs overflow-hidden ${
+                  className={`bg-white border rounded-xl transition-all shadow-2xs overflow-hidden ${
                     cat.statut === 'Inactif' ? 'border-slate-200 opacity-70 bg-slate-50/50' : 'border-slate-200 hover:border-indigo-200'
                   }`}
                 >
@@ -371,7 +371,7 @@ export function Categories({
                                   {cat.code}
                                 </span>
                               )}
-                              <h4 className="text-sm font-black text-slate-900">{cat.nom}</h4>
+                              <h4 className="text-sm font-bold text-slate-900">{cat.nom}</h4>
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
                                 cat.statut === 'Actif' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                               }`}>
@@ -455,11 +455,11 @@ export function Categories({
                           {attachedProducts.map((art) => (
                             <div key={art.id} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
                               <div>
-                                <p className="text-xs font-black text-slate-900 truncate">{art.designation}</p>
+                                <p className="text-xs font-bold text-slate-900 truncate">{art.designation}</p>
                                 <p className="text-[11px] text-slate-500 font-mono">Ref: {art.code}</p>
                               </div>
                               <div className="text-right shrink-0">
-                                <p className="text-xs font-black text-indigo-600">{art.prixVenteHT?.toFixed(3)} DT</p>
+                                <p className="text-xs font-bold text-indigo-600">{art.prixVenteHT?.toFixed(3)} DT</p>
                                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                                   art.stock > 10 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                                 }`}>

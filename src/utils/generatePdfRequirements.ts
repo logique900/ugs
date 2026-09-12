@@ -15,13 +15,15 @@ export function generateFunctionalRequirementsPdf() {
 
   // Header Banner Page 1
   doc.setFillColor(153, 27, 27); // Dark red header
-  doc.rect(0, 0, 210, 38, 'F');
+  doc.rect(0, 0, 210, 32, 'F');
+  doc.setFillColor(225, 29, 72); // Accent line
+  doc.rect(0, 32, 210, 1.5, 'F');
 
   // Title in Banner
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
-  doc.text('UGS DISTRIBUTION - SYSTÈME CENTRAL ERP', 14, 16);
+  doc.text('ERP Management DISTRIBUTION - SYSTÈME CENTRAL ERP', 14, 16);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
@@ -49,7 +51,7 @@ export function generateFunctionalRequirementsPdf() {
   doc.setFontSize(9.5);
 
   const introText = [
-    "Le système ERP UGS Distribution est conçu selon un modèle d'architecture centralisée garantissant",
+    "Le système ERP ERP Management Distribution est conçu selon un modèle d'architecture centralisée garantissant",
     "une isolation absolue et stricte entre les différents espaces de travail (projets d'entreprise).",
     "Chaque projet dispose d'une étanchéité complète de ses données, de son stock, de sa gestion financière",
     "et de ses tiers (clients et fournisseurs), sous le contrôle d'un Portail d'Administration Central."
@@ -158,7 +160,7 @@ export function generateFunctionalRequirementsPdf() {
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('UGS DISTRIBUTION ERP - RÈGLES D\'ISOLATION ET DE SÉCURITÉ (SUITE)', 14, 13);
+  doc.text('ERP Management DISTRIBUTION ERP - RÈGLES D\'ISOLATION ET DE SÉCURITÉ (SUITE)', 14, 13);
 
   currentY = 30;
 
@@ -209,7 +211,7 @@ export function generateFunctionalRequirementsPdf() {
   doc.text('Chaque projet fonctionne de manière complètement indépendante avec zéro fuite de données inter-projets.', 20, currentY + 20);
 
   doc.setFont('helvetica', 'bold');
-  doc.text('Direction Générale UGS Distribution :', 20, currentY + 32);
+  doc.text('Direction Générale ERP Management Distribution :', 20, currentY + 32);
   doc.text('Chef de Projet Informatique & ERP :', 110, currentY + 32);
 
   doc.setFont('helvetica', 'italic');
@@ -223,10 +225,10 @@ export function generateFunctionalRequirementsPdf() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    doc.text(`UGS Distribution ERP - Cahier des Besoins Fonctionnels | Page ${i} sur ${pageCount}`, 14, 287);
+    doc.text(`ERP Management Distribution ERP - Cahier des Besoins Fonctionnels | Page ${i} sur ${pageCount}`, 14, 287);
     doc.text('Document Officiel Référentiel', 160, 287);
   }
 
   // Save the generated PDF file
-  doc.save('Besoins_Fonctionnels_UGS_Distribution_ERP.pdf');
+  doc.save('Besoins_Fonctionnels_ERP Management_Distribution_ERP.pdf');
 }

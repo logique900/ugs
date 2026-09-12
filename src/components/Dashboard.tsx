@@ -63,7 +63,7 @@ interface CustomTooltipProps {
 const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl shadow-xl text-white text-xs">
+      <div className="bg-slate-900 border border-white/10 p-3 rounded-xl shadow-xl text-white text-xs">
         <p className="font-bold mb-1.5">{label}</p>
         {payload.map((entry, index) => (
           <div key={`tooltip-${index}`} className="flex items-center justify-between gap-4 py-0.5">
@@ -103,6 +103,7 @@ export function Dashboard({
   const [reportEndDate, setReportEndDate] = useState('');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [activeChartTab, setActiveChartTab] = useState<'line' | 'bar'>('line');
+  const [timeRange, setTimeRange] = useState<'7J' | '30J' | '3M' | '6M' | '1A'>('1A');
 
   // Quick Action Modal States
   const [quickSaleModalOpen, setQuickSaleModalOpen] = useState(false);
@@ -192,27 +193,39 @@ export function Dashboard({
 
   // PDF Report Generation
   const generatePDFReport = () => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     
-    // Header
-    doc.setFillColor(15, 23, 42);
+    // Header Banner
+    doc.setFillColor(15, 23, 42); // Dark slate
     doc.rect(0, 0, 210, 32, 'F');
-    doc.setFontSize(18);
-    doc.setTextColor(255, 255, 255);
-    doc.text("RAPPORT D'ACTIVITÉ & BILAN FINANCIER", 14, 18);
-    doc.setFontSize(9);
-    doc.setTextColor(203, 213, 225);
-    doc.text(`Système Central ERP • Multi-Boutiques • Édité le ${new Date().toLocaleDateString('fr-FR')}`, 14, 26);
+    doc.setFillColor(225, 29, 72); // Rose accent line
+    doc.rect(0, 32, 210, 1.5, 'F');
 
-    const scopeName = isGlobal ? 'Toutes les Boutiques' : currentProject?.nom || 'Boutique';
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text("RAPPORT D'ACTIVITÉ & BILAN FINANCIER", 14, 13);
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(203, 213, 225);
+    doc.text(`Système Central ERP • Multi-Projets • Édité le ${new Date().toLocaleDateString('fr-FR')}`, 14, 21);
+
+    const scopeName = isGlobal ? 'Toutes les Boutiques (Consolidé)' : currentProject?.nom || 'Projet Actif';
     const periodLabel = (reportStartDate || reportEndDate) 
       ? `Du ${reportStartDate || 'Origine'} au ${reportEndDate || 'Aujourd\'hui'}`
       : 'Toutes périodes confondues';
 
-    doc.setTextColor(51, 65, 85);
-    doc.setFontSize(10);
-    doc.text(`Périmètre : ${scopeName}`, 14, 40);
-    doc.text(`Période sélectionnée : ${periodLabel}`, 14, 46);
+    // Info Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, 38, 182, 14, 2, 2, 'FD');
+
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(`Périmètre : ${scopeName}`, 18, 47);
+    doc.text(`Période sélectionnée : ${periodLabel}`, 110, 47);
 
     let filteredVentes = scopedVentes;
     let filteredAchats = scopedAchats;
@@ -230,24 +243,31 @@ export function Dashboard({
 
     // AutoTable Summary
     autoTable(doc, {
-      startY: 52,
-      head: [['Indicateur Financier', 'Valeur (DT)', 'Commentaire']],
+      startY: 57,
+      head: [['Indicateur Financier', 'Valeur (DT)', 'Commentaire & Métriques']],
       body: [
-        ['Chiffre d\'Affaires Réalisé (TTC)', `${totalV.toLocaleString('fr-FR')} DT`, `${filteredVentes.length} factures enregistrées`],
-        ['Achats & Dépenses Fournisseurs (TTC)', `${totalA.toLocaleString('fr-FR')} DT`, `${filteredAchats.length} commandes enregistrées`],
-        ['Marge Brute / Excédent d\'Exploitation', `${(totalV - totalA).toLocaleString('fr-FR')} DT`, totalV >= totalA ? 'Solde bénéficiaire' : 'Solde déficitaire'],
-        ['Valeur Globale de l\'Inventaire Stock', `${stockValuation.toLocaleString('fr-FR')} DT`, `${stockGlobal} unités disponibles`]
+        ['Chiffre d\'Affaires Réalisé (TTC)', `${totalV.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, `${filteredVentes.length} factures enregistrées sur la période`],
+        ['Achats & Dépenses Fournisseurs (TTC)', `${totalA.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, `${filteredAchats.length} commandes enregistrées sur la période`],
+        ['Marge Brute / Excédent d\'Exploitation', `${(totalV - totalA).toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, totalV >= totalA ? 'Solde bénéficiaire d\'exploitation' : 'Solde déficitaire d\'exploitation'],
+        ['Valeur Globale de l\'Inventaire Stock', `${stockValuation.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`, `${stockGlobal} unités disponibles en dépôt`]
       ],
       theme: 'grid',
-      headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 9 }
+      headStyles: { fillColor: [180, 20, 30], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+      bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: 65 },
+        1: { halign: 'right', fontStyle: 'bold', cellWidth: 45 },
+        2: { cellWidth: 72 }
+      }
     });
 
-    // AutoTable Sales
+    // AutoTable Sales Detail
     const yV = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : 120;
-    doc.setFontSize(12);
+    doc.setFontSize(10.5);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
     doc.text("1. Détail des Factures de Vente", 14, yV);
+    
     autoTable(doc, {
       startY: yV + 4,
       head: [['N° Facture', 'Date', 'Client', 'Statut', 'Montant TTC']],
@@ -256,12 +276,32 @@ export function Dashboard({
         new Date(v.date).toLocaleDateString('fr-FR'),
         scopedClients.find(c => c.id === v.clientId)?.nom || v.clientNom || 'Client',
         v.statut,
-        `${v.montantTTC.toLocaleString('fr-FR')} DT`
+        `${v.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT`
       ]) : [['Aucune vente sur la période', '-', '-', '-', '-']],
       theme: 'striped',
-      headStyles: { fillColor: [2, 132, 199], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 8.5 }
+      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 32 },
+        1: { halign: 'center', cellWidth: 26 },
+        2: { cellWidth: 65 },
+        3: { halign: 'center', cellWidth: 25 },
+        4: { halign: 'right', cellWidth: 34 }
+      }
     });
+
+    // Page Numbers Footer
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, 285, 196, 285);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`ERP Management DISTRIBUTION ERP • Rapport Financier & Bilan d'Activité`, 14, 290);
+      doc.text(`Page ${i} / ${totalPages}`, 196, 290, { align: 'right' });
+    }
 
     const fileName = `Rapport_Financier_${(reportStartDate || 'Global')}_${(reportEndDate || 'Aujourdhui')}.pdf`;
     doc.save(fileName);
@@ -324,11 +364,31 @@ export function Dashboard({
     const art = scopedArticles.find(a => a.id === quickStockArticle);
     if (!art) return;
 
+    const currentStock = art.stocks?.[selectedProjectId] ?? art.stock ?? 0;
+
+    // Strict validation: Block decrementation if stock is null/zero or insufficient
+    if (quickStockType === 'Sortie' && (currentStock <= 0 || quickStockQty > currentStock)) {
+      alert(`ACTION REFUSÉE - STOCK ÉPUISÉ OU INSUFFISANT :\nLe stock disponible pour "${art.designation}" est de ${currentStock} unité(s).\n\nImpossible de réaliser une décrémentation ou une sortie sur un produit avec un stock nul ou insuffisant.`);
+      return;
+    }
+
     const delta = quickStockType === 'Entrée' ? quickStockQty : -quickStockQty;
-    const newStock = Math.max(0, art.stock + delta);
+    const newStock = Math.max(0, currentStock + delta);
 
     // Update Article
-    const updatedArticles = articles.map(a => a.id === art.id ? { ...a, stock: newStock } : a);
+    const updatedArticles = articles.map(a => {
+      if (a.id === art.id) {
+        return {
+          ...a,
+          stock: newStock,
+          stocks: {
+            ...(a.stocks || {}),
+            [selectedProjectId]: newStock
+          }
+        };
+      }
+      return a;
+    });
     onArticlesChange(updatedArticles);
 
     // Log Mouvement
@@ -392,70 +452,139 @@ export function Dashboard({
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+      {/* SECTION HEADER */}
+      <div className="flex flex-col sm:flex-row sm:items-start md:items-center justify-between gap-4 bg-white p-6 md:p-8 rounded-[16px] border border-slate-200/60 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
         <div>
-          <h1 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
-            {isGlobal ? "Société UGS • Pilotage Central" : `Boutique : ${currentProject?.nom}`}
+          <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-600 font-bold text-[10px] tracking-widest uppercase rounded-md mb-3">
+            Tableau de bord
+          </span>
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight mb-2">
+            {isGlobal ? "ERP Management • Vue Générale" : `Boutique : SOCIETE UNIVERS GSM DE SUD`}
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            {isGlobal 
-              ? "Centrale de distribution : Supervision consolidée des flux, stocks et performances du réseau UGS" 
-              : "Suivi opérationnel et financier de la boutique active."}
+          <p className="text-sm text-slate-500 font-medium max-w-2xl">
+            Vue d'ensemble de votre activité commerciale et de vos indicateurs clés.
           </p>
         </div>
-
-        {/* Global PDF Report Action */}
-        {currentUser?.role !== 'agent' && (
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => setIsReportModalOpen(true)}
-            className="w-full sm:w-auto justify-center flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-            Rapport d'Activité & Bilan PDF
-          </button>
-        </div>
-        )}
       </div>
 
-      {/* ========================================================================= */}
-      {/* 🚀 GROUPED QUICK ACTION HUB (CENTRE D'ACTIONS RAPIDES GROUPÉES) */}
-      {/* ========================================================================= */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-800 text-white shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-3 w-3 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-            </span>
-            <h2 className="text-sm font-black tracking-wider uppercase text-slate-200">
-              Centre d'Actions Rapides & Opérations Flash
+      {/* SECTION ACTIONS RAPIDES */}
+      <div className="bg-white p-6 rounded-[16px] border border-slate-200/60 shadow-[0_2px_10px_rgba(0,0,0,0.02)] space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
+              <span className="material-symbols-outlined text-blue-600 text-[20px]">bolt</span>
+              Actions rapides & Raccourcis
             </h2>
+            <p className="text-xs text-slate-500 font-medium">Lancement immédiat des opérations courantes de gestion commercial & stock</p>
           </div>
-          <span className="text-[11px] text-slate-400 font-medium">Exécutez vos opérations quotidiennes en 1 clic</span>
+          <span className="self-start sm:self-auto px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full text-[11px] font-bold border border-slate-200/60">
+            8 Raccourcis Opérationnels
+          </span>
         </div>
 
         {/* Quick Actions Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* Quick Sale */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-3.5">
+          {/* 1. Facture / Devis */}
           <button
-            onClick={() => {
-              setQuickSaleClient(scopedClients[0]?.id || '');
-              setQuickSaleArticle(scopedArticles[0]?.id || '');
-              setQuickSaleQty(1);
-              setQuickSalePrice(scopedArticles[0]?.prixVenteHT || 0);
-              setQuickSaleModalOpen(true);
-            }}
-            className="p-3.5 bg-slate-800/80 hover:bg-blue-600 border border-slate-700/80 hover:border-blue-500 rounded-xl transition-all duration-200 flex flex-col items-center text-center gap-2 group cursor-pointer shadow-sm hover:scale-[1.03]"
+            onClick={() => onTabChange && onTabChange('ventes')}
+            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-blue-50/60 border border-slate-200/60 hover:border-blue-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
           >
-            <div className="w-9 h-9 rounded-lg bg-blue-500/20 group-hover:bg-white/20 flex items-center justify-center text-blue-400 group-hover:text-white transition-colors">
-              <span className="material-symbols-outlined text-[20px]">add_shopping_cart</span>
+            <div className="flex items-center justify-between w-full mb-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
+                <span className="material-symbols-outlined text-[20px]">receipt_long</span>
+              </div>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                Ventes
+              </span>
             </div>
-            <span className="text-xs font-bold text-slate-200 group-hover:text-white leading-tight">Facture Express</span>
+            <div>
+              <span className="block text-xs font-bold text-slate-800 group-hover:text-blue-700 leading-tight mb-1">Facture / Devis</span>
+              <span className="block text-[10px] font-medium text-slate-500 leading-tight">Création & Édition</span>
+            </div>
+            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-blue-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
           </button>
 
-          {/* Quick Stock Movement */}
+          {/* 2. Bon de Livraison */}
+          <button
+            onClick={() => onTabChange && onTabChange('livraisons')}
+            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-blue-50/60 border border-slate-200/60 hover:border-blue-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
+          >
+            <div className="flex items-center justify-between w-full mb-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
+                <span className="material-symbols-outlined text-[20px]">local_shipping</span>
+              </div>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                Logistique
+              </span>
+            </div>
+            <div>
+              <span className="block text-xs font-bold text-slate-800 group-hover:text-blue-700 leading-tight mb-1">Bon de Livraison</span>
+              <span className="block text-[10px] font-medium text-slate-500 leading-tight">Expédition Client</span>
+            </div>
+            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-blue-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
+          </button>
+
+          {/* 3. Bon de Sortie */}
+          <button
+            onClick={() => onTabChange && onTabChange('bons_sortie')}
+            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-emerald-50/60 border border-slate-200/60 hover:border-emerald-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
+          >
+            <div className="flex items-center justify-between w-full mb-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
+                <span className="material-symbols-outlined text-[20px]">output</span>
+              </div>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                Sortie
+              </span>
+            </div>
+            <div>
+              <span className="block text-xs font-bold text-slate-800 group-hover:text-emerald-700 leading-tight mb-1">Bon de Sortie</span>
+              <span className="block text-[10px] font-medium text-slate-500 leading-tight">Déstockage Magasin</span>
+            </div>
+            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-emerald-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
+          </button>
+
+          {/* 4. Bon d'Achat */}
+          <button
+            onClick={() => onTabChange && onTabChange('bons_achat')}
+            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-cyan-50/60 border border-slate-200/60 hover:border-cyan-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
+          >
+            <div className="flex items-center justify-between w-full mb-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
+                <span className="material-symbols-outlined text-[20px]">shopping_bag</span>
+              </div>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider text-cyan-600 bg-cyan-50 px-2 py-0.5 rounded-md border border-cyan-100">
+                Achats
+              </span>
+            </div>
+            <div>
+              <span className="block text-xs font-bold text-slate-800 group-hover:text-cyan-700 leading-tight mb-1">Bon d'Achat</span>
+              <span className="block text-[10px] font-medium text-slate-500 leading-tight">Réception Fournisseur</span>
+            </div>
+            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-cyan-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
+          </button>
+
+          {/* 5. Transfert de Stock */}
+          <button
+            onClick={() => onTabChange && onTabChange('transferts')}
+            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-amber-50/60 border border-slate-200/60 hover:border-amber-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
+          >
+            <div className="flex items-center justify-between w-full mb-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
+                <span className="material-symbols-outlined text-[20px]">alt_route</span>
+              </div>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                Transfert
+              </span>
+            </div>
+            <div>
+              <span className="block text-xs font-bold text-slate-800 group-hover:text-amber-700 leading-tight mb-1">Transfert Stock</span>
+              <span className="block text-[10px] font-medium text-slate-500 leading-tight">Dépôt à Dépôt</span>
+            </div>
+            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-amber-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
+          </button>
+
+          {/* 6. Entrée / Sortie Directe */}
           <button
             onClick={() => {
               setQuickStockArticle(scopedArticles[0]?.id || '');
@@ -463,15 +592,24 @@ export function Dashboard({
               setQuickStockType('Entrée');
               setQuickStockModalOpen(true);
             }}
-            className="p-3.5 bg-slate-800/80 hover:bg-emerald-600 border border-slate-700/80 hover:border-emerald-500 rounded-xl transition-all duration-200 flex flex-col items-center text-center gap-2 group cursor-pointer shadow-sm hover:scale-[1.03]"
+            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-purple-50/60 border border-slate-200/60 hover:border-purple-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
           >
-            <div className="w-9 h-9 rounded-lg bg-emerald-500/20 group-hover:bg-white/20 flex items-center justify-center text-emerald-400 group-hover:text-white transition-colors">
-              <span className="material-symbols-outlined text-[20px]">swap_horiz</span>
+            <div className="flex items-center justify-between w-full mb-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
+                <span className="material-symbols-outlined text-[20px]">swap_horiz</span>
+              </div>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
+                Ajustement
+              </span>
             </div>
-            <span className="text-xs font-bold text-slate-200 group-hover:text-white leading-tight">Mouvement Stock</span>
+            <div>
+              <span className="block text-xs font-bold text-slate-800 group-hover:text-purple-700 leading-tight mb-1">Entrée / Sortie</span>
+              <span className="block text-[10px] font-medium text-slate-500 leading-tight">Ajustement Direct</span>
+            </div>
+            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-purple-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
           </button>
 
-          {/* Quick Payment Collection */}
+          {/* 7. Encaisser Paiement */}
           <button
             onClick={() => {
               const pending = scopedVentes.find(v => v.statut === 'Facture' && (v.montantPaye || 0) < v.montantTTC);
@@ -481,67 +619,41 @@ export function Dashboard({
               }
               setQuickPaymentModalOpen(true);
             }}
-            className="p-3.5 bg-emerald-950/40 hover:bg-emerald-600 border border-emerald-700/60 hover:border-emerald-500 rounded-xl transition-all duration-200 flex flex-col items-center text-center gap-2 group cursor-pointer shadow-sm hover:scale-[1.03]"
+            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-teal-50/60 border border-slate-200/60 hover:border-teal-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
           >
-            <div className="w-9 h-9 rounded-lg bg-emerald-500/20 group-hover:bg-white/20 flex items-center justify-center text-emerald-400 group-hover:text-white transition-colors">
-              <span className="material-symbols-outlined text-[20px]">payments</span>
+            <div className="flex items-center justify-between w-full mb-3">
+              <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
+                <span className="material-symbols-outlined text-[20px]">account_balance_wallet</span>
+              </div>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider text-teal-600 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-100">
+                Finance
+              </span>
             </div>
-            <span className="text-xs font-bold text-emerald-200 group-hover:text-white leading-tight">Encaisser Paiement</span>
+            <div>
+              <span className="block text-xs font-bold text-slate-800 group-hover:text-teal-700 leading-tight mb-1">Encaissement</span>
+              <span className="block text-[10px] font-medium text-slate-500 leading-tight">Paiement & Reçu</span>
+            </div>
+            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-teal-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
           </button>
 
-          {currentUser?.role !== 'agent' && (
-            <>
-              {/* Quick Credit & Installment Navigation */}
-              <button
-                onClick={() => onTabChange && onTabChange('credits')}
-                className="p-3.5 bg-purple-950/40 hover:bg-purple-600 border border-purple-700/60 hover:border-purple-500 rounded-xl transition-all duration-200 flex flex-col items-center text-center gap-2 group cursor-pointer shadow-sm hover:scale-[1.03]"
-              >
-                <div className="w-9 h-9 rounded-lg bg-purple-500/20 group-hover:bg-white/20 flex items-center justify-center text-purple-400 group-hover:text-white transition-colors">
-                  <span className="material-symbols-outlined text-[20px]">calendar_month</span>
-                </div>
-                <span className="text-xs font-bold text-purple-200 group-hover:text-white leading-tight">Échéancier Crédit</span>
-              </button>
-
-              {/* Quick PDF: Balance Âgée */}
-              <button
-                onClick={() => generateAgingBalancePdf(
-                  scopedVentes.map(v => ({
-                    id: `ech-${v.id}`,
-                    venteId: v.id,
-                    numeroFacture: v.numero,
-                    clientId: v.clientId,
-                    clientNom: v.clientNom || 'Client',
-                    projetId: v.projetId,
-                    dateFacture: v.date,
-                    dateEcheance: v.dateEcheance || v.date,
-                    montantTTC: v.montantTTC,
-                    montantPaye: v.montantPaye || 0,
-                    soldeRestant: Math.max(0, v.montantTTC - (v.montantPaye || 0)),
-                    statut: (v.montantPaye || 0) >= v.montantTTC ? 'Soldée' : 'Non échue',
-                    joursRetard: 0
-                  })),
-                  scopedClients,
-                  currentProject
-                )}
-                className="p-3.5 bg-slate-800/80 hover:bg-red-600 border border-slate-700/80 hover:border-red-500 rounded-xl transition-all duration-200 flex flex-col items-center text-center gap-2 group cursor-pointer shadow-sm hover:scale-[1.03]"
-              >
-                <div className="w-9 h-9 rounded-lg bg-red-500/20 group-hover:bg-white/20 flex items-center justify-center text-red-400 group-hover:text-white transition-colors">
-                  <span className="material-symbols-outlined text-[20px]">account_balance</span>
-                </div>
-                <span className="text-xs font-bold text-slate-200 group-hover:text-white leading-tight">Balance Âgée PDF</span>
-              </button>
-            </>
-          )}
-
-          {/* Quick PDF: Inventaire Stock */}
+          {/* 8. Suivi des Crédits & Inventaire PDF */}
           <button
             onClick={() => generateStockInventoryPdf(scopedArticles, mouvements, currentProject)}
-            className="p-3.5 bg-slate-800/80 hover:bg-amber-600 border border-slate-700/80 hover:border-amber-500 rounded-xl transition-all duration-200 flex flex-col items-center text-center gap-2 group cursor-pointer shadow-sm hover:scale-[1.03]"
+            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-orange-50/60 border border-slate-200/60 hover:border-orange-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
           >
-            <div className="w-9 h-9 rounded-lg bg-amber-500/20 group-hover:bg-white/20 flex items-center justify-center text-amber-400 group-hover:text-white transition-colors">
-              <span className="material-symbols-outlined text-[20px]">inventory</span>
+            <div className="flex items-center justify-between w-full mb-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
+                <span className="material-symbols-outlined text-[20px]">picture_as_pdf</span>
+              </div>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-100">
+                Export PDF
+              </span>
             </div>
-            <span className="text-xs font-bold text-slate-200 group-hover:text-white leading-tight">Inventaire PDF</span>
+            <div>
+              <span className="block text-xs font-bold text-slate-800 group-hover:text-orange-700 leading-tight mb-1">Inventaire PDF</span>
+              <span className="block text-[10px] font-medium text-slate-500 leading-tight">État de Stock Global</span>
+            </div>
+            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-orange-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
           </button>
         </div>
       </div>
@@ -549,73 +661,135 @@ export function Dashboard({
       {currentUser?.role !== 'agent' && (
         <>
           {/* KPI Cards Grid (P1.7 Admin Dashboard) */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
             
-            {/* CA Aujourd'hui */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">CA Aujourd'hui</span>
-              <p className="text-lg font-black text-slate-900">
-                {caAujourdhui.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-[10px] font-bold text-slate-500">DT</span>
-              </p>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500" />
+            {/* 1. CA Aujourd'hui */}
+            <div className="bg-white p-5 rounded-[16px] border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative overflow-hidden flex flex-col justify-between h-full group hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">CA Aujourd'hui</span>
+                <span className="material-symbols-outlined text-[16px] text-slate-300">payments</span>
+              </div>
+              <div>
+                <p className="text-xl font-black text-slate-800 tracking-tight mb-1">
+                  {caAujourdhui.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-[12px] text-slate-400 font-bold">DT</span>
+                </p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <div className="flex items-center bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                    <span className="material-symbols-outlined text-[12px]">arrow_upward</span>
+                    <span>0%</span>
+                  </div>
+                  <span className="text-[10px] font-medium text-slate-400">vs hier 0,00 DT</span>
+                </div>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 to-emerald-500 opacity-80" />
             </div>
 
-            {/* CA du mois */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">CA du mois</span>
-              <p className="text-lg font-black text-slate-900">
-                {caMois.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-[10px] font-bold text-slate-500">DT</span>
-              </p>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500" />
+            {/* 2. CA du mois */}
+            <div className="bg-white p-5 rounded-[16px] border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative overflow-hidden flex flex-col justify-between h-full group hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">CA du mois</span>
+                <span className="material-symbols-outlined text-[16px] text-slate-300">account_balance_wallet</span>
+              </div>
+              <div>
+                <p className="text-xl font-black text-slate-800 tracking-tight mb-1">
+                  {caMois.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-[12px] text-slate-400 font-bold">DT</span>
+                </p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <div className="flex items-center bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                    <span className="material-symbols-outlined text-[12px]">arrow_upward</span>
+                    <span>0%</span>
+                  </div>
+                  <span className="text-[10px] font-medium text-slate-400">vs mois d. 0,00 DT</span>
+                </div>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 to-blue-500 opacity-80" />
             </div>
 
-            {/* Nombre de ventes */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Articles Vendus</span>
-              <p className="text-lg font-black text-slate-900">{nbVentes}</p>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-500" />
+            {/* 3. Articles Vendus */}
+            <div className="bg-white p-5 rounded-[16px] border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative overflow-hidden flex flex-col justify-between h-full group hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Articles Vendus</span>
+                <span className="material-symbols-outlined text-[16px] text-slate-300">inventory_2</span>
+              </div>
+              <div>
+                <p className="text-xl font-black text-slate-800 tracking-tight mb-1">{nbVentes}</p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <div className="flex items-center bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                    <span className="material-symbols-outlined text-[12px]">arrow_upward</span>
+                    <span>+12%</span>
+                  </div>
+                </div>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-400 to-indigo-500 opacity-80" />
             </div>
 
-            {/* Nombre de commandes */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Devis / Commandes</span>
-              <p className="text-lg font-black text-slate-900">{nbCommandes}</p>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-purple-500" />
+            {/* 4. Devis / Commandes */}
+            <div className="bg-white p-5 rounded-[16px] border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative overflow-hidden flex flex-col justify-between h-full group hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Devis / Cms</span>
+                <span className="material-symbols-outlined text-[16px] text-slate-300">receipt_long</span>
+              </div>
+              <div>
+                <p className="text-xl font-black text-slate-800 tracking-tight mb-1">{nbCommandes}</p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <div className="flex items-center bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                    <span>0%</span>
+                  </div>
+                </div>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-400 to-purple-500 opacity-80" />
             </div>
 
-            {/* Stock faible */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Stock faible</span>
-              <p className="text-lg font-black text-rose-600">{nbProduitsFaible} <span className="text-[10px] font-bold text-slate-500">produits</span></p>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-rose-500" />
+            {/* 5. Stock faible */}
+            <div className="bg-white p-5 rounded-[16px] border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative overflow-hidden flex flex-col justify-between h-full group hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stock faible</span>
+                <span className="material-symbols-outlined text-[16px] text-rose-300">warning</span>
+              </div>
+              <div>
+                <p className="text-xl font-black text-rose-600 tracking-tight mb-1">{nbProduitsFaible} <span className="text-[10px] font-bold text-rose-400">produits</span></p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span className="text-[10px] font-medium text-slate-400">Action requise</span>
+                </div>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-400 to-rose-500 opacity-80" />
             </div>
 
-            {/* Nombre de clients */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Total Clients</span>
-              <p className="text-lg font-black text-slate-900">{nbClients}</p>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500" />
+            {/* 6. Total Clients */}
+            <div className="bg-white p-5 rounded-[16px] border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative overflow-hidden flex flex-col justify-between h-full group hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Clients</span>
+                <span className="material-symbols-outlined text-[16px] text-slate-300">groups</span>
+              </div>
+              <div>
+                <p className="text-xl font-black text-slate-800 tracking-tight mb-1">{nbClients}</p>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 to-amber-500 opacity-80" />
             </div>
 
-            {/* Nombre de factures */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Factures (Ventes)</span>
-              <p className="text-lg font-black text-slate-900">{nbFactures}</p>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-teal-500" />
+            {/* 7. Factures */}
+            <div className="bg-white p-5 rounded-[16px] border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative overflow-hidden flex flex-col justify-between h-full group hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Factures (Ventes)</span>
+                <span className="material-symbols-outlined text-[16px] text-slate-300">description</span>
+              </div>
+              <div>
+                <p className="text-xl font-black text-slate-800 tracking-tight mb-1">{nbFactures}</p>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-400 to-cyan-500 opacity-80" />
             </div>
-
           </div>
 
           {/* CA PAR BOUTIQUE (BF-BOUT-013 Global Breakdown) */}
           {isGlobal && (
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+            <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight">CA & Performances par Boutique (Consolidation Globale)</h3>
-                  <p className="text-xs text-slate-500">Répartition détaillée du chiffre d'affaires et des volumes par succursale</p>
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Chiffre d'Affaires et Ventes par Boutique</h3>
+                  
                 </div>
                 <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold border border-indigo-100">
-                  {projets.length} Boutiques Actives
+                  {projets.length} Boutiques
                 </span>
               </div>
               
@@ -638,7 +812,7 @@ export function Dashboard({
                       <div className="space-y-1.5 pt-2 border-t border-slate-200/60 text-xs">
                         <div className="flex justify-between">
                           <span className="text-slate-500 font-medium">Chiffre d'Affaires :</span>
-                          <span className="font-black text-blue-600">{bCa.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
+                          <span className="font-bold text-blue-600">{bCa.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500 font-medium">Ventes / Factures :</span>
@@ -667,76 +841,100 @@ export function Dashboard({
       )}
 
       {currentUser?.role !== 'agent' && (
-        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Évolution Comparée des Ventes vs Achats</h2>
-            <p className="text-xs text-slate-500">Analyse de la marge brute et des flux de trésorerie</p>
+        <div className="bg-white p-6 md:p-8 rounded-[16px] border border-slate-200/60 shadow-[0_2px_10px_rgba(0,0,0,0.02)] space-y-6">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 tracking-tight">Évolution Comparée des Ventes vs Achats</h2>
+              <p className="text-sm text-slate-500 font-medium">Analyse comparative des revenus et dépenses sur la période sélectionnée.</p>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Time Selectors */}
+              <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200 shadow-inner">
+                {['7J', '30J', '3M', '6M', '1A'].map((range) => (
+                  <button
+                    key={range}
+                    onClick={() => setTimeRange(range as any)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                      timeRange === range ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {range}
+                  </button>
+                ))}
+              </div>
+
+              {/* Chart Type Selectors */}
+              <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200 shadow-inner">
+                <button
+                  onClick={() => setActiveChartTab('line')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeChartTab === 'line' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">show_chart</span>
+                  Courbe
+                </button>
+                <button
+                  onClick={() => setActiveChartTab('bar')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeChartTab === 'bar' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">bar_chart</span>
+                  Histogramme
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
-            <button
-              onClick={() => setActiveChartTab('line')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeChartTab === 'line' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-              }`}
-            >
-              Courbe Flux
-            </button>
-            <button
-              onClick={() => setActiveChartTab('bar')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeChartTab === 'bar' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-              }`}
-            >
-              Histogramme
-            </button>
-          </div>
-        </div>
-
-        <div className="h-72 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            {activeChartTab === 'line' ? (
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorVentes" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0.0}/>
-                  </linearGradient>
-                  <linearGradient id="colorAchats" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="mois" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend 
-                  verticalAlign="top" 
-                  align="right" 
-                  height={36} 
-                  formatter={(val) => <span className="text-xs font-bold text-slate-700">{val === 'ventes' ? 'Ventes (TTC)' : 'Achats (TTC)'}</span>}
-                />
-                <Area type="monotone" dataKey="ventes" stroke="#2563eb" strokeWidth={2.5} fillOpacity={1} fill="url(#colorVentes)" />
-                <Area type="monotone" dataKey="achats" stroke="#f59e0b" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAchats)" />
-              </AreaChart>
-            ) : (
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="mois" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend 
-                  verticalAlign="top" 
-                  align="right" 
-                  height={36} 
-                  formatter={(val) => <span className="text-xs font-bold text-slate-700">{val === 'ventes' ? 'Ventes' : 'Achats'}</span>}
-                />
-                <Bar dataKey="ventes" fill="#2563eb" radius={[4, 4, 0, 0]} barSize={16} />
-                <Bar dataKey="achats" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={16} />
-              </BarChart>
-            )}
+          <div className="h-80 w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              {activeChartTab === 'line' ? (
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorVentes" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15}/>
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.0}/>
+                    </linearGradient>
+                    <linearGradient id="colorAchats" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0d9488" stopOpacity={0.15}/>
+                      <stop offset="95%" stopColor="#0d9488" stopOpacity={0.0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="mois" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 500 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 500 }} dx={-10} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                  <Legend 
+                    verticalAlign="top" 
+                    align="right" 
+                    height={40} 
+                    iconType="circle"
+                    iconSize={8}
+                    formatter={(val) => <span className="text-xs font-bold text-slate-700 ml-1">{val === 'ventes' ? 'Ventes (TTC)' : 'Achats (TTC)'}</span>}
+                  />
+                  <Area activeDot={{ r: 6, strokeWidth: 0, fill: '#2563eb' }} type="monotone" dataKey="ventes" stroke="#2563eb" strokeWidth={3} fillOpacity={1} fill="url(#colorVentes)" />
+                  <Area activeDot={{ r: 6, strokeWidth: 0, fill: '#0d9488' }} type="monotone" dataKey="achats" stroke="#0d9488" strokeWidth={3} fillOpacity={1} fill="url(#colorAchats)" />
+                </AreaChart>
+              ) : (
+                <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="mois" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 500 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 500 }} dx={-10} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
+                  <Legend 
+                    verticalAlign="top" 
+                    align="right" 
+                    height={40} 
+                    iconType="circle"
+                    iconSize={8}
+                    formatter={(val) => <span className="text-xs font-bold text-slate-700 ml-1">{val === 'ventes' ? 'Ventes (TTC)' : 'Achats (TTC)'}</span>}
+                  />
+                  <Bar dataKey="ventes" fill="#2563eb" radius={[4, 4, 0, 0]} barSize={20} />
+                  <Bar dataKey="achats" fill="#0d9488" radius={[4, 4, 0, 0]} barSize={20} />
+                </BarChart>
+              )}
           </ResponsiveContainer>
         </div>
       </div>
@@ -745,9 +943,9 @@ export function Dashboard({
       {/* Grid: Last Invoices & Activity Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Dernières Factures */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700">Dernières Factures Émises</h3>
+            <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700">Dernières Factures</h3>
             <button
               onClick={() => onTabChange && onTabChange('ventes')}
               className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
@@ -776,7 +974,7 @@ export function Dashboard({
                       <td className="py-3 px-4 font-bold text-slate-900">{v.numero}</td>
                       <td className="py-3 px-4 text-slate-500">{new Date(v.date).toLocaleDateString('fr-FR')}</td>
                       <td className="py-3 px-4">{c?.nom || v.clientNom || 'Client'}</td>
-                      <td className="py-3 px-4 text-right font-black text-slate-900">
+                      <td className="py-3 px-4 text-right font-bold text-slate-900">
                         {v.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                       </td>
                       <td className="py-3 px-4 text-center">
@@ -804,10 +1002,10 @@ export function Dashboard({
         </div>
 
         {/* Alertes de Recouvrement & Crédits */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 space-y-4 flex flex-col justify-between">
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5 space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700">Alertes Créances & Crédits</h3>
+              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700">Factures Impayées & Crédits</h3>
               <span className="p-1 rounded bg-rose-50 text-rose-600 text-xs font-bold">Priorité</span>
             </div>
 
@@ -823,7 +1021,7 @@ export function Dashboard({
                       <span className="text-[10px] text-slate-400">Plafond: {(client.plafondCredit || 20000).toLocaleString('fr-FR')} DT</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-xs font-black text-rose-600 block">{due.toLocaleString('fr-FR')} DT</span>
+                      <span className="text-xs font-bold text-rose-600 block">{due.toLocaleString('fr-FR')} DT</span>
                       <button
                         onClick={() => generateDunningLetterPdf(client, clientSales, 1, currentProject)}
                         className="text-[10px] font-bold text-amber-600 hover:underline flex items-center gap-0.5 justify-end cursor-pointer"
@@ -842,7 +1040,7 @@ export function Dashboard({
             onClick={() => onTabChange && onTabChange('credits')}
             className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl text-center cursor-pointer shadow-sm transition-all"
           >
-            Ouvrir la Gestion Complète des Crédits →
+            Voir tous les crédits clients →
           </button>
         </div>
       </div>
@@ -852,7 +1050,7 @@ export function Dashboard({
       {/* ========================================================================= */}
       {isReportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -860,7 +1058,7 @@ export function Dashboard({
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-slate-900">Rapport Financier & Activités PDF</h3>
-                  <p className="text-[11px] text-slate-500">Filtrage multi-dates et compilation comptable</p>
+                  
                 </div>
               </div>
               <button onClick={() => setIsReportModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
@@ -927,7 +1125,7 @@ export function Dashboard({
       {/* ========================================================================= */}
       {quickSaleModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-bold text-sm text-slate-900">Nouvelle Facture Express</h3>
               <button onClick={() => setQuickSaleModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
@@ -1016,7 +1214,7 @@ export function Dashboard({
       {/* ========================================================================= */}
       {quickStockModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-bold text-sm text-slate-900">Mouvement de Stock Express</h3>
               <button onClick={() => setQuickStockModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
@@ -1109,7 +1307,7 @@ export function Dashboard({
       {/* ========================================================================= */}
       {quickPaymentModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-bold text-sm text-slate-900">Encaisser un Règlement Express</h3>
               <button onClick={() => setQuickPaymentModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">

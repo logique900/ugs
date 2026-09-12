@@ -27,6 +27,7 @@ interface CreditsProps {
 }
 
 export function Credits({
+  currentUser,
   selectedProjectId,
   clients,
   ventes,
@@ -444,18 +445,18 @@ export function Credits({
   return (
     <div className="space-y-6">
       {/* Header & Quick Action Trigger Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-800 text-white shadow-xl">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 p-4 sm:p-6 rounded-xl border border-slate-800 text-white shadow-xl">
         <div>
       <div className="flex items-center gap-3">
         <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-xl bg-gradient-to-br from-red-600 to-rose-600 flex items-center justify-center shadow-lg shadow-red-950/40 shrink-0">
           <span className="material-symbols-outlined text-[22px] sm:text-[26px]">menu_book</span>
         </div>
         <div>
-          <h1 className="text-lg sm:text-2xl font-black tracking-tight">
-            {selectedProjectId === '2' ? 'Carnet de Crédit & Paiements' : 'Gestion des Crédits & Encaissements'}
+          <h1 className="text-lg sm:text-2xl font-bold tracking-tight">
+            {selectedProjectId === '2' ? 'Carnet de Crédit & Paiements' : 'Crédits Clients & Règlements'}
           </h1>
           <p className="text-xs text-slate-300 mt-0.5">
-            {selectedProjectId === '2' ? 'Suivi des dettes des parents et des élèves' : 'Pilotage des délais de paiement, balance âgée et relances'}
+            {selectedProjectId === '2' ? 'Suivi des dettes des parents et des élèves' : 'Suivi des dettes, des retards de paiement et des encaissements'}
           </p>
         </div>
       </div>
@@ -468,7 +469,7 @@ export function Credits({
             className="flex items-center gap-1.5 px-3.5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-red-950/30 transition-all cursor-pointer hover:scale-[1.02]"
           >
             <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-            Balance Âgée PDF
+            Rapport des Dettes PDF
           </button>
           
           <button
@@ -480,7 +481,7 @@ export function Credits({
             className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-[18px]">receipt</span>
-            Relevé Débiteur
+            Extrait de Compte Client
           </button>
         </div>
       </div>
@@ -488,14 +489,14 @@ export function Credits({
       {/* Primary KPI Dashboard Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total En-cours */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Créances Clients Dues</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total à Récupérer</span>
             <span className="p-2 rounded-xl bg-blue-50 text-blue-600">
               <span className="material-symbols-outlined text-[20px]">pending_actions</span>
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-2">
+          <p className="text-2xl font-bold text-slate-900 mt-2">
             {totalCreancesDues.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
           </p>
           <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
@@ -505,14 +506,14 @@ export function Credits({
         </div>
 
         {/* Retards de Paiement */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Créances en Retard</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Dettes en Retard</span>
             <span className="p-2 rounded-xl bg-rose-50 text-rose-600">
               <span className="material-symbols-outlined text-[20px]">warning</span>
             </span>
           </div>
-          <p className="text-2xl font-black text-rose-600 mt-2">
+          <p className="text-2xl font-bold text-rose-600 mt-2">
             {totalEnRetard.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
           </p>
           <div className="flex items-center gap-2 mt-2 text-xs text-rose-600 font-semibold">
@@ -522,31 +523,31 @@ export function Credits({
         </div>
 
         {/* Taux de Recouvrement */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Taux de Recouvrement</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Taux Encaissé</span>
             <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
               <span className="material-symbols-outlined text-[20px]">verified</span>
             </span>
           </div>
-          <p className="text-2xl font-black text-emerald-600 mt-2">
+          <p className="text-2xl font-bold text-emerald-600 mt-2">
             {tauxRecouvrement}%
           </p>
           <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
-            <span>{totalEncaisse.toLocaleString('fr-FR')} DT déjà encaissés</span>
+            <span>{totalEncaisse.toLocaleString('fr-FR')} DT déjà payés</span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500" />
         </div>
 
         {/* Contentieux & Risque */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Risque & Contentieux</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Dettes Anciennes (+30j)</span>
             <span className="p-2 rounded-xl bg-amber-50 text-amber-600">
               <span className="material-symbols-outlined text-[20px]">gavel</span>
             </span>
           </div>
-          <p className="text-2xl font-black text-amber-700 mt-2">
+          <p className="text-2xl font-bold text-amber-700 mt-2">
             {totalContentieux.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-500">DT</span>
           </p>
           <div className="flex items-center gap-2 mt-2 text-xs text-amber-700 font-semibold">
@@ -557,28 +558,28 @@ export function Credits({
       </div>
 
       {/* Aging Structure Bar (Balance Âgée Visuelle) */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+      <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-black uppercase tracking-wider text-slate-700">Ventilation de l'En-cours par Tranches d'Âge</h2>
-          <span className="text-xs text-slate-500">Total En-cours : <strong className="text-slate-900">{totalCreancesDues.toLocaleString('fr-FR')} DT</strong></span>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">Répartition des dettes selon le retard</h2>
+          <span className="text-xs text-slate-500">Total des dettes : <strong className="text-slate-900">{totalCreancesDues.toLocaleString('fr-FR')} DT</strong></span>
         </div>
 
         <div className="grid grid-cols-4 gap-3 text-center">
           <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl">
-            <span className="text-[10px] font-bold text-emerald-800 uppercase">Non Échues (&lt; 0j)</span>
-            <p className="text-base font-black text-emerald-700 mt-0.5">{age0j.toLocaleString('fr-FR')} DT</p>
+            <span className="text-[10px] font-bold text-emerald-800 uppercase">Pas en retard</span>
+            <p className="text-base font-bold text-emerald-700 mt-0.5">{age0j.toLocaleString('fr-FR')} DT</p>
           </div>
           <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl">
             <span className="text-[10px] font-bold text-amber-800 uppercase">Retard 1 à 30j</span>
-            <p className="text-base font-black text-amber-700 mt-0.5">{age1a30.toLocaleString('fr-FR')} DT</p>
+            <p className="text-base font-bold text-amber-700 mt-0.5">{age1a30.toLocaleString('fr-FR')} DT</p>
           </div>
           <div className="p-3 bg-orange-50/70 border border-orange-200 rounded-xl">
             <span className="text-[10px] font-bold text-orange-800 uppercase">Retard 31 à 60j</span>
-            <p className="text-base font-black text-orange-700 mt-0.5">{age31a60.toLocaleString('fr-FR')} DT</p>
+            <p className="text-base font-bold text-orange-700 mt-0.5">{age31a60.toLocaleString('fr-FR')} DT</p>
           </div>
           <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl">
-            <span className="text-[10px] font-bold text-rose-800 uppercase">Retard &gt; 60j / Contentieux</span>
-            <p className="text-base font-black text-rose-700 mt-0.5">{agePlus60.toLocaleString('fr-FR')} DT</p>
+            <span className="text-[10px] font-bold text-rose-800 uppercase">Retard de plus de 60j</span>
+            <p className="text-base font-bold text-rose-700 mt-0.5">{agePlus60.toLocaleString('fr-FR')} DT</p>
           </div>
         </div>
       </div>
@@ -594,7 +595,7 @@ export function Credits({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">calendar_month</span>
-          {selectedProjectId === '2' ? 'Liste des dettes' : 'Échéancier des Factures'}
+          {selectedProjectId === '2' ? 'Liste des dettes' : 'Dates de Paiement Prévues'}
           <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-700 text-slate-200">
             {echeances.length}
           </span>
@@ -609,7 +610,7 @@ export function Credits({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">pie_chart</span>
-          {selectedProjectId === '2' ? 'Argent dû par client' : 'Balance Âgée par Client'}
+          {selectedProjectId === '2' ? 'Argent dû par client' : 'Dettes par Client'}
           <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-700 text-slate-200">
             {scopedClients.length}
           </span>
@@ -624,8 +625,8 @@ export function Credits({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">send</span>
-          {selectedProjectId === '2' ? 'Relances clients' : 'Centre de Relances & Recouvrement'}
-          <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-red-600 text-white font-black">
+          {selectedProjectId === '2' ? 'Relances clients' : 'Rappels & Relances Clients'}
+          <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-red-600 text-white font-bold">
             {scopedRelances.length}
           </span>
         </button>
@@ -639,7 +640,7 @@ export function Credits({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">speed</span>
-          {selectedProjectId === '2' ? 'Limites de crédit' : 'Plafonds & Solvabilité'}
+          {selectedProjectId === '2' ? 'Limites de crédit' : 'Limites de Crédit Autorisées'}
         </button>
 
         <button
@@ -657,7 +658,7 @@ export function Credits({
 
       {/* SUB-VIEW 1: ÉCHÉANCIER DÉTAILLÉ */}
       {activeSubTab === 'echeancier' && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden space-y-4">
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden space-y-4">
           {/* Controls Bar */}
           <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3 bg-slate-50/50">
             <div className="relative w-full md:w-80">
@@ -744,9 +745,9 @@ export function Credits({
                       <td className="py-3.5 px-4 text-right text-emerald-600 font-bold">
                         {ech.montantPaye.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                       </td>
-                      <td className="py-3.5 px-4 text-right font-black text-slate-900">
+                      <td className="py-3.5 px-4 text-right font-bold text-slate-900">
                         {ech.soldeRestant > 0 ? (
-                          <span className="text-rose-600 font-black">
+                          <span className="text-rose-600 font-bold">
                             {ech.soldeRestant.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                           </span>
                         ) : (
@@ -755,7 +756,7 @@ export function Credits({
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         {ech.joursRetard > 0 ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
                             +{ech.joursRetard} jours
                           </span>
                         ) : (
@@ -780,7 +781,7 @@ export function Credits({
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {/* BOUTON DE PAIEMENT */}
-                          {ech.soldeRestant > 0 && (
+                          {currentUser.role !== 'comptable' && ech.soldeRestant > 0 && (
                             <button
                               onClick={() => handleOpenPayment(ech)}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer shadow-xs hover:scale-105"
@@ -792,7 +793,7 @@ export function Credits({
                           )}
 
                           {/* BOUTON DE CRÉDIT & ÉCHÉANCES */}
-                          {ech.soldeRestant > 0 && (
+                          {currentUser.role !== 'comptable' && ech.soldeRestant > 0 && (
                             <button
                               onClick={() => handleOpenCreditModal(ech)}
                               className="px-2.5 py-1 bg-purple-100 hover:bg-purple-600 text-purple-800 hover:text-white border border-purple-200 hover:border-purple-600 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer hover:scale-105"
@@ -845,17 +846,17 @@ export function Credits({
 
       {/* SUB-VIEW 2: BALANCE ÂGÉE PAR CLIENT */}
       {activeSubTab === 'balance_agee' && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <h3 className="font-bold text-sm text-slate-800">
-              {selectedProjectId === '2' ? 'Situation globale de l\'argent dû (Parents/Élèves)' : 'Situation des Comptes Débiteurs & En-cours Tiers'}
+              {selectedProjectId === '2' ? 'Situation globale de l\'argent dû (Parents/Élèves)' : 'Dettes et Retards par Client'}
             </h3>
             <button
               onClick={() => generateAgingBalancePdf(echeances, scopedClients, currentProject)}
               className="flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[16px]">print</span>
-              {selectedProjectId === '2' ? 'Imprimer le carnet' : 'Imprimer Balance Âgée PDF'}
+              {selectedProjectId === '2' ? 'Imprimer le carnet' : 'Imprimer Rapport des Dettes (PDF)'}
             </button>
           </div>
 
@@ -863,14 +864,14 @@ export function Credits({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3 px-4">{selectedProjectId === '2' ? 'Parent / Élève' : 'Client & Tiers'}</th>
-                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'Limite crédit' : 'Plafond Crédit'}</th>
+                  <th className="py-3 px-4">{selectedProjectId === '2' ? 'Parent / Élève' : 'Client'}</th>
+                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'Limite crédit' : 'Limite Autorisée'}</th>
                   <th className="py-3 px-4 text-center">Jauge</th>
-                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'À venir' : 'Non Échues'}</th>
-                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'En retard' : '1 - 30 Jours'}</th>
-                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'Retard grave' : '> 30 Jours'}</th>
-                  <th className="py-3 px-4 text-right font-black">{selectedProjectId === '2' ? 'Total à payer' : 'Total Dû'}</th>
-                  <th className="py-3 px-4 text-center">État compte</th>
+                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'À venir' : 'Pas en retard'}</th>
+                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'En retard' : '1 à 30 jours'}</th>
+                  <th className="py-3 px-4 text-right">{selectedProjectId === '2' ? 'Retard grave' : '+ de 30 jours'}</th>
+                  <th className="py-3 px-4 text-right font-bold">{selectedProjectId === '2' ? 'Total à payer' : 'Total Dû'}</th>
+                  <th className="py-3 px-4 text-center">Situation</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -911,10 +912,10 @@ export function Credits({
                     <td className="py-3.5 px-4 text-right text-amber-600 font-semibold">
                       {item.retard1a30.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                     </td>
-                    <td className="py-3.5 px-4 text-right text-rose-600 font-black">
+                    <td className="py-3.5 px-4 text-right text-rose-600 font-bold">
                       {item.retardPlus30.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                     </td>
-                    <td className="py-3.5 px-4 text-right font-black text-slate-900 text-sm">
+                    <td className="py-3.5 px-4 text-right font-bold text-slate-900 text-sm">
                       {item.totalDu.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                     </td>
                     <td className="py-3.5 px-4 text-center">
@@ -925,7 +926,7 @@ export function Credits({
                           ? 'bg-rose-100 text-rose-700'
                           : 'bg-emerald-100 text-emerald-700'
                       }`}>
-                        {item.client.statut === 'Bloqué' ? 'Bloqué' : item.isDepassement ? 'Plafond Dépassé' : 'Solvable'}
+                        {item.client.statut === 'Bloqué' ? 'Compte Bloqué' : item.isDepassement ? 'Limite Dépassée' : 'À jour / OK'}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-right">
@@ -933,7 +934,7 @@ export function Credits({
                         <button
                           onClick={() => generateClientStatementPdf(item.client, scopedVentes, scopedReglements, currentProject)}
                           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                          title="Imprimer Relevé Débiteur PDF"
+                          title="Imprimer Extrait de Compte PDF"
                         >
                           <span className="material-symbols-outlined text-[18px]">description</span>
                         </button>
@@ -942,7 +943,7 @@ export function Credits({
                           <button
                             onClick={() => handleOpenDunning(item.client)}
                             className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                            title="Générer Lettre de Relance"
+                            title="Créer Lettre de Relance"
                           >
                             <span className="material-symbols-outlined text-[18px]">mail</span>
                           </button>
@@ -955,7 +956,7 @@ export function Credits({
                             setNewPaymentDelay(item.client.delaiPaiement || 30);
                           }}
                           className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                          title="Modifier Conditions & Plafond"
+                          title="Modifier Limite de Crédit"
                         >
                           <span className="material-symbols-outlined text-[18px]">settings</span>
                         </button>
@@ -972,10 +973,10 @@ export function Credits({
       {/* SUB-VIEW 3: CENTRE DE RELANCES */}
       {activeSubTab === 'relances' && (
         <div className="space-y-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">Gestion des Relances et du Recouvrement Amiable</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Historique des relances envoyées et génération automatisée de lettres formelles</p>
+              <h3 className="font-bold text-slate-900 text-sm">Historique des Rappels & Relances</h3>
+              
             </div>
             <button
               onClick={() => {
@@ -990,21 +991,21 @@ export function Credits({
               className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">add_alert</span>
-              Émettre une Nouvelle Relance
+              Envoyer un Rappel de Paiement
             </button>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     <th className="py-3 px-4">Date</th>
                     <th className="py-3 px-4">Client</th>
-                    <th className="py-3 px-4 text-center">Niveau Sévérité</th>
-                    <th className="py-3 px-4 text-right">Montant Réclamé</th>
-                    <th className="py-3 px-4">Factures Liées</th>
-                    <th className="py-3 px-4 text-center">Statut Envoi</th>
+                    <th className="py-3 px-4 text-center">Niveau du Rappel</th>
+                    <th className="py-3 px-4 text-right">Montant à Payer</th>
+                    <th className="py-3 px-4">Factures concernées</th>
+                    <th className="py-3 px-4 text-center">État</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -1020,7 +1021,7 @@ export function Credits({
                           {rel.clientNom}
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                             rel.niveau === 3
                               ? 'bg-rose-100 text-rose-800'
                               : rel.niveau === 2
@@ -1030,7 +1031,7 @@ export function Credits({
                             Niveau {rel.niveau} {rel.niveau === 3 ? '(Mise en demeure)' : rel.niveau === 2 ? '(Ferme)' : '(Courtois)'}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 text-right font-black text-rose-600">
+                        <td className="py-3.5 px-4 text-right font-bold text-rose-600">
                           {rel.montantTotalDu.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                         </td>
                         <td className="py-3.5 px-4 text-slate-600">
@@ -1084,10 +1085,10 @@ export function Credits({
             const isBlocked = client.statut === 'Bloqué';
 
             return (
-              <div key={client.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+              <div key={client.id} className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h4 className="font-black text-slate-900 text-sm">{client.nom}</h4>
+                    <h4 className="font-bold text-slate-900 text-sm">{client.nom}</h4>
                     <span className="text-[11px] text-slate-400">{client.email || 'Email non renseigné'}</span>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1099,24 +1100,24 @@ export function Credits({
 
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-600">
-                    <span>{selectedProjectId === '2' ? 'Crédit maximum autorisé :' : 'Plafond de Crédit Autorisé :'}</span>
+                    <span>{selectedProjectId === '2' ? 'Crédit maximum autorisé :' : 'Limite de crédit autorisée :'}</span>
                     <span className="font-bold text-slate-900">{plafond.toLocaleString('fr-FR')} DT</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>{selectedProjectId === '2' ? 'Dette actuelle :' : 'En-cours Actuel Débiteur :'}</span>
-                    <span className={`font-black ${totalDu > plafond ? 'text-rose-600' : 'text-slate-800'}`}>
+                    <span>{selectedProjectId === '2' ? 'Dette actuelle :' : 'Total dû actuellement :'}</span>
+                    <span className={`font-bold ${totalDu > plafond ? 'text-rose-600' : 'text-slate-800'}`}>
                       {totalDu.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                     </span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>{selectedProjectId === '2' ? 'Délai pour payer :' : 'Délai de Règlement Accordé :'}</span>
+                    <span>{selectedProjectId === '2' ? 'Délai pour payer :' : 'Délai de paiement accordé :'}</span>
                     <span className="font-bold text-slate-900">{client.delaiPaiement || 30} jours</span>
                   </div>
 
                   {/* Progress bar */}
                   <div className="pt-2">
                     <div className="flex justify-between text-[10px] font-bold mb-1">
-                      <span className="text-slate-500">Utilisation du Plafond</span>
+                      <span className="text-slate-500">Part de crédit utilisée</span>
                       <span className={pct > 90 ? 'text-rose-600' : 'text-slate-700'}>{pct}%</span>
                     </div>
                     <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -1135,7 +1136,7 @@ export function Credits({
                       isBlocked ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
                     }`}
                   >
-                    {isBlocked ? 'Débloquer Client' : 'Bloquer Facturation'}
+                    {isBlocked ? 'Débloquer Client' : 'Bloquer les Ventes'}
                   </button>
 
                   <button
@@ -1146,7 +1147,7 @@ export function Credits({
                     }}
                     className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                   >
-                    Ajuster Plafond
+                    Modifier la Limite
                   </button>
                 </div>
               </div>
@@ -1159,7 +1160,7 @@ export function Credits({
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-1 space-y-4">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
                   <span className="material-symbols-outlined text-[18px]">group</span>
                   Liste des parents / Clients
@@ -1181,7 +1182,7 @@ export function Credits({
                         <div className="font-bold text-xs text-slate-900 truncate">{c.nom}</div>
                         <div className="flex justify-between items-center mt-1">
                           <span className="text-[10px] text-slate-500">Solde :</span>
-                          <span className={`text-[11px] font-black ${totalDu > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          <span className={`text-[11px] font-bold ${totalDu > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                             {totalDu.toLocaleString('fr-FR')} DT
                           </span>
                         </div>
@@ -1194,7 +1195,7 @@ export function Credits({
 
             <div className="lg:col-span-3 space-y-4">
               {selectedClientFilter === 'all' ? (
-                <div className="bg-slate-50 rounded-2xl border border-dashed border-slate-300 p-12 text-center">
+                <div className="bg-slate-50 rounded-xl border border-dashed border-slate-300 p-12 text-center">
                   <span className="material-symbols-outlined text-slate-300 text-[48px] mb-2">person_search</span>
                   <p className="text-slate-500 font-medium italic text-sm">Sélectionnez un client à gauche pour voir son carnet de crédit détaillé</p>
                 </div>
@@ -1208,13 +1209,13 @@ export function Credits({
 
                     return (
                       <div key={client.id} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                           <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-black text-xl">
+                            <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xl">
                               {client.nom.charAt(0)}
                             </div>
                             <div>
-                              <h3 className="font-black text-lg text-slate-900">{client.nom}</h3>
+                              <h3 className="font-bold text-lg text-slate-900">{client.nom}</h3>
                               <div className="flex items-center gap-3 text-xs text-slate-500">
                                 <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">phone</span> {client.telephone || 'N/A'}</span>
                                 <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">location_on</span> {client.ville || 'Tunis'}</span>
@@ -1225,17 +1226,17 @@ export function Credits({
                           <div className="flex items-center gap-6 pr-4">
                             <div className="text-right">
                               <span className="text-[10px] font-bold text-slate-400 uppercase block">Total dû</span>
-                              <span className="text-xl font-black text-rose-600">{totalDu.toLocaleString('fr-FR')} DT</span>
+                              <span className="text-xl font-bold text-rose-600">{totalDu.toLocaleString('fr-FR')} DT</span>
                             </div>
                             <div className="text-right">
                               <span className="text-[10px] font-bold text-slate-400 uppercase block">Plafond restant</span>
-                              <span className="text-xl font-black text-emerald-600">{(plafond - totalDu).toLocaleString('fr-FR')} DT</span>
+                              <span className="text-xl font-bold text-emerald-600">{(plafond - totalDu).toLocaleString('fr-FR')} DT</span>
                             </div>
                           </div>
                         </div>
 
                         {/* Transaction History (Grand Livre Client) */}
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                           <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                             <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
                               <span className="material-symbols-outlined text-purple-600 text-[20px]">history_edu</span>
@@ -1251,7 +1252,7 @@ export function Credits({
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs">
-                              <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase border-b border-slate-100">
+                              <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase border-b border-slate-100">
                                 <tr>
                                   <th className="py-3 px-4">Date</th>
                                   <th className="py-3 px-4">Référence</th>
@@ -1270,7 +1271,7 @@ export function Credits({
                                     <td className="py-3 px-4 italic text-slate-500">Solde initial à la création du compte</td>
                                     <td className="py-3 px-4 text-right text-slate-900 font-bold">{client.soldeInitial > 0 ? client.soldeInitial.toLocaleString('fr-FR') : '0.00'} DT</td>
                                     <td className="py-3 px-4 text-right text-slate-900 font-bold">{client.soldeInitial < 0 ? Math.abs(client.soldeInitial).toLocaleString('fr-FR') : '0.00'} DT</td>
-                                    <td className="py-3 px-4 text-right font-black text-slate-900">{client.soldeInitial.toLocaleString('fr-FR')} DT</td>
+                                    <td className="py-3 px-4 text-right font-bold text-slate-900">{client.soldeInitial.toLocaleString('fr-FR')} DT</td>
                                   </tr>
                                 )}
 
@@ -1304,15 +1305,15 @@ export function Credits({
                                         <td className="py-3 px-4 text-slate-500">{item.desc}</td>
                                         <td className="py-3 px-4 text-right font-bold text-rose-600">{item.debit > 0 ? `+${item.debit.toLocaleString('fr-FR')} DT` : '-'}</td>
                                         <td className="py-3 px-4 text-right font-bold text-emerald-600">{item.credit > 0 ? `-${item.credit.toLocaleString('fr-FR')} DT` : '-'}</td>
-                                        <td className="py-3 px-4 text-right font-black text-slate-900">{runningBalance.toLocaleString('fr-FR')} DT</td>
+                                        <td className="py-3 px-4 text-right font-bold text-slate-900">{runningBalance.toLocaleString('fr-FR')} DT</td>
                                       </tr>
                                     );
                                   });
                                 })()}
                                 
                                 <tr className="bg-purple-50/50">
-                                  <td colSpan={5} className="py-4 px-4 text-right font-black text-slate-900 uppercase">Solde Final au {new Date().toLocaleDateString('fr-FR')} :</td>
-                                  <td className="py-4 px-4 text-right font-black text-purple-700 text-sm">
+                                  <td colSpan={5} className="py-4 px-4 text-right font-bold text-slate-900 uppercase">Solde Final au {new Date().toLocaleDateString('fr-FR')} :</td>
+                                  <td className="py-4 px-4 text-right font-bold text-purple-700 text-sm">
                                     {totalDu.toLocaleString('fr-FR')} DT
                                   </td>
                                 </tr>
@@ -1323,7 +1324,7 @@ export function Credits({
 
                         {/* Quick Actions for this client */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200">
+                           <div className="bg-amber-50 p-4 rounded-xl border border-amber-200">
                              <h5 className="font-bold text-xs text-amber-900 mb-2 flex items-center gap-2">
                                <span className="material-symbols-outlined text-[18px]">warning</span>
                                Statut du plafond scolaire
@@ -1344,7 +1345,7 @@ export function Credits({
                              </button>
                            </div>
 
-                           <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-200">
+                           <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200">
                              <h5 className="font-bold text-xs text-emerald-900 mb-2 flex items-center gap-2">
                                <span className="material-symbols-outlined text-[18px]">add_task</span>
                                Action rapide
@@ -1392,7 +1393,7 @@ export function Credits({
       {/* QUICK PAYMENT MODAL (BOUTON DE PAIEMENT) */}
       {paymentModalData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-emerald-50/80">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-emerald-600 text-[22px]">payments</span>
@@ -1416,7 +1417,7 @@ export function Credits({
                   <span>Déjà Encaissé :</span>
                   <span className="font-bold text-emerald-600">{(paymentModalData.vente.montantPaye || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
                 </div>
-                <div className="flex justify-between text-slate-900 font-black border-t border-slate-200 pt-1">
+                <div className="flex justify-between text-slate-900 font-bold border-t border-slate-200 pt-1">
                   <span>Solde Restant Dû :</span>
                   <span className="text-rose-600">
                     {Math.max(0, paymentModalData.vente.montantTTC - (paymentModalData.vente.montantPaye || 0)).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
@@ -1457,7 +1458,7 @@ export function Credits({
                   max={Math.max(0, paymentModalData.vente.montantTTC - (paymentModalData.vente.montantPaye || 0))}
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-base font-black text-slate-900"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-base font-bold text-slate-900"
                   required
                 />
               </div>
@@ -1534,7 +1535,7 @@ export function Credits({
       {/* CREDIT & INSTALLMENTS MODAL (BOUTON DE CRÉDIT) */}
       {creditModalData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-purple-50">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-purple-600 text-[22px]">calendar_month</span>
@@ -1552,19 +1553,19 @@ export function Credits({
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-[10px] font-bold text-slate-500 uppercase">Montant Total TTC</span>
-                  <p className="text-base font-black text-slate-900 mt-0.5">
+                  <p className="text-base font-bold text-slate-900 mt-0.5">
                     {creditModalData.vente.montantTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                   </p>
                 </div>
                 <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
                   <span className="text-[10px] font-bold text-emerald-800 uppercase">Acompte Initial</span>
-                  <p className="text-base font-black text-emerald-700 mt-0.5">
+                  <p className="text-base font-bold text-emerald-700 mt-0.5">
                     {creditDownPayment.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                   </p>
                 </div>
                 <div className="p-3 bg-purple-50 rounded-xl border border-purple-200">
                   <span className="text-[10px] font-bold text-purple-800 uppercase">Solde à Financer</span>
-                  <p className="text-base font-black text-purple-700 mt-0.5">
+                  <p className="text-base font-bold text-purple-700 mt-0.5">
                     {Math.max(0, creditModalData.vente.montantTTC - creditDownPayment).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                   </p>
                 </div>
@@ -1628,7 +1629,7 @@ export function Credits({
                         <tr key={ech.numero} className="hover:bg-slate-50">
                           <td className="py-2 px-3 font-bold text-slate-800">Échéance N° {ech.numero}</td>
                           <td className="py-2 px-3 text-slate-600">{new Date(ech.date).toLocaleDateString('fr-FR')}</td>
-                          <td className="py-2 px-3 text-right font-black text-purple-700">
+                          <td className="py-2 px-3 text-right font-bold text-purple-700">
                             {ech.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                           </td>
                           <td className="py-2 px-3 text-center">
@@ -1679,7 +1680,7 @@ export function Credits({
       {/* MODAL: RELANCE IMPAYÉ */}
       {dunningModalData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
@@ -1708,7 +1709,7 @@ export function Credits({
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    <span className="block text-xs font-black">Niveau 1</span>
+                    <span className="block text-xs font-bold">Niveau 1</span>
                     <span className="text-[10px]">Rappel Courtois</span>
                   </button>
 
@@ -1721,7 +1722,7 @@ export function Credits({
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    <span className="block text-xs font-black">Niveau 2</span>
+                    <span className="block text-xs font-bold">Niveau 2</span>
                     <span className="text-[10px]">Relance Ferme</span>
                   </button>
 
@@ -1734,7 +1735,7 @@ export function Credits({
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    <span className="block text-xs font-black">Niveau 3</span>
+                    <span className="block text-xs font-bold">Niveau 3</span>
                     <span className="text-[10px]">Mise en Demeure</span>
                   </button>
                 </div>
@@ -1747,7 +1748,7 @@ export function Credits({
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-500">Total Principal Dû :</span>
-                  <span className="font-black text-rose-600">
+                  <span className="font-bold text-rose-600">
                     {dunningModalData.factures.reduce((a, f) => a + (f.montantTTC - (f.montantPaye || 0)), 0).toLocaleString('fr-FR')} DT
                   </span>
                 </div>
@@ -1794,7 +1795,7 @@ export function Credits({
       {/* MODAL: AJUSTER PLAFOND CRÉDIT */}
       {editLimitModalClient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <h3 className="font-bold text-sm text-slate-900">Ajuster les Conditions de Crédit</h3>
               <button onClick={() => setEditLimitModalClient(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">

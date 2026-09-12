@@ -78,7 +78,7 @@ export function ChatWidget({ ventes, achats, clients, fournisseurs, articles }: 
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-96 h-[500px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-24 right-6 w-96 h-[500px] bg-white rounded-xl shadow-2xl border border-slate-200 flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5">
           <div className="p-4 bg-indigo-600 text-white flex justify-between items-center shrink-0">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined">smart_toy</span>
@@ -89,14 +89,14 @@ export function ChatWidget({ ventes, achats, clients, fournisseurs, articles }: 
           <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50">
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm'}`}>
+                <div className={`max-w-[80%] p-3 rounded-xl text-sm ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm'}`}>
                   {m.text}
                 </div>
               </div>
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="max-w-[80%] p-3 rounded-2xl text-sm bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm flex items-center gap-2">
+                <div className="max-w-[80%] p-3 rounded-xl text-sm bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></span>
                   <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
                   <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>

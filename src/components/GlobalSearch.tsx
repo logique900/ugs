@@ -110,7 +110,7 @@ export function GlobalSearch({ articles, clients, ventes, projets, onNavigate }:
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-20 px-4 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsOpen(false)}>
       <div 
-        className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700 animate-in fade-in slide-in-from-top-4 duration-200"
+        className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700 animate-in fade-in slide-in-from-top-4 duration-200"
         onClick={e => e.stopPropagation()}
       >
         <div className="relative p-4 border-b border-slate-200 dark:border-slate-700 flex items-center">

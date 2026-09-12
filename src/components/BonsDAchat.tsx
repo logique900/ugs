@@ -151,7 +151,7 @@ export default function BonsDAchat({
       id: `ba-${Date.now()}`,
       numero: newNumero,
       projetId: newProjetId,
-      boutiqueNom: proj?.nom || 'Société UGS - Stock Central',
+      boutiqueNom: proj?.nom || 'ERP Management - Stock Central',
       fournisseurId: newFournisseurId,
       fournisseurNom: fourn?.nom || 'Fournisseur',
       matriculeFiscalFournisseur: fourn?.matriculeFiscal || '',
@@ -298,7 +298,7 @@ export default function BonsDAchat({
       operationNumber: stockOpNumber,
       type: 'ENTREE',
       projetId: selectedBA.projetId,
-      warehouseId: selectedBA.boutiqueNom || 'Dépôt Central UGS',
+      warehouseId: selectedBA.boutiqueNom || 'Société UGS',
       referenceType: 'ENTREE_STOCK',
       referenceId: selectedBA.id,
       referenceNumero: selectedBA.numero,
@@ -356,7 +356,7 @@ export default function BonsDAchat({
       ...auditLogs
     ]);
 
-    alert(`✅ Réception enregistrée avec succès ! Mouvement de stock : ${stockOpNumber}`);
+    alert(`Réception enregistrée avec succès ! Mouvement de stock : ${stockOpNumber}`);
   };
 
   // Helper Statut Badge
@@ -386,58 +386,100 @@ export default function BonsDAchat({
     <div className="space-y-6 pb-12 animate-in fade-in duration-300">
       
       {/* Header Banner & Explanatory Architecture */}
-      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden border border-blue-800/40">
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden border border-blue-800/40">
         <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 rounded-full bg-blue-500/10 blur-3xl pointer-events-none"></div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/20 backdrop-blur-md rounded-full text-blue-200 text-xs font-black tracking-wide border border-blue-400/30">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/20 backdrop-blur-md rounded-full text-blue-200 text-xs font-bold tracking-wide border border-blue-400/30">
               <span className="material-symbols-outlined text-[16px]">shopping_bag</span>
-              Gestion des Approvisionnements UGS
+              Commandes Fournisseurs
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Bons d'Achat (BA) & Réceptions Stock</h1>
-            <p className="text-blue-100/80 text-xs sm:text-sm leading-relaxed">
-              Formalisez vos commandes auprès des fournisseurs. <strong>Principe de centralisation :</strong> La création d'un Bon d'Achat n'impacte pas le stock. L'entrée en stock (<span className="text-emerald-400 font-bold">+IN</span>) intervient uniquement lors de la Réception effective contrôlée.
-            </p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Bons d'Achat & Réception de Marchandises</h1>
+            
           </div>
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
-            <button
-              onClick={() => setIsNewModalOpen(true)}
-              className="px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 cursor-pointer transform active:scale-95"
-            >
-              <span className="material-symbols-outlined text-[20px]">add_circle</span>
-              Nouveau Bon d'Achat (BA)
-            </button>
+            {currentUser.role === 'comptable' ? (
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-500/20 backdrop-blur-md rounded-xl text-blue-200 text-xs font-bold border border-blue-400/30">
+                <span className="material-symbols-outlined text-[18px] text-blue-300">verified</span>
+                <span>Mode Audit & Contrôle des Bons d'Achat</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsNewModalOpen(true)}
+                className="px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 cursor-pointer transform active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[20px]">add_circle</span>
+                Nouveau Bon d'Achat
+              </button>
+            )}
           </div>
         </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
+          <div className="flex justify-between items-start text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Total Commandes</span>
+            <span className="material-symbols-outlined text-[18px] text-blue-400">shopping_cart</span>
+          </div>
+          <p className="text-2xl font-bold text-white mt-2">{filteredBAs.length}</p>
+        </div>
+
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
+          <div className="flex justify-between items-start text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Réceptions Validées</span>
+            <span className="material-symbols-outlined text-[18px] text-emerald-400">inventory</span>
+          </div>
+          <p className="text-2xl font-bold text-white mt-2">{filteredBAs.filter(ba => ba.statut === 'RÉCEPTIONNÉ').length}</p>
+        </div>
+
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
+          <div className="flex justify-between items-start text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider">En Attente / Partiel</span>
+            <span className="material-symbols-outlined text-[18px] text-amber-400">pending_actions</span>
+          </div>
+          <p className="text-2xl font-bold text-white mt-2">{filteredBAs.filter(ba => ba.statut === 'EN ATTENTE' || ba.statut === 'RÉCEPTION PARTIELLE').length}</p>
+        </div>
+
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
+          <div className="flex justify-between items-start text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Valeur Totale TTC</span>
+            <span className="material-symbols-outlined text-[18px] text-indigo-400">payments</span>
+          </div>
+          <p className="text-2xl font-bold text-white mt-2">
+            {filteredBAs.reduce((sum, ba) => sum + ba.montantTTC, 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} <span className="text-sm font-bold text-slate-400">DT</span>
+          </p>
+        </div>
+      </div>
 
         {/* Workflow steps diagram */}
         <div className="mt-6 pt-6 border-t border-white/10 grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
           <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 text-xs">
-            <span className="text-blue-300 font-black block">1. Fournisseur</span>
-            <span className="text-slate-300 text-[11px]">Choix du tiers</span>
+            <span className="text-blue-300 font-bold block">1. Fournisseur</span>
+            <span className="text-slate-300 text-[11px]">Choisir le fournisseur</span>
           </div>
           <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 text-xs">
-            <span className="text-blue-300 font-black block">2. Bon d'Achat</span>
-            <span className="text-amber-300 font-bold text-[11px]">Stock neutre = 0</span>
+            <span className="text-blue-300 font-bold block">2. Bon d'Achat</span>
+            <span className="text-amber-300 font-bold text-[11px]">Créer la commande</span>
           </div>
           <div className="p-2.5 bg-white/10 rounded-xl border border-emerald-400/30 text-xs">
-            <span className="text-emerald-400 font-black block">3. Réception (+IN)</span>
-            <span className="text-emerald-300 text-[11px]">Entrée réelle stock</span>
+            <span className="text-emerald-400 font-bold block">3. Réception</span>
+            <span className="text-emerald-300 text-[11px]">Recevoir les articles</span>
           </div>
           <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 text-xs">
-            <span className="text-blue-300 font-black block">4. Anti-Doublon</span>
-            <span className="text-slate-300 text-[11px]">Clé IN-2026-XXXX</span>
+            <span className="text-blue-300 font-bold block">4. Contrôle</span>
+            <span className="text-slate-300 text-[11px]">Vérifier les quantités</span>
           </div>
           <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 text-xs col-span-2 sm:col-span-1">
-            <span className="text-blue-300 font-black block">5. Facture Achat</span>
-            <span className="text-slate-300 text-[11px]">Sans double entrée</span>
+            <span className="text-blue-300 font-bold block">5. Facture Fournisseur</span>
+            <span className="text-slate-300 text-[11px]">Paiement & comptabilité</span>
           </div>
         </div>
       </div>
 
       {/* Filters & Controls */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
           
           <div className="relative w-full md:w-80">
@@ -481,11 +523,11 @@ export default function BonsDAchat({
       </div>
 
       {/* Bons d'Achat Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
+              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <th className="py-3.5 px-4">N° Document</th>
                 <th className="py-3.5 px-4">Date & Entrepôt</th>
                 <th className="py-3.5 px-4">Fournisseur</th>
@@ -511,7 +553,7 @@ export default function BonsDAchat({
 
                   return (
                     <tr key={ba.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4 font-black text-blue-900">
+                      <td className="py-3.5 px-4 font-bold text-blue-900">
                         {ba.numero}
                         {ba.stockOperationId && (
                           <span className="block text-[10px] font-bold text-emerald-600 font-mono mt-0.5">
@@ -522,7 +564,7 @@ export default function BonsDAchat({
 
                       <td className="py-3.5 px-4">
                         <span className="font-semibold text-slate-900 block">{ba.dateCreation}</span>
-                        <span className="text-[11px] text-slate-500">{ba.boutiqueNom || 'Dépôt Central'}</span>
+                        <span className="text-[11px] text-slate-500">{ba.boutiqueNom || 'Société UGS'}</span>
                       </td>
 
                       <td className="py-3.5 px-4">
@@ -545,7 +587,7 @@ export default function BonsDAchat({
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4 text-right font-black text-slate-900">
+                      <td className="py-3.5 px-4 text-right font-bold text-slate-900">
                         {ba.montantTTC.toFixed(3)} TND
                       </td>
 
@@ -563,7 +605,7 @@ export default function BonsDAchat({
                             <span className="material-symbols-outlined text-[18px]">visibility</span>
                           </button>
 
-                          {ba.statut !== 'RÉCEPTIONNÉ' && ba.statut !== 'ANNULÉ' && (
+                          {currentUser.role !== 'comptable' && ba.statut !== 'RÉCEPTIONNÉ' && ba.statut !== 'ANNULÉ' && (
                             <button
                               onClick={() => handleOpenReception(ba)}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
@@ -587,14 +629,14 @@ export default function BonsDAchat({
       {/* MODAL 1: Nouveau Bon d'Achat */}
       {isNewModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 space-y-6 p-6 sm:p-8 animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 space-y-6 p-6 sm:p-8 animate-in zoom-in-95 duration-200">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <span className="px-3 py-1 bg-blue-100 text-blue-800 font-extrabold text-xs rounded-full uppercase tracking-wider">
-                  Nouveau Bon d'Achat (BA)
+                  Nouveau Bon d'Achat
                 </span>
-                <h2 className="text-xl font-black text-slate-900 mt-1">Préparation Commande Fournisseur</h2>
+                <h2 className="text-xl font-bold text-slate-900 mt-1">Commander auprès d'un Fournisseur</h2>
               </div>
               <button onClick={() => setIsNewModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-xl">
                 <span className="material-symbols-outlined">close</span>
@@ -620,7 +662,7 @@ export default function BonsDAchat({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Entrepôt de Réception *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Lieu de Réception *</label>
                   <select
                     value={newProjetId}
                     onChange={e => setNewProjetId(e.target.value)}
@@ -661,7 +703,7 @@ export default function BonsDAchat({
 
                 <div className="space-y-2">
                   {newLignes.map((l, idx) => (
-                    <div key={idx} className="p-3 bg-slate-50 rounded-2xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                    <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
                       <div className="sm:col-span-5">
                         <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article</label>
                         <select
@@ -769,14 +811,14 @@ export default function BonsDAchat({
               </div>
 
               {/* Totaux summary */}
-              <div className="p-4 bg-slate-900 text-white rounded-2xl flex flex-wrap items-center justify-between gap-4">
+              <div className="p-4 bg-slate-900 text-white rounded-xl flex flex-wrap items-center justify-between gap-4">
                 <div className="text-xs space-y-0.5">
                   <span className="text-slate-400 block">Total HT: {totalHTForm.toFixed(3)} TND</span>
                   <span className="text-slate-400 block">Total TVA: {totalTVAForm.toFixed(3)} TND</span>
                 </div>
                 <div className="text-right">
                   <span className="text-xs text-blue-300 font-bold block">Montant Total TTC</span>
-                  <span className="text-xl font-black text-white">{totalTTCForm.toFixed(3)} TND</span>
+                  <span className="text-xl font-bold text-white">{totalTTCForm.toFixed(3)} TND</span>
                 </div>
               </div>
 
@@ -790,9 +832,9 @@ export default function BonsDAchat({
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md transition-colors cursor-pointer"
+                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors cursor-pointer"
                 >
-                  Enregistrer Bon d'Achat (BA)
+                  Enregistrer le Bon d'Achat
                 </button>
               </div>
 
@@ -802,37 +844,37 @@ export default function BonsDAchat({
         </div>
       )}
 
-      {/* MODAL 2: Réception de Marchandise (+IN Stock) */}
+      {/* MODAL 2: Réception de Marchandise */}
       {isReceptionModalOpen && selectedBA && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 space-y-6 p-6 sm:p-8 animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 space-y-6 p-6 sm:p-8 animate-in zoom-in-95 duration-200">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <span className="px-3 py-1 bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-full uppercase tracking-wider">
-                  Réception de Stock • {selectedBA.numero}
+                  Réception des Articles • {selectedBA.numero}
                 </span>
-                <h2 className="text-xl font-black text-slate-900 mt-1">Saisie de Réception {selectedBA.fournisseurNom}</h2>
+                <h2 className="text-xl font-bold text-slate-900 mt-1">Entrée des articles reçus de {selectedBA.fournisseurNom}</h2>
               </div>
               <button onClick={() => setIsReceptionModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-xl">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-900 text-xs space-y-1">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-emerald-900 text-xs space-y-1">
               <div className="font-bold flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px] text-amber-700">security</span>
-                Sécurité Entrée Stock Centralisée (IN-2026-XXXXXX)
+                <span className="material-symbols-outlined text-[18px] text-emerald-700">check_circle</span>
+                Mise à jour automatique du stock
               </div>
               <p>
-                La validation de cette fiche génère un <strong>mouvement unique d'entrée en stock</strong> pour l'entrepôt <strong>{selectedBA.boutiqueNom}</strong>. La clé d'idempotence empêche toute double décrémentation ou entrée accidentelle.
+                En validant cette réception, les quantités indiquées seront <strong>ajoutées directement au stock</strong> de <strong>{selectedBA.boutiqueNom}</strong>.
               </p>
             </div>
 
             <div className="space-y-4">
               <h3 className="font-extrabold text-sm text-slate-900">Contrôle des Quantités Reçues</h3>
 
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
                 {selectedBA.lignes.map((line, idx) => {
                   const qteCommandee = line.qteCommandee;
                   const qteDejaRecue = line.qteDejaRecue || 0;
@@ -856,13 +898,13 @@ export default function BonsDAchat({
                       </div>
 
                       <div className="sm:col-span-4">
-                        <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">Quantité Réceptionnée</label>
+                        <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">Quantité Reçue</label>
                         <input
                           type="number"
                           min="0"
                           value={qteSaisie}
                           onChange={e => setReceptionQtes({ ...receptionQtes, [line.articleId]: Number(e.target.value) })}
-                          className="w-full px-3 py-2 bg-white border-2 border-emerald-300 focus:border-emerald-500 rounded-xl font-black text-emerald-900 text-sm"
+                          className="w-full px-3 py-2 bg-white border-2 border-emerald-300 focus:border-emerald-500 rounded-xl font-bold text-emerald-900 text-sm"
                         />
                       </div>
                     </div>
@@ -872,12 +914,12 @@ export default function BonsDAchat({
             </div>
 
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700">Notes & Réserves à la réception</label>
+              <label className="block text-xs font-bold text-slate-700">Remarques ou observations</label>
               <textarea
                 rows={2}
                 value={receptionNotes}
                 onChange={e => setReceptionNotes(e.target.value)}
-                placeholder="Ex: Palette 2 légèrement éraflée, marchandise conforme au BL fournisseur N°..."
+                placeholder="Ex: Marchandise en bon état, conforme au bon de livraison fournisseur..."
                 className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800"
               />
             </div>
@@ -891,7 +933,7 @@ export default function BonsDAchat({
                 className="w-4 h-4 text-emerald-600 rounded"
               />
               <label htmlFor="allowOver" className="text-xs text-slate-600 cursor-pointer">
-                Autoriser la réception en surplus (si le fournisseur a livré davantage)
+                Autoriser une quantité supérieure à la commande
               </label>
             </div>
 
@@ -906,7 +948,7 @@ export default function BonsDAchat({
               <button
                 type="button"
                 onClick={handleValidateReception}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-colors flex items-center gap-2 cursor-pointer"
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors flex items-center gap-2 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">check_circle</span>
                 Valider l'Entrée en Stock (+IN)
@@ -920,16 +962,16 @@ export default function BonsDAchat({
       {/* MODAL 3: Détail & Impression Bon d'Achat (BA) */}
       {isDetailModalOpen && selectedBA && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 space-y-6 p-6 sm:p-8 animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 space-y-6 p-6 sm:p-8 animate-in zoom-in-95 duration-200">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 print:hidden">
               <div className="flex items-center gap-3">
-                <span className="p-2.5 bg-blue-50 text-blue-700 rounded-2xl">
+                <span className="p-2.5 bg-blue-50 text-blue-700 rounded-xl">
                   <span className="material-symbols-outlined">receipt_long</span>
                 </span>
                 <div>
-                  <h2 className="text-lg font-black text-slate-900">{selectedBA.numero}</h2>
-                  <p className="text-xs text-slate-500">Document d'Achat Fournisseur • Société UGS</p>
+                  <h2 className="text-lg font-bold text-slate-900">{selectedBA.numero}</h2>
+                  <p className="text-xs text-slate-500">Document d'Achat Fournisseur • ERP Management</p>
                 </div>
               </div>
 
@@ -947,133 +989,178 @@ export default function BonsDAchat({
               </div>
             </div>
 
-            {/* Printable Area */}
-            <div className="space-y-6 p-4 sm:p-6 bg-white rounded-2xl border border-slate-200 text-slate-900 font-sans">
+            {/* Printable Content */}
+            <div className="p-0 bg-white text-slate-900 rounded-xl border border-slate-200 font-sans overflow-hidden relative">
               
-              {/* Header Company */}
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b border-slate-200 pb-6">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-xl bg-blue-900 text-white font-black flex items-center justify-center text-sm">UGS</span>
-                    <h1 className="text-xl font-black text-slate-900">SOCIÉTÉ UGS</h1>
-                  </div>
-                  <p className="text-xs font-semibold text-slate-600 mt-1">Stock Central & Siège Social Logistique</p>
-                  <p className="text-[11px] text-slate-500">Zone Industrielle Habib Bourguiba • Sfax, Tunisie</p>
-                  <p className="text-[11px] text-slate-500 font-mono">Tél: +216 74 000 001 | Email: centrale@ugs.tn</p>
-                  <p className="text-[11px] text-slate-500 font-mono">MF: 1458920/A/M/000</p>
-                </div>
+              {/* Decorative Elements */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-900/5 -skew-x-12 -mr-32 -mt-32 pointer-events-none"></div>
+              <div className="absolute bottom-0 left-0 w-48 h-48 bg-rose-600/5 skew-x-12 -ml-24 -mb-24 pointer-events-none"></div>
 
-                <div className="text-left sm:text-right space-y-1">
-                  <span className="px-3 py-1 bg-slate-900 text-white font-black text-xs rounded-lg uppercase tracking-wider inline-block">
-                    BON D'ACHAT
-                  </span>
-                  <p className="text-lg font-black text-blue-900 font-mono">{selectedBA.numero}</p>
-                  <p className="text-xs text-slate-500">Date émission: <strong>{selectedBA.dateCreation}</strong></p>
-                  <p className="text-xs text-slate-500">Livraison prévue: <strong>{selectedBA.datePrevueReception || 'ASAP'}</strong></p>
-                  
-                  <div className="pt-1 flex justify-start sm:justify-end">
-                    <Barcode1D value={selectedBA.numero} height={28} />
-                  </div>
+              {/* Top Header Bar */}
+              <div className="relative h-14 bg-indigo-950 flex items-center justify-between px-8 overflow-hidden">
+                <div className="absolute top-0 right-0 w-1/3 h-full bg-rose-600 -skew-x-12 translate-x-16"></div>
+                <div className="relative z-10">
+                  <h1 className="text-white font-black text-xl tracking-tighter uppercase">SOCIETE UNIVERS GSM DE SUD</h1>
+                  <p className="text-indigo-300 text-[9px] font-bold tracking-[0.2em] uppercase opacity-80">Rapport d'Approvisionnement Stock</p>
+                </div>
+                <div className="relative z-10 text-right text-white">
+                  <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Document d'Entrée Stock</p>
+                  <p className="text-xs font-black tracking-tight">{selectedBA.numero}</p>
                 </div>
               </div>
 
-              {/* Tiers & Target Warehouse */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
-                  <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Fournisseur</span>
-                  <p className="font-extrabold text-slate-900 text-sm">{selectedBA.fournisseurNom}</p>
-                  <p className="text-slate-600">{selectedBA.adresseFournisseur || 'Tunisie'}</p>
-                  <p className="text-slate-600 font-mono">Tél: {selectedBA.telephoneFournisseur || 'N/A'}</p>
-                  <p className="text-slate-600 font-mono">MF: {selectedBA.matriculeFiscalFournisseur || 'N/A'}</p>
-                </div>
-
-                <div className="p-4 bg-blue-50/60 rounded-2xl border border-blue-200/80 space-y-1">
-                  <span className="text-[10px] font-black uppercase text-blue-600 block tracking-wider">Entrepôt de Réception</span>
-                  <p className="font-extrabold text-blue-900 text-sm">{selectedBA.boutiqueNom}</p>
-                  <p className="text-blue-800">Responsable Réception: {selectedBA.auteurNom}</p>
-                  <p className="text-blue-800 text-[11px] mt-2 italic">Conditions: {selectedBA.conditionsAchat}</p>
-                </div>
-              </div>
-
-              {/* Line Items Table */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100 text-slate-700 font-black uppercase text-[10px] tracking-wider border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3">Réf / Article</th>
-                      <th className="py-2.5 px-3 text-center">Unité</th>
-                      <th className="py-2.5 px-3 text-right">Qté Cmd</th>
-                      <th className="py-2.5 px-3 text-right">Qté Reçue</th>
-                      <th className="py-2.5 px-3 text-right">Prix Unit. HT</th>
-                      <th className="py-2.5 px-3 text-right">Total HT</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {selectedBA.lignes.map((l, idx) => (
-                      <tr key={idx}>
-                        <td className="py-2.5 px-3">
-                          <span className="font-bold text-slate-900 block">{l.designation}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">{l.code}</span>
-                        </td>
-                        <td className="py-2.5 px-3 text-center text-slate-600">{l.unite || 'Pièce'}</td>
-                        <td className="py-2.5 px-3 text-right font-bold text-slate-900">{l.qteCommandee}</td>
-                        <td className="py-2.5 px-3 text-right font-bold text-emerald-700">{l.qteDejaRecue || 0}</td>
-                        <td className="py-2.5 px-3 text-right">{l.prixUnitaireHT.toFixed(3)} TND</td>
-                        <td className="py-2.5 px-3 text-right font-bold">{l.totalHT.toFixed(3)} TND</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Totaux & Receptions History */}
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pt-2">
-                
-                <div className="space-y-2 text-xs max-w-md w-full">
-                  <span className="font-extrabold text-slate-900 block">Historique des Réceptions (+IN)</span>
-                  {selectedBA.receptions && selectedBA.receptions.length > 0 ? (
-                    <div className="space-y-1.5">
-                      {selectedBA.receptions.map((r, i) => (
-                        <div key={i} className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] flex items-center justify-between">
-                          <div>
-                            <span className="font-mono font-bold text-emerald-700">{r.stockOperationId}</span>
-                            <span className="text-slate-500 block">{r.date} par {r.auteurNom}</span>
-                          </div>
-                          <span className="font-extrabold text-slate-800">{r.lignes.reduce((s, l) => s + l.qteRecue, 0)} pièces</span>
+              <div className="p-8 space-y-8 relative z-10">
+                {/* Header Information Section */}
+                <div className="flex justify-between items-start gap-12">
+                  <div className="space-y-4 flex-1">
+                    <img src="/logo.png" alt="Logo UGS" className="h-24 w-auto object-contain mb-4" referrerPolicy="no-referrer" />
+                    
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="flex items-start gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100">
+                          <span className="material-symbols-outlined text-indigo-600 text-xs">location_on</span>
                         </div>
-                      ))}
+                        <div>
+                          <p className="text-[9px] font-black text-indigo-900 uppercase tracking-widest">Siège Social</p>
+                          <p className="font-bold text-slate-700 text-[10px]">112, OMAR IBN KHATAB ZRIG, GABES S3</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100">
+                          <span className="material-symbols-outlined text-indigo-600 text-xs">badge</span>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black text-indigo-900 uppercase tracking-widest">Identifiant Fiscal</p>
+                          <p className="font-bold text-slate-700 text-[10px]">1532846 G/A/M/000</p>
+                        </div>
+                      </div>
                     </div>
-                  ) : (
-                    <p className="text-slate-400 text-[11px] italic">Aucune réception enregistrée pour le moment. Le stock est intact.</p>
-                  )}
+                  </div>
+
+                  <div className="w-72 space-y-4">
+                    <div className="bg-slate-900 rounded-2xl p-5 text-white relative overflow-hidden shadow-lg border border-slate-800">
+                      <div className="absolute top-0 right-0 w-20 h-20 bg-rose-600 -skew-x-12 translate-x-10 -translate-y-10"></div>
+                      <div className="relative z-10 space-y-3">
+                        <div>
+                          <p className="text-[9px] font-black text-rose-400 uppercase tracking-[0.2em] mb-1">Fournisseur</p>
+                          <h2 className="text-base font-black tracking-tight leading-tight uppercase">{selectedBA.fournisseurNom}</h2>
+                        </div>
+                        <div className="pt-2 border-t border-slate-800">
+                          <p className="text-[9px] font-bold text-slate-400 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-[12px]">call</span>
+                            Contact: {selectedBA.fournisseurTel || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-[9px] font-black text-indigo-900 uppercase tracking-widest">Date Réception</p>
+                        <p className="text-base font-black text-slate-900">{selectedBA.dateCreation} {selectedBA.heureCreation}</p>
+                      </div>
+                      <div className="w-10 h-10 bg-white rounded-xl shadow-sm border border-indigo-100 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-indigo-600 text-xl font-bold">input</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="w-full sm:w-64 p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1.5 text-right">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Montant HT:</span>
-                    <span className="font-bold">{selectedBA.montantHT.toFixed(3)} TND</span>
+                {/* Document Type Label */}
+                <div className="flex items-center gap-4">
+                  <div className="h-px bg-slate-200 flex-1"></div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 bg-rose-600 rotate-45"></span>
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">
+                      Bon d'Achat <span className="text-rose-600">N° {selectedBA.numero}</span>
+                    </h2>
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>TVA:</span>
-                    <span className="font-bold">{selectedBA.montantTVA?.toFixed(3)} TND</span>
-                  </div>
-                  <div className="flex justify-between text-slate-900 text-sm font-black pt-2 border-t border-slate-200">
-                    <span>Total TTC:</span>
-                    <span className="text-blue-900">{selectedBA.montantTTC.toFixed(3)} TND</span>
+                  <div className="h-px bg-slate-200 flex-1"></div>
+                </div>
+
+                {/* Items Table */}
+                <div className="overflow-hidden border border-slate-200 rounded-2xl shadow-sm">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-indigo-950 text-white text-[9px] uppercase tracking-widest">
+                        <th className="p-3 font-black w-24">Référence</th>
+                        <th className="p-3 font-black">Désignation</th>
+                        <th className="p-3 font-black text-center w-16">Unité</th>
+                        <th className="p-3 font-black text-right w-24">P.U.HT</th>
+                        <th className="p-3 font-black text-center w-16">Qté</th>
+                        <th className="p-3 font-black text-right w-28">Total HT</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[10px]">
+                      {selectedBA.lignes.map((l, i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                          <td className="px-3 py-3 font-bold text-slate-500 font-mono">{l.code}</td>
+                          <td className="px-3 py-3 font-black text-slate-900 uppercase">{l.designation}</td>
+                          <td className="px-3 py-3 text-center font-bold text-slate-600">{l.unite || 'PCS'}</td>
+                          <td className="px-3 py-3 text-right font-bold text-slate-900">{l.prixUnitaireHT.toLocaleString('fr-TN', { minimumFractionDigits: 3 })}</td>
+                          <td className="px-3 py-3 text-center">
+                            <span className="inline-block px-2.5 py-1 bg-rose-50 text-rose-700 rounded-lg font-black">{l.qteCommandee}</span>
+                          </td>
+                          <td className="px-3 py-3 text-right font-black text-slate-900">{(l.totalHT).toLocaleString('fr-TN', { minimumFractionDigits: 3 })}</td>
+                        </tr>
+                      ))}
+                      {/* Filler rows */}
+                      {Array.from({ length: Math.max(0, 8 - selectedBA.lignes.length) }).map((_, i) => (
+                        <tr key={`empty-${i}`} className="h-10 border-t border-slate-50">
+                          <td colSpan={6}></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Financial Summary */}
+                <div className="flex justify-end pt-4">
+                  <div className="w-72 space-y-2">
+                    <div className="flex justify-between items-center px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total HT</p>
+                      <p className="text-sm font-black text-slate-700">{selectedBA.montantHT.toLocaleString('fr-TN', { minimumFractionDigits: 3 })} TND</p>
+                    </div>
+                    <div className="flex justify-between items-center px-4 py-3 bg-indigo-950 rounded-xl shadow-lg relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-12 h-full bg-rose-600 -skew-x-12 translate-x-6"></div>
+                      <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest relative z-10">Total Net TTC</p>
+                      <p className="text-lg font-black text-white tracking-tighter relative z-10">{selectedBA.montantTTC.toLocaleString('fr-TN', { minimumFractionDigits: 3 })} TND</p>
+                    </div>
                   </div>
                 </div>
 
+                {/* Signatures */}
+                <div className="grid grid-cols-2 gap-12 pt-8">
+                  <div className="space-y-4">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <span className="material-symbols-outlined text-sm">delivery_dining</span>
+                      Visa Livraison Fournisseur
+                    </p>
+                    <div className="h-28 border border-slate-100 bg-slate-50/30 rounded-2xl relative flex items-center justify-center italic text-slate-300 text-[9px] font-bold uppercase">
+                       Signature & Cachet
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 text-right justify-end">
+                      Visa Réception UGS
+                      <span className="material-symbols-outlined text-sm">inventory</span>
+                    </p>
+                    <div className="h-28 border border-slate-100 bg-slate-50/30 rounded-2xl relative overflow-hidden flex items-center justify-center">
+                       <img src="/logo.png" alt="Watermark" className="absolute w-24 opacity-5 grayscale -rotate-12" />
+                       <p className="text-[9px] font-black text-slate-300 uppercase tracking-tighter italic relative z-10 text-center">Validation Entrée Stock<br/>Responsable Dépôt</p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* Signatures */}
-              <div className="grid grid-cols-2 gap-8 pt-8 border-t border-slate-200 text-center text-xs">
-                <div className="space-y-8">
-                  <span className="font-bold text-slate-600 block">Visa Service Achats UGS</span>
-                  <div className="h-12 border-b border-dashed border-slate-300"></div>
-                </div>
-                <div className="space-y-8">
-                  <span className="font-bold text-slate-600 block">Accusé de Réception Magasinier</span>
-                  <div className="h-12 border-b border-dashed border-slate-300"></div>
+              {/* Internal Footer */}
+              <div className="mt-8 bg-indigo-950 p-6 flex flex-col items-center justify-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-full bg-rose-600 -skew-x-12 translate-x-12"></div>
+                <p className="relative z-10 text-indigo-400 text-[8px] font-black uppercase tracking-[0.4em] text-center mb-1">
+                  ERP Logistique - SOCIETE UNIVERS GSM DE SUD
+                </p>
+                <div className="relative z-10 text-white/40 text-[7px] font-bold uppercase tracking-widest">
+                  Généré le {new Date().toLocaleString()} par {selectedBA.auteurNom}
                 </div>
               </div>
 
