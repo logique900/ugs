@@ -128,19 +128,21 @@ export function BonDeLivraisonPrintModal({ bl, client, projet, onClose }: BonDeL
           }
           .print-document {
             width: 210mm !important;
-            min-height: 297mm !important;
-            max-width: 210mm !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
             margin: 0 !important;
             padding: 0 !important;
             box-shadow: none !important;
             border: none !important;
             border-radius: 0 !important;
             page-break-after: avoid !important;
+            page-break-inside: avoid !important;
+            overflow: hidden !important;
           }
         }
       `}</style>
 
-      <div className="print-document bg-white text-[#172033] rounded-sm max-w-[210mm] w-full shadow-2xl my-8 print:my-0 font-sans overflow-hidden border border-[#DCE5F0] flex flex-col justify-between">
+      <div className="print-document bg-white text-[#172033] rounded-sm max-w-[210mm] w-full min-h-[297mm] max-h-[297mm] shadow-2xl my-8 print:my-0 font-sans overflow-hidden border border-[#DCE5F0] flex flex-col justify-between">
         
         {/* ==================================================
             BARRE D'ACTIONS ET CONTRÔLES DYNAMIQUES (Non imprimée)

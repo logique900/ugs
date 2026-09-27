@@ -2,7 +2,10 @@ import { getArticleStock, hasLowStock, isOutOfStock } from '../utils/stockUtils'
 import React, { useState, useMemo } from 'react';
 import { Utilisateur, Vente, Client, Article, Projet, LigneVente, Reglement, MouvementStock } from '../types';
 import { generateInvoicePdf, generateReceiptPdf, generateCreditAgreementPdf, generatePosTicketPdf } from '../utils/pdfExportEngine';
+import { generateNextDocNumber } from '../utils/numbering';
 import { FacturePrintModal } from './FacturePrintModal';
+import { CameraBarcodeScannerModal } from './CameraBarcodeScannerModal';
+import { TicketPanierModal } from './TicketPanierModal';
 
 interface VentesProps {
   currentUser: Utilisateur;
@@ -19,6 +22,7 @@ interface VentesProps {
   onArticlesChange?: (articles: Article[]) => void;
   onMouvementsChange?: (mouvements: MouvementStock[]) => void;
   onNavigateToCaisse?: () => void;
+  activeDocType?: 'Facture' | 'Devis' | 'All';
 }
 
 export function Ventes({
@@ -35,8 +39,17 @@ export function Ventes({
   onClientsChange,
   onArticlesChange,
   onMouvementsChange,
-  onNavigateToCaisse
+  onNavigateToCaisse,
+  activeDocType = 'All'
 }: VentesProps) {
+  const [docTypeTab, setDocTypeTab] = useState<'Facture' | 'Devis' | 'All'>(activeDocType);
+
+  React.useEffect(() => {
+    if (activeDocType) {
+      setDocTypeTab(activeDocType);
+    }
+  }, [activeDocType]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [clientFilter, setClientFilter] = useState('all');
@@ -92,10 +105,11 @@ export function Ventes({
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
 
-  // Modal State: Relance Devis Client
+  // Modal State: Relance Devis Client & Scanner Caméra
   const [relanceModalSale, setRelanceModalSale] = useState<Vente | null>(null);
   const [relanceMessage, setRelanceMessage] = useState<string>('');
   const [toastAlert, setToastAlert] = useState<string | null>(null);
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
 
   const isGlobal = selectedProjectId === 'all';
   const currentProject = isGlobal ? null : projets.find(p => p.id === selectedProjectId);
@@ -103,8 +117,32 @@ export function Ventes({
 
   // Scoped Data
   const scopedVentes = useMemo(() => {
-    return isGlobal ? ventes : ventes.filter(v => v.projetId === selectedProjectId);
-  }, [ventes, isGlobal, selectedProjectId]);
+    let list = isGlobal ? ventes : ventes.filter(v => v.projetId === selectedProjectId);
+    if (currentUser.role === 'caissier') {
+      // Pour le caissier : UNIQUEMENT l'historique des ventes / tickets de caisse réalisés (pas de factures B2B à crédit, pas de devis)
+      list = list.filter(v => 
+        v.numero.startsWith('TC-') || 
+        v.numero.startsWith('TCK-') || 
+        v.modePaiement === 'Espèces' || 
+        v.modePaiement === 'Carte Bancaire' || 
+        (v.statut === 'Payée' && v.modePaiement !== 'Crédit')
+      );
+    }
+    return list;
+  }, [ventes, isGlobal, selectedProjectId, currentUser.role]);
+
+  const docTypeScopedVentes = useMemo(() => {
+    if (currentUser.role === 'caissier') {
+      return scopedVentes;
+    }
+    if (docTypeTab === 'Facture') {
+      return scopedVentes.filter(v => v.statut !== 'Devis' && v.statut !== 'En Négociation');
+    }
+    if (docTypeTab === 'Devis') {
+      return scopedVentes.filter(v => v.statut === 'Devis' || v.statut === 'En Négociation' || v.statut === 'Commande');
+    }
+    return scopedVentes;
+  }, [scopedVentes, docTypeTab, currentUser.role]);
 
   const scopedClients = useMemo(() => {
     return isGlobal ? clients : clients.filter(c => c.projetId === selectedProjectId);
@@ -120,27 +158,81 @@ export function Ventes({
 
   // Filtering
   const filteredVentes = useMemo(() => {
-    return scopedVentes.filter(v => {
+    return docTypeScopedVentes.filter(v => {
       const matchesSearch = v.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             (v.clientNom && v.clientNom.toLowerCase().includes(searchTerm.toLowerCase()));
-      const matchesStatus = statusFilter === 'all' || v.statut === statusFilter;
+      const matchesStatus = statusFilter === 'all' || 
+                            v.statut === statusFilter || 
+                            v.modePaiement === statusFilter || 
+                            (statusFilter === 'Carte Bancaire' && (v.modePaiement === 'Carte' || v.modePaiement === 'Carte Bancaire'));
       const matchesClient = clientFilter === 'all' || v.clientId === clientFilter;
       return matchesSearch && matchesStatus && matchesClient;
     });
-  }, [scopedVentes, searchTerm, statusFilter, clientFilter]);
+  }, [docTypeScopedVentes, searchTerm, statusFilter, clientFilter]);
 
   // Financial Metrics
   const totalFactureTTC = scopedVentes.filter(v => v.statut !== 'Devis' && v.statut !== 'Annulée').reduce((a, v) => a + v.montantTTC, 0);
-  const totalEncaisse = scopedVentes.reduce((a, v) => a + (v.montantPaye ?? (v.statut === 'Payée' ? v.montantTTC : 0)), 0);
+  const totalEncaisse = scopedVentes.filter(v => v.statut !== 'Devis').reduce((a, v) => a + (v.montantPaye ?? (v.statut === 'Payée' ? v.montantTTC : 0)), 0);
   const totalRestantDu = Math.max(0, totalFactureTTC - totalEncaisse);
-  const totalDevis = scopedVentes.filter(v => v.statut === 'Devis').reduce((a, v) => a + v.montantTTC, 0);
+  const totalDevis = scopedVentes.filter(v => v.statut === 'Devis' || v.statut === 'En Négociation').reduce((a, v) => a + v.montantTTC, 0);
+
+  const handleCameraScanSuccess = (barcodeText: string) => {
+    const code = barcodeText.trim();
+    const art = scopedArticles.find(a => a.code === code || (a.codeBarres && a.codeBarres.includes(code)) || a.id === code);
+    if (art) {
+      const currentValid = newLines.filter(l => l.articleId && l.articleId !== '');
+      const pu = art.prixVenteHT || 0;
+      const tva = art.tva || 19;
+      
+      setNewLines([
+        ...currentValid,
+        {
+          id: `l-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          articleId: art.id,
+          designation: art.designation,
+          quantite: 1,
+          prixUnitaireHT: pu,
+          tauxTVA: tva,
+          remisePourcentage: 0,
+          totalHT: pu,
+          totalTTC: pu * (1 + tva / 100)
+        },
+        {
+          id: `l-${Date.now() + 1}-${Math.random().toString(36).substr(2, 4)}`,
+          articleId: '',
+          designation: '',
+          quantite: 1,
+          prixUnitaireHT: 0,
+          tauxTVA: 19,
+          remisePourcentage: 0,
+          totalHT: 0,
+          totalTTC: 0
+        }
+      ]);
+    } else {
+      alert(`Article introuvable dans le catalogue pour le code-barres : ${code}`);
+    }
+  };
 
   // Line calculations for creation modal
   const handleLineArticleChange = (index: number, articleId: string) => {
+    const updated = [...newLines];
+    if (!articleId) {
+      updated[index] = {
+        ...updated[index],
+        articleId: '',
+        designation: '',
+        prixUnitaireHT: 0,
+        totalHT: 0,
+        totalTTC: 0
+      };
+      setNewLines(updated);
+      return;
+    }
+
     const art = scopedArticles.find(a => a.id === articleId);
     if (!art) return;
 
-    const updated = [...newLines];
     const pu = art.prixVenteHT || 0;
     const tva = art.tva || 19;
     const qte = updated[index].quantite || 1;
@@ -158,6 +250,22 @@ export function Ventes({
       totalHT,
       totalTTC
     };
+
+    // Dynamic row addition: Automatically add a new empty line when selecting a product on the last line
+    if (index === updated.length - 1 || updated[updated.length - 1].articleId !== '') {
+      updated.push({
+        id: `l-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        articleId: '',
+        designation: '',
+        quantite: 1,
+        prixUnitaireHT: 0,
+        tauxTVA: 19,
+        remisePourcentage: 0,
+        totalHT: 0,
+        totalTTC: 0
+      });
+    }
+
     setNewLines(updated);
   };
 
@@ -210,8 +318,11 @@ export function Ventes({
     const pu = serviceArticle?.prixVenteHT || 0;
     const tva = serviceArticle?.tva || 19;
     
+    // Filter out empty lines, add service line, and ensure an empty row is appended for next product selection
+    const currentValidLines = newLines.filter(l => l.articleId && l.articleId !== '');
+
     setNewLines([
-      ...newLines,
+      ...currentValidLines,
       {
         id: `l-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         articleId: serviceArticle?.id || '',
@@ -222,28 +333,75 @@ export function Ventes({
         remisePourcentage: 0,
         totalHT: pu,
         totalTTC: pu * (1 + tva / 100)
+      },
+      {
+        id: `l-${Date.now() + 1}-${Math.random().toString(36).substr(2, 4)}`,
+        articleId: '',
+        designation: '',
+        quantite: 1,
+        prixUnitaireHT: 0,
+        tauxTVA: 19,
+        remisePourcentage: 0,
+        totalHT: 0,
+        totalTTC: 0
       }
     ]);
   };
 
   const handleRemoveLine = (index: number) => {
-    if (newLines.length <= 1) return;
-    setNewLines(newLines.filter((_, i) => i !== index));
+    if (newLines.length <= 1) {
+      setNewLines([{
+        id: `l-${Date.now()}`,
+        articleId: '',
+        designation: '',
+        quantite: 1,
+        prixUnitaireHT: 0,
+        tauxTVA: 19,
+        remisePourcentage: 0,
+        totalHT: 0,
+        totalTTC: 0
+      }]);
+      return;
+    }
+    const updated = newLines.filter((_, i) => i !== index);
+    if (updated.length > 0 && updated[updated.length - 1].articleId !== '') {
+      updated.push({
+        id: `l-${Date.now()}`,
+        articleId: '',
+        designation: '',
+        quantite: 1,
+        prixUnitaireHT: 0,
+        tauxTVA: 19,
+        remisePourcentage: 0,
+        totalHT: 0,
+        totalTTC: 0
+      });
+    }
+    setNewLines(updated);
   };
 
+  const timbreFiscalValue = 1.000;
   const calculatedTotalHT = newLines.reduce((a, l) => a + (l.totalHT || 0), 0);
-  const calculatedTotalTTC = newLines.reduce((a, l) => a + (l.totalTTC || 0), 0);
+  const calculatedTotalTVA = newLines.reduce((a, l) => a + (l.totalHT || 0) * ((l.tauxTVA || 19) / 100), 0);
+  const calculatedTotalTTC = newLines.reduce((a, l) => a + (l.totalTTC || 0), 0) + (modalMode === 'Facture' ? timbreFiscalValue : 0);
 
   const handleOpenEditModal = (vente: Vente) => {
     setEditingSaleId(vente.id);
-    setModalMode(vente.statut === 'Facture' || vente.statut === 'Payée' ? 'Facture' : 'Devis');
+    const isDev = vente.statut === 'Devis' || vente.statut === 'En Négociation';
+    setModalMode(isDev ? 'Devis' : 'Facture');
     setEditStatut(vente.statut as any);
     setNewClientId(vente.clientId);
     setNewDate(vente.date);
-    setNewDueDate(vente.dateEcheance || vente.date);
+    const defaultDueDate = (() => {
+      if (vente.dateEcheance) return vente.dateEcheance;
+      const d = new Date(vente.date || Date.now());
+      d.setDate(d.getDate() + 30);
+      return d.toISOString().split('T')[0];
+    })();
+    setNewDueDate(defaultDueDate);
     setPaymentOption(vente.statut === 'Payée' ? 'Comptant' : 'Credit');
     setImmediatePaidAmount(vente.montantPaye || 0);
-    setNewNotes(vente.notes || '');
+    setNewNotes(vente.notes || (isDev ? "• Conditions de règlement : Date d'échéance à 1 mois (30 jours) après la date d'émission.\n• Validité de l'offre : 1 mois." : ''));
     setNewLines(vente.lignes || []);
     setIsCreateModalOpen(true);
   };
@@ -263,7 +421,7 @@ export function Ventes({
     setNewDueDate(due.toISOString().split('T')[0]);
     setPaymentOption(forceCredit ? 'Credit' : 'Credit');
     setImmediatePaidAmount(0);
-    setNewNotes('');
+    setNewNotes(mode === 'Devis' ? "• Conditions de règlement : Date d'échéance à 1 mois (30 jours) après la date d'émission.\n• Validité de l'offre : 1 mois." : '');
     const defaultLines: LigneVente[] = [];
     const moArticle = scopedActiveArticles.find(a => a.id === 'mo-install');
     
@@ -321,13 +479,17 @@ export function Ventes({
   // Submit Create Sale
   const handleSaveSale = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!newClientId || (newClientId === 'NEW' && !newClientName.trim())) || newLines.length === 0) return;
+    const validLines = newLines.filter(l => l.articleId && l.articleId.trim() !== '');
+    if ((!newClientId || (newClientId === 'NEW' && !newClientName.trim())) || validLines.length === 0) {
+      alert("Veuillez sélectionner au moins un article valide dans la commande / facture.");
+      return;
+    }
 
     const targetProjetId = selectedProjectId === 'all' ? (projets[0]?.id || 'p1') : selectedProjectId;
 
     // BF-STOCK-007: Out of stock check & negative stock prevention for invoices
     if (modalMode === 'Facture') {
-      for (const line of newLines) {
+      for (const line of validLines) {
         if (!line.articleId) continue;
         const art = articles.find(a => a.id === line.articleId);
         if (art && art.typeArticle !== 'Service') {
@@ -372,12 +534,12 @@ export function Ventes({
     }
 
     const prefix = modalMode === 'Facture' ? 'FAC' : 'DEV';
-    const year = new Date().getFullYear();
-    const count = ventes.filter(v => v.statut === modalMode).length + 1;
     
-    // Use existing number if editing, else generate new
+    // Use existing number if editing, else generate new FAC-2026-00001 or DEV-2026-00001
     const existingSale = editingSaleId ? ventes.find(v => v.id === editingSaleId) : null;
-    const numero = existingSale ? existingSale.numero : `${prefix}-${year}-${count.toString().padStart(4, '0')}`;
+    const numero = existingSale 
+      ? existingSale.numero 
+      : generateNextDocNumber(prefix, ventes.map(v => v.numero), newDate);
 
     const isComptant = modalMode === 'Facture' && paymentOption === 'Comptant';
     const initialPaid = isComptant ? calculatedTotalTTC : immediatePaidAmount;
@@ -387,6 +549,23 @@ export function Ventes({
       finalStatut = editStatut;
     }
 
+    const saveHT = validLines.reduce((a, l) => a + (l.totalHT || 0), 0);
+    const saveTTC = validLines.reduce((a, l) => a + (l.totalTTC || 0), 0) + (modalMode === 'Facture' ? timbreFiscalValue : 0);
+
+    const calculatedDueDate = isComptant 
+      ? newDate 
+      : (newDueDate || (() => {
+          const d = new Date(newDate || Date.now());
+          d.setDate(d.getDate() + 30);
+          return d.toISOString().split('T')[0];
+        })());
+
+    const finalNotes = newNotes.trim()
+      ? newNotes
+      : (modalMode === 'Devis' 
+          ? "• Conditions de règlement : Date d'échéance à 1 mois (30 jours) après la date d'émission.\n• Validité de l'offre : 1 mois." 
+          : '');
+
     const newSale: Vente = {
       id: existingSale ? existingSale.id : `v-${Date.now()}`,
       numero,
@@ -394,13 +573,14 @@ export function Ventes({
       clientId: clientIdToUse,
       clientNom: clientNomToUse,
       date: newDate,
-      dateEcheance: isComptant ? newDate : newDueDate,
-      montantHT: calculatedTotalHT,
-      montantTTC: calculatedTotalTTC,
+      dateEcheance: calculatedDueDate,
+      montantHT: saveHT,
+      montantTTC: saveTTC,
       montantPaye: initialPaid,
       statut: finalStatut,
-      lignes: newLines,
-      notes: newNotes
+      timbreFiscal: modalMode === 'Facture' ? timbreFiscalValue : 0,
+      lignes: validLines,
+      notes: finalNotes
     };
 
     if (existingSale) {
@@ -416,7 +596,7 @@ export function Ventes({
 
       if (onArticlesChange && articles) {
         const updatedArticles = articles.map(art => {
-          const lineMatch = newLines.find(l => l.articleId === art.id);
+          const lineMatch = validLines.find(l => l.articleId === art.id);
           if (lineMatch && art.typeArticle !== 'Service') {
             const stockAvant = getArticleStock(art, newSale.projetId);
             const stockApres = Math.max(0, stockAvant - lineMatch.quantite);
@@ -785,9 +965,18 @@ export function Ventes({
   const marginPercent = calculatedTotalHT > 0 ? (marginDT / calculatedTotalHT) * 100 : 0;
 
   const getStatusBadge = (statut: string) => {
+    if (currentUser.role === 'caissier') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold">
+          <span className="material-symbols-outlined text-[14px]">check_circle</span>
+          Encaissée
+        </span>
+      );
+    }
     switch (statut) {
       case 'Payée':
-        return <span className="inline-flex items-center px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold">Payée</span>;
+      case 'Validée':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold"><span className="material-symbols-outlined text-[14px]">check_circle</span>Payée</span>;
       case 'Facture':
         return <span className="inline-flex items-center px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-bold">Facture (À crédit)</span>;
       case 'Devis':
@@ -832,30 +1021,48 @@ export function Ventes({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200/80 shadow-sm">
         <div>
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl ${selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'} flex items-center justify-center font-bold`}>
+            <div className={`w-10 h-10 rounded-xl ${
+              docTypeTab === 'Devis' ? 'bg-amber-50 text-amber-600' :
+              docTypeTab === 'Facture' ? 'bg-blue-50 text-blue-600' :
+              selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-700'
+            } flex items-center justify-center font-bold`}>
               <span className="material-symbols-outlined text-[22px]">
-                {selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'shopping_basket' : 'assignment'}
+                {docTypeTab === 'Devis' ? 'request_quote' :
+                 docTypeTab === 'Facture' ? 'description' :
+                 selectedProjectId !== '1' || currentUser.role === 'caissier' ? 'shopping_basket' : 'assignment'}
               </span>
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                  {selectedProjectId !== '1' || currentUser.role === 'caissier' 
+                  {docTypeTab === 'Facture' ? 'Factures de Vente' :
+                   docTypeTab === 'Devis' ? 'Devis & Offres Commerciales' :
+                   selectedProjectId !== '1' || currentUser.role === 'caissier' 
                     ? 'Historique des Ventes (Tickets de Caisse)' 
                     : 'Factures & Devis'}
                 </h1>
-                {selectedProjectId !== '1' || currentUser.role === 'caissier' ? (
+                {docTypeTab === 'Facture' ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                    Section Facturation
+                  </span>
+                ) : docTypeTab === 'Devis' ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                    Section Devis
+                  </span>
+                ) : selectedProjectId !== '1' || currentUser.role === 'caissier' ? (
                   <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
                     Boutique • Ventes Panier
                   </span>
                 ) : (
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
                     Dépôt Central • B2B
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                {selectedProjectId !== '1' || currentUser.role === 'caissier'
+                {docTypeTab === 'Facture' ? 'Gestion des factures client, paiements à crédit et encaissements.' :
+                 docTypeTab === 'Devis' ? 'Gestion des devis, propositions commerciales, relances et négociations.' :
+                 selectedProjectId !== '1' || currentUser.role === 'caissier'
                   ? 'Toutes les ventes de la boutique sont enregistrées au comptoir via le panier du terminal de caisse.'
                   : 'Gestion des devis, bons de commande et factures de vente du siège.'}
               </p>
@@ -870,37 +1077,35 @@ export function Ventes({
               <span className="material-symbols-outlined text-[18px] text-indigo-600">verified</span>
               <span>Mode Audit & Contrôle Financier (Lecture seule)</span>
             </div>
-          ) : selectedProjectId !== '1' || currentUser.role === 'caissier' ? (
-            <button
-              onClick={() => {
-                if (onNavigateToCaisse) {
-                  onNavigateToCaisse();
-                }
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl bg-purple-600 hover:bg-purple-500 text-white shadow-md cursor-pointer transition-all hover:scale-102"
-            >
-              <span className="material-symbols-outlined text-[18px]">point_of_sale</span>
-              🛒 Ouvrir Panier / Encaisser (Caisse)
-            </button>
-          ) : (
+          ) : currentUser.role === 'caissier' ? null : selectedProjectId !== '1' ? null : (
             <>
-              <button
-                onClick={() => handleOpenCreateModal('Devis')}
-                disabled={!isProjectActive}
-                className={`flex items-center gap-1.5 px-3.5 py-2.5 font-bold text-xs rounded-xl transition-all ${!isProjectActive ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer'}`}
-              >
-                <span className="material-symbols-outlined text-[18px]">description</span>
-                Nouveau Devis
-              </button>
+              {(docTypeTab === 'Devis' || docTypeTab === 'All') && (
+                <button
+                  onClick={() => handleOpenCreateModal('Devis')}
+                  disabled={!isProjectActive}
+                  className={`flex items-center gap-1.5 px-3.5 py-2.5 font-bold text-xs rounded-xl transition-all ${
+                    !isProjectActive 
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60' 
+                      : docTypeTab === 'Devis'
+                        ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-md cursor-pointer'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">description</span>
+                  Nouveau Devis
+                </button>
+              )}
 
-              <button
-                onClick={() => handleOpenCreateModal('Facture')}
-                disabled={!isProjectActive}
-                className={`flex items-center gap-1.5 px-3.5 py-2.5 font-bold text-xs rounded-xl transition-all ${!isProjectActive ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-md cursor-pointer'}`}
-              >
-                <span className="material-symbols-outlined text-[18px]">add</span>
-                Nouvelle Facture
-              </button>
+              {(docTypeTab === 'Facture' || docTypeTab === 'All') && (
+                <button
+                  onClick={() => handleOpenCreateModal('Facture')}
+                  disabled={!isProjectActive}
+                  className={`flex items-center gap-1.5 px-3.5 py-2.5 font-bold text-xs rounded-xl transition-all ${!isProjectActive ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-md cursor-pointer'}`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">add</span>
+                  Nouvelle Facture
+                </button>
+              )}
             </>
           )}
         </div>
@@ -978,88 +1183,142 @@ export function Ventes({
 
       {/* Main Table Container */}
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
-        {/* Quick Navigation Tabs for Quotes, Orders & Invoices */}
+        {/* Quick Navigation Tabs */}
         <div className="flex items-center gap-1.5 p-3 bg-slate-100/70 border-b border-slate-200 overflow-x-auto">
-          <button
-            type="button"
-            onClick={() => setStatusFilter('all')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-              statusFilter === 'all'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            Tous les tickets / ventes ({scopedVentes.length})
-          </button>
-
-          {!(selectedProjectId !== '1' || currentUser.role === 'caissier') && (
+          {currentUser.role === 'caissier' ? (
             <>
               <button
                 type="button"
-                onClick={() => setStatusFilter('Devis')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  statusFilter === 'Devis'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'text-amber-800 hover:bg-amber-100/80'
+                onClick={() => setStatusFilter('all')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'all'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
-                <span className="material-symbols-outlined text-[16px]">description</span>
-                Devis Actifs ({scopedVentes.filter(v => v.statut === 'Devis').length})
+                Tous les tickets ({scopedVentes.length})
               </button>
-
               <button
                 type="button"
-                onClick={() => setStatusFilter('En Négociation')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  statusFilter === 'En Négociation'
-                    ? 'bg-fuchsia-600 text-white shadow-xs'
-                    : 'text-fuchsia-800 hover:bg-fuchsia-100/80'
+                onClick={() => setStatusFilter('Espèces')}
+                className={`flex items-center gap-1 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'Espèces'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
-                <span className="material-symbols-outlined text-[16px]">forum</span>
-                En Négociation ({scopedVentes.filter(v => v.statut === 'En Négociation').length})
+                <span className="material-symbols-outlined text-[15px]">payments</span>
+                Espèces ({scopedVentes.filter(v => v.modePaiement === 'Espèces').length})
               </button>
-
               <button
                 type="button"
-                onClick={() => setStatusFilter('Commande')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  statusFilter === 'Commande'
+                onClick={() => setStatusFilter('Carte Bancaire')}
+                className={`flex items-center gap-1 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'Carte Bancaire'
                     ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-indigo-800 hover:bg-indigo-100/80'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
-                <span className="material-symbols-outlined text-[16px]">shopping_bag</span>
-                Commandes ({scopedVentes.filter(v => v.statut === 'Commande').length})
+                <span className="material-symbols-outlined text-[15px]">credit_card</span>
+                Carte Bancaire ({scopedVentes.filter(v => v.modePaiement === 'Carte Bancaire' || v.modePaiement === 'Carte').length})
               </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('Chèque')}
+                className={`flex items-center gap-1 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'Chèque'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[15px]">account_balance</span>
+                Chèque ({scopedVentes.filter(v => v.modePaiement === 'Chèque').length})
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'all'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                {selectedProjectId === '1' || currentUser?.role === 'admin' ? `Toutes les factures (${scopedVentes.length})` : `Tous les tickets / ventes (${scopedVentes.length})`}
+              </button>
+
+              {selectedProjectId === '1' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('Devis')}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      statusFilter === 'Devis'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-amber-800 hover:bg-amber-100/80'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">description</span>
+                    Devis Actifs ({scopedVentes.filter(v => v.statut === 'Devis').length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('En Négociation')}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      statusFilter === 'En Négociation'
+                        ? 'bg-fuchsia-600 text-white shadow-xs'
+                        : 'text-fuchsia-800 hover:bg-fuchsia-100/80'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">forum</span>
+                    En Négociation ({scopedVentes.filter(v => v.statut === 'En Négociation').length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('Commande')}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      statusFilter === 'Commande'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-indigo-800 hover:bg-indigo-100/80'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">shopping_bag</span>
+                    Commandes ({scopedVentes.filter(v => v.statut === 'Commande').length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('Facture')}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      statusFilter === 'Facture'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-blue-800 hover:bg-blue-100/80'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                    Factures Crédit ({scopedVentes.filter(v => v.statut === 'Facture').length})
+                  </button>
+                </>
+              )}
 
               <button
                 type="button"
-                onClick={() => setStatusFilter('Facture')}
+                onClick={() => setStatusFilter('Payée')}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  statusFilter === 'Facture'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-blue-800 hover:bg-blue-100/80'
+                  statusFilter === 'Payée'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-emerald-800 hover:bg-emerald-100/80'
                 }`}
               >
-                <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-                Factures Crédit ({scopedVentes.filter(v => v.statut === 'Facture').length})
+                <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                Ventes Encaissées ({scopedVentes.filter(v => v.statut === 'Payée').length})
               </button>
             </>
           )}
-
-          <button
-            type="button"
-            onClick={() => setStatusFilter('Payée')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-              statusFilter === 'Payée'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-emerald-800 hover:bg-emerald-100/80'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">check_circle</span>
-            Ventes Encaissées ({scopedVentes.filter(v => v.statut === 'Payée').length})
-          </button>
         </div>
 
         {/* Filters Bar */}
@@ -1089,22 +1348,35 @@ export function Ventes({
               ))}
             </select>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
-            >
-              <option value="all">Tous les statuts</option>
-              <option value="Payée">✅ Tickets & Ventes payées</option>
-              <option value="Facture">💳 Ventes à crédit</option>
-              {!(selectedProjectId !== '1' || currentUser.role === 'caissier') && (
-                <>
-                  <option value="Devis">📑 Devis standards</option>
-                  <option value="En Négociation">💬 En Négociation</option>
-                  <option value="Commande">🛒 Commandes enregistrées</option>
-                </>
-              )}
-            </select>
+            {currentUser.role === 'caissier' ? (
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+              >
+                <option value="all">Tous les modes de règlement</option>
+                <option value="Espèces">💵 Espèces</option>
+                <option value="Carte Bancaire">💳 Carte Bancaire</option>
+                <option value="Chèque">🏦 Chèque</option>
+              </select>
+            ) : (
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+              >
+                <option value="all">Tous les statuts</option>
+                <option value="Payée">✅ Tickets & Ventes payées</option>
+                <option value="Facture">💳 Ventes à crédit</option>
+                {selectedProjectId === '1' && (
+                  <>
+                    <option value="Devis">📑 Devis standards</option>
+                    <option value="En Négociation">💬 En Négociation</option>
+                    <option value="Commande">🛒 Commandes enregistrées</option>
+                  </>
+                )}
+              </select>
+            )}
           </div>
         </div>
 
@@ -1128,14 +1400,14 @@ export function Ventes({
                 const client = scopedClients.find(c => c.id === vente.clientId);
                 const paid = vente.montantPaye ?? (vente.statut === 'Payée' ? vente.montantTTC : 0);
                 const remaining = Math.max(0, vente.montantTTC - paid);
-                const isOverdue = vente.statut === 'Facture' && vente.dateEcheance && new Date(vente.dateEcheance) < new Date();
                 const totalArticlesCount = (vente.lignes || []).reduce((sum, l) => sum + (l.quantite || 1), 0);
 
                 return (
                   <tr key={vente.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3.5 px-4 font-bold text-slate-900">
                       <div className="flex items-center gap-1.5">
-                        <span className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold ${vente.numero.startsWith('TC-') ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
+                        <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-purple-100 text-purple-800 border border-purple-200 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[13px]">receipt</span>
                           {vente.numero}
                         </span>
                       </div>
@@ -1181,52 +1453,69 @@ export function Ventes({
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {/* Imprimer Ticket Thermique 80mm */}
+                        {/* Bouton Universel: Ticket de Panier pour chaque mouvement */}
                         <button
-                          onClick={() => generatePosTicketPdf(vente, client, currentProject)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-600 text-purple-700 hover:text-white border border-purple-200 hover:border-purple-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
-                          title="Imprimer Ticket de Caisse Thermique (80mm)"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">receipt</span>
-                          Ticket 80mm
-                        </button>
-
-                        {/* Voir Panier Détail */}
-                        <button
+                          type="button"
                           onClick={() => setViewingCartSale(vente)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                          title="Voir le détail du panier de vente"
+                          className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                          title="Consulter le ticket de panier complet avec détail des articles"
                         >
-                          <span className="material-symbols-outlined text-[14px]">visibility</span>
-                          Panier
+                          <span className="material-symbols-outlined text-[14px]">receipt_long</span>
+                          <span>Ticket Panier</span>
                         </button>
 
-                        {/* Imprimer Facture / Document A4/A5 */}
-                        <button
-                          onClick={() => setShowFacturePrintModal(vente)}
-                          className="flex items-center gap-1 px-2 py-1.5 bg-slate-50 hover:bg-slate-200 text-slate-600 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                          title="Imprimer Document A4 / Format Reçu"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">print</span>
-                        </button>
-
-                        {/* Négocier ou Modifier Devis (si applicable) */}
-                        {currentUser.role !== 'comptable' && (vente.statut === 'Devis' || vente.statut === 'En Négociation') && (
+                        {/* Imprimer Facture / Devis A4 pour les non-caissiers */}
+                        {currentUser.role !== 'caissier' && (
                           <button
-                            onClick={() => handleOpenEditModal(vente)}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-600 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                            title="Négocier ou Modifier ce Devis"
+                            onClick={() => setShowFacturePrintModal(vente)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 hover:border-blue-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+                            title="Aperçu avant impression / Imprimer Document A4"
                           >
-                            <span className="material-symbols-outlined text-[14px]">edit_note</span>
-                            Négocier
+                            <span className="material-symbols-outlined text-[14px]">print</span>
+                            A4
                           </button>
                         )}
 
-                        {/* BOUTON DE PAIEMENT SI CRÉDIT */}
-                        {currentUser.role !== 'comptable' && vente.statut === 'Facture' && remaining > 0 && (
+                        {/* Bouton Modifier avec icône */}
+                        {currentUser.role !== 'comptable' && currentUser.role !== 'caissier' && (
+                          <button
+                            onClick={() => handleOpenEditModal(vente)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 hover:border-indigo-600 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+                            title="Modifier le document"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">edit</span>
+                            Modifier
+                          </button>
+                        )}
+
+                        {/* Convertir Devis en Facture */}
+                        {currentUser.role !== 'comptable' && currentUser.role !== 'caissier' && (vente.statut === 'Devis' || vente.statut === 'En Négociation') && (
+                          <button
+                            onClick={() => handleConvertQuote(vente, 'Facture')}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                            title="Convertir ce devis en Facture de Vente"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">swap_horiz</span>
+                            Facturer
+                          </button>
+                        )}
+
+                        {/* Relancer Client */}
+                        {currentUser.role !== 'comptable' && currentUser.role !== 'caissier' && (vente.statut === 'Devis' || vente.statut === 'En Négociation') && (
+                          <button
+                            onClick={() => handleOpenRelance(vente)}
+                            className="flex items-center gap-1 px-2 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white border border-amber-200 hover:border-amber-600 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                            title="Relancer le Client (Email / WhatsApp)"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">send</span>
+                          </button>
+                        )}
+
+                        {/* BOUTON DE PAIEMENT SI CRÉDIT - NON CAISSIER */}
+                        {currentUser.role !== 'comptable' && currentUser.role !== 'caissier' && vente.statut === 'Facture' && remaining > 0 && (
                           <button
                             onClick={() => handleOpenPayment(vente)}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs transition-all cursor-pointer hover:scale-105"
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs transition-all cursor-pointer hover:scale-105"
                             title="Encaisser un paiement partiel ou total"
                           >
                             <span className="material-symbols-outlined text-[14px]">payments</span>
@@ -1251,34 +1540,46 @@ export function Ventes({
         </div>
       </div>
 
-      {/* CREATE MODAL */}
+      {/* CREATE / EDIT MODAL */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[96vw] max-w-6xl h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-blue-600 text-[26px]">
-                  {modalMode === 'Facture' ? 'receipt_long' : 'description'}
-                </span>
-                <h3 className="font-extrabold text-base text-slate-900">
-                  {editingSaleId ? (modalMode === 'Facture' ? 'Modifier Facture' : 'Négocier / Modifier Devis') : `Créer un(e) ${modalMode === 'Facture' ? 'Nouvelle Facture de Vente' : 'Nouveau Devis Client'}`}
-                </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/75 backdrop-blur-md">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200/90 w-[96vw] max-w-6xl h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-7 py-4.5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shadow-inner">
+                  <span className="material-symbols-outlined text-[24px]">
+                    {modalMode === 'Facture' ? 'receipt_long' : 'description'}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-black text-base tracking-tight text-white flex items-center gap-2">
+                    {editingSaleId ? (modalMode === 'Facture' ? 'Modifier la Facture' : 'Négocier / Modifier le Devis') : `Créer un(e) ${modalMode === 'Facture' ? 'Nouvelle Facture de Vente' : 'Nouveau Devis Client'}`}
+                  </h3>
+                  <p className="text-[11px] font-semibold text-indigo-200/70 tracking-wide uppercase">
+                    {modalMode === 'Facture' ? 'Document de vente commercial officiel' : 'Proposition commerciale officielle'}
+                  </p>
+                </div>
               </div>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
-                <span className="material-symbols-outlined text-[24px]">close</span>
+              <button 
+                onClick={() => setIsCreateModalOpen(false)} 
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-all cursor-pointer"
+                title="Fermer la fenêtre"
+              >
+                <span className="material-symbols-outlined text-[22px]">close</span>
               </button>
             </div>
 
-            <form onSubmit={handleSaveSale} className="p-6 space-y-5 overflow-y-auto flex-1 text-sm">
+            <form onSubmit={handleSaveSale} className="p-6 sm:p-8 space-y-6 overflow-y-auto flex-1 text-sm bg-slate-50/40">
               {isGlobal && (
-                <div className="grid grid-cols-1 mb-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Boutique d'affectation (Obligatoire en vue globale)</label>
+                <div className="grid grid-cols-1 mb-2">
+                  <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200/80">
+                    <label className="block text-xs font-bold text-amber-900 uppercase tracking-wider mb-1.5">Boutique d'affectation (Vue Globale Multi-Boutiques)</label>
                     <select
                       required
                       value={newProjetId}
                       onChange={(e) => setNewProjetId(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-3.5 py-2.5 bg-white border border-amber-300/80 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-amber-500/15"
                     >
                       {projets.map(p => (
                         <option key={p.id} value={p.id}>{p.nom}</option>
@@ -1287,32 +1588,47 @@ export function Ventes({
                   </div>
                 </div>
               )}
-              <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex items-center gap-4">
-                <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined">barcode_scanner</span>
+
+              {/* Scan Barcode Section */}
+              <div className="bg-gradient-to-r from-indigo-50/90 via-blue-50/60 to-slate-50 p-4 rounded-2xl border border-indigo-100 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5">
+                <div className="flex items-center gap-3.5 flex-1">
+                  <div className="w-11 h-11 bg-indigo-600 text-white rounded-xl shadow-md shadow-indigo-500/20 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-[24px]">barcode_scanner</span>
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[11px] font-black text-indigo-950 uppercase tracking-wider block mb-1">Scan Rapide Code-barres</label>
+                    <input 
+                      type="text" 
+                      placeholder="Scannez ou saisissez un code article et appuyez sur Entrée..." 
+                      className="w-full px-4 py-2.5 bg-white border border-indigo-200/90 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-600 shadow-2xs transition-all" 
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const code = e.currentTarget.value;
+                          handleCameraScanSuccess(code);
+                          e.currentTarget.value = "";
+                        }
+                      }} 
+                    />
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <label className="text-xs font-bold text-indigo-900 block mb-1">Scan Rapide Code-barres</label>
-                  <input type="text" placeholder="Scannez ou saisissez un code article et appuyez sur Entrée..." className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      const code = e.currentTarget.value;
-                      const art = scopedArticles.find(a => a.code === code || (a.codeBarres && a.codeBarres.includes(code)));
-                      if (art) {
-                        setNewLines([...newLines, { id: `l${Date.now()}`, articleId: art.id, designation: art.designation, quantite: 1, prixUnitaireHT: art.prixVenteHT, remise: 0, tauxTVA: art.tva || 19, totalHT: art.prixVenteHT, totalTTC: art.prixVenteHT * (1 + (art.tva || 19)/100) }]);
-                        e.currentTarget.value = "";
-                      } else {
-                        alert("Article introuvable pour ce code-barres.");
-                      }
-                    }
-                  }} />
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsCameraScannerOpen(true)}
+                  className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black rounded-xl shadow-md shadow-purple-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 active:scale-95"
+                  title="Ouvrir la caméra de votre smartphone pour scanner en continu sans fatigue"
+                >
+                  <span className="material-symbols-outlined text-[20px]">photo_camera</span>
+                  <span>Scanner Caméra Smartphone</span>
+                </button>
               </div>
 
+              {/* Form Grid: Client & Dates */}
               <div className={`grid grid-cols-1 ${editingSaleId && modalMode === 'Devis' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
-                <div>
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-2xs">
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-bold text-slate-700 uppercase">Client *</label>
+                    <label className="block text-[11px] font-black text-slate-600 uppercase tracking-wider">Client *</label>
                     <button
                       type="button"
                       onClick={() => {
@@ -1322,7 +1638,7 @@ export function Ventes({
                           setNewClientId('NEW');
                         }
                       }}
-                      className="text-xs font-bold text-blue-600 hover:text-blue-700 underline cursor-pointer"
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 underline cursor-pointer"
                     >
                       {newClientId === 'NEW' ? 'Choisir existant' : '+ Nouveau client'}
                     </button>
@@ -1335,7 +1651,7 @@ export function Ventes({
                         onChange={(e) => setNewClientName(e.target.value)}
                         placeholder="Nom du nouveau client *"
                         required
-                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 bg-blue-50/50"
+                        className="w-full px-3.5 py-2.5 border border-indigo-200 rounded-xl text-sm font-semibold text-slate-900 bg-indigo-50/30 focus:bg-white focus:border-indigo-600 focus:outline-none transition-all"
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <input
@@ -1343,14 +1659,14 @@ export function Ventes({
                           value={newClientPhone}
                           onChange={(e) => setNewClientPhone(e.target.value)}
                           placeholder="Téléphone"
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white"
                         />
                         <input
                           type="text"
                           value={newClientMf}
                           onChange={(e) => setNewClientMf(e.target.value)}
                           placeholder="Matricule Fiscal"
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white"
                         />
                       </div>
                     </div>
@@ -1359,7 +1675,7 @@ export function Ventes({
                       value={newClientId}
                       onChange={(e) => setNewClientId(e.target.value)}
                       required
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800"
+                      className="w-full px-3.5 py-2.5 border border-slate-200/90 rounded-xl text-sm font-bold text-slate-800 bg-slate-50/50 focus:bg-white focus:border-indigo-600 focus:outline-none transition-all"
                     >
                       <option value="">Sélectionner un client...</option>
                       {scopedClients.map(c => (
@@ -1369,54 +1685,62 @@ export function Ventes({
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Date d'Émission *</label>
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-2xs">
+                  <label className="block text-[11px] font-black text-slate-600 uppercase tracking-wider mb-1.5">Date d'Émission *</label>
                   <input
                     type="date"
                     value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewDate(val);
+                      if (modalMode === 'Devis' && val) {
+                        const d = new Date(val);
+                        d.setDate(d.getDate() + 30);
+                        setNewDueDate(d.toISOString().split('T')[0]);
+                      }
+                    }}
                     required
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-800"
+                    className="w-full px-3.5 py-2.5 border border-slate-200/90 rounded-xl text-sm font-bold text-slate-800 bg-slate-50/50 focus:bg-white focus:border-indigo-600 focus:outline-none transition-all"
                   />
                 </div>
 
-                <div>
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-2xs">
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-bold text-slate-700 uppercase">
-                      {modalMode === 'Devis' ? "Date Limite Validité" : "Date d'Échéance"}
+                    <label className="block text-[11px] font-black text-slate-600 uppercase tracking-wider">
+                      {modalMode === 'Devis' ? "Date d'Échéance / Validité" : "Date d'Échéance"}
                     </label>
                     {modalMode === 'Devis' && (
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => {
-                            const d = new Date();
+                            const d = new Date(newDate || Date.now());
                             d.setDate(d.getDate() + 15);
                             setNewDueDate(d.toISOString().split('T')[0]);
                           }}
-                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 rounded cursor-pointer"
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 rounded-md cursor-pointer transition-colors"
                         >
                           +15j
                         </button>
                         <button
                           type="button"
                           onClick={() => {
-                            const d = new Date();
+                            const d = new Date(newDate || Date.now());
                             d.setDate(d.getDate() + 30);
                             setNewDueDate(d.toISOString().split('T')[0]);
                           }}
-                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 rounded cursor-pointer"
+                          className="px-1.5 py-0.5 bg-amber-100 hover:bg-amber-200 text-[10px] font-black text-amber-900 rounded-md cursor-pointer transition-colors border border-amber-300"
                         >
-                          +30j
+                          +1 mois (30j)
                         </button>
                         <button
                           type="button"
                           onClick={() => {
-                            const d = new Date();
+                            const d = new Date(newDate || Date.now());
                             d.setDate(d.getDate() + 60);
                             setNewDueDate(d.toISOString().split('T')[0]);
                           }}
-                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 rounded cursor-pointer"
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 rounded-md cursor-pointer transition-colors"
                         >
                           +60j
                         </button>
@@ -1427,17 +1751,23 @@ export function Ventes({
                     type="date"
                     value={newDueDate}
                     onChange={(e) => setNewDueDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-800"
+                    className="w-full px-3.5 py-2.5 border border-slate-200/90 rounded-xl text-sm font-bold text-slate-800 bg-slate-50/50 focus:bg-white focus:border-indigo-600 focus:outline-none transition-all"
                   />
+                  {modalMode === 'Devis' && (
+                    <p className="mt-1 text-[10px] font-bold text-amber-700 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">schedule</span>
+                      Condition : Échéance à 1 mois (+30 jours)
+                    </p>
+                  )}
                 </div>
 
                 {editingSaleId && modalMode === 'Devis' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Statut Devis</label>
+                  <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-2xs">
+                    <label className="block text-[11px] font-black text-slate-600 uppercase tracking-wider mb-1.5">Statut Devis</label>
                     <select
                       value={editStatut}
                       onChange={(e) => setEditStatut(e.target.value as any)}
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-indigo-500"
+                      className="w-full px-3.5 py-2.5 border border-slate-200/90 rounded-xl text-sm font-bold text-slate-800 bg-slate-50/50 focus:bg-white focus:border-indigo-600 focus:outline-none transition-all"
                     >
                       <option value="Devis">Devis (Standard)</option>
                       <option value="En Négociation">En Négociation</option>
@@ -1447,20 +1777,48 @@ export function Ventes({
                 )}
               </div>
 
-              {/* Client Credit Solvency Status Widget */}
-              {selectedClientObject && modalMode === 'Facture' && (
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-purple-600 text-[20px]">verified_user</span>
-                    <span>
-                      Plafond Crédit Autorisé : <strong className="text-slate-900">{clientPlafond.toLocaleString('fr-FR')} DT</strong>
+              {/* Conditions de Devis Banner */}
+              {modalMode === 'Devis' && (
+                <div className="bg-gradient-to-r from-amber-50 via-indigo-50/40 to-blue-50 border border-amber-200/90 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <span className="material-symbols-outlined text-[22px]">verified_user</span>
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-amber-950 uppercase tracking-wide flex items-center gap-2">
+                        Conditions Générales de Validité & Échéance
+                        <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 rounded-md text-[10px] font-black uppercase">1 Mois</span>
+                      </h4>
+                      <p className="text-[11.5px] text-slate-700 font-medium pt-0.5">
+                        Ce devis comporte une condition d'échéance et de validité de l'offre fixée à <strong>1 mois (30 jours)</strong> à compter de la date d'émission (Date d'échéance : <span className="font-bold text-indigo-950">{newDueDate ? newDueDate.split('-').reverse().join('/') : '1 mois'}</span>).
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="px-3 py-1.5 bg-white border border-amber-300 text-amber-900 font-extrabold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 w-fit sm:ml-auto">
+                      <span className="material-symbols-outlined text-amber-600 text-[16px]">event_available</span>
+                      Échéance : 1 Mois (30j)
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-slate-600">
-                      En-cours actuel : <strong className="text-rose-600">{clientOutstandingDebt.toLocaleString('fr-FR')} DT</strong>
+                </div>
+              )}
+
+              {/* Client Credit Solvency Status Widget */}
+              {selectedClientObject && modalMode === 'Facture' && (
+                <div className="p-4 bg-gradient-to-r from-slate-900 to-indigo-950 rounded-2xl text-white shadow-md border border-indigo-500/20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-purple-300">
+                      <span className="material-symbols-outlined text-[18px]">verified_user</span>
+                    </div>
+                    <span>
+                      Plafond Crédit Autorisé : <strong className="text-white text-sm tabular-nums ml-1">{clientPlafond.toLocaleString('fr-FR')} DT</strong>
                     </span>
-                    <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg text-xs">
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-slate-300">
+                      En-cours actuel : <strong className="text-rose-400 font-bold tabular-nums ml-1">{clientOutstandingDebt.toLocaleString('fr-FR')} DT</strong>
+                    </span>
+                    <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-extrabold rounded-xl text-xs backdrop-blur-xs tabular-nums">
                       Disponible : {clientAvailableCredit.toLocaleString('fr-FR')} DT
                     </span>
                   </div>
@@ -1469,17 +1827,17 @@ export function Ventes({
 
               {/* Payment Mode Selector: Comptant vs Crédit */}
               {modalMode === 'Facture' && (
-                <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 space-y-3">
+                <div className="p-4 bg-slate-100/80 rounded-2xl border border-slate-200/80 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-blue-950 uppercase">Modalité de Paiement & Crédit :</span>
-                    <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Modalité de Paiement & Crédit :</span>
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setPaymentOption('Credit')}
-                        className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        className={`px-4 py-2 text-xs font-extrabold rounded-xl transition-all cursor-pointer shadow-2xs ${
                           paymentOption === 'Credit'
-                            ? 'bg-purple-600 text-white shadow-xs'
-                            : 'bg-white text-slate-700 border border-slate-200'
+                            ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+                            : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-slate-50'
                         }`}
                       >
                         Vente à Crédit (Échéances)
@@ -1487,10 +1845,10 @@ export function Ventes({
                       <button
                         type="button"
                         onClick={() => setPaymentOption('Comptant')}
-                        className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        className={`px-4 py-2 text-xs font-extrabold rounded-xl transition-all cursor-pointer shadow-2xs ${
                           paymentOption === 'Comptant'
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'bg-white text-slate-700 border border-slate-200'
+                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                            : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-slate-50'
                         }`}
                       >
                         💳 Paiement Comptant (Immédiat)
@@ -1501,7 +1859,7 @@ export function Ventes({
                   {paymentOption === 'Credit' && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1 text-sm">
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Acompte Initial Versé (DT)</label>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Acompte Initial Versé (DT)</label>
                         <input
                           type="number"
                           min="0"
@@ -1509,15 +1867,15 @@ export function Ventes({
                           value={immediatePaidAmount}
                           onChange={(e) => setImmediatePaidAmount(parseFloat(e.target.value) || 0)}
                           placeholder="0.00 DT"
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-900"
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:border-indigo-600 focus:outline-none"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Mode de l'Acompte</label>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Mode de l'Acompte</label>
                         <select
                           value={immediatePayMode}
                           onChange={(e) => setImmediatePayMode(e.target.value as any)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-800"
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-indigo-600 focus:outline-none"
                         >
                           <option value="Espèces">Espèces</option>
                           <option value="Chèque">Chèque</option>
@@ -1533,12 +1891,12 @@ export function Ventes({
               {/* Invoice Lines Table */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-slate-700 uppercase">Articles / Prestations du Panier</label>
-                  <div className="flex items-center gap-4">
+                  <label className="block text-xs font-black text-slate-800 uppercase tracking-wider">Articles / Prestations du Panier</label>
+                  <div className="flex items-center gap-3">
                     <button
                       type="button"
                       onClick={() => handleAddServiceLine('Main d\'œuvre')}
-                      className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1.5 cursor-pointer bg-amber-50 px-2 py-1 rounded-lg border border-amber-200"
+                      className="text-xs font-extrabold text-amber-700 hover:text-amber-800 flex items-center gap-1.5 cursor-pointer bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-200/80 shadow-2xs transition-all"
                     >
                       <span className="material-symbols-outlined text-[16px]">build</span>
                       + Main d'œuvre
@@ -1546,7 +1904,7 @@ export function Ventes({
                     <button
                       type="button"
                       onClick={handleAddLine}
-                      className="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1.5 cursor-pointer"
+                      className="text-xs font-extrabold text-white bg-blue-600 hover:bg-blue-500 flex items-center gap-1.5 cursor-pointer px-3.5 py-1.5 rounded-xl shadow-md shadow-blue-500/20 transition-all"
                     >
                       <span className="material-symbols-outlined text-[18px]">add_circle</span>
                       Ajouter un article
@@ -1558,14 +1916,15 @@ export function Ventes({
                   {newLines.map((line, idx) => {
                     const lineArticle = articles.find(a => a.id === line.articleId);
                     const isService = lineArticle?.typeArticle === 'Service';
-                    const isPriceLocked = !isService && (currentUser.role === 'caissier' || currentUser.role === 'agent');
+                    // Caissier et agents autorisés à modifier le montant de chaque produit ou service
+                    const isPriceLocked = false;
                     return (
-                      <div key={line.id || idx} className="grid grid-cols-12 gap-2.5 items-center bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-sm">
+                      <div key={line.id || idx} className="grid grid-cols-12 gap-3 items-center bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-2xs hover:border-indigo-200 transition-all text-sm">
                         <div className="col-span-5">
                           <select
                             value={line.articleId}
                             onChange={(e) => handleLineArticleChange(idx, e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium bg-white focus:border-blue-600 focus:outline-none"
+                            className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold bg-slate-50/50 focus:bg-white focus:border-indigo-600 focus:outline-none transition-all"
                           >
                             <option value="">Sélectionner un produit actif...</option>
                             {scopedActiveArticles.map(a => (
@@ -1581,42 +1940,32 @@ export function Ventes({
                             value={line.quantite}
                             onChange={(e) => handleLineQtyChange(idx, parseFloat(e.target.value) || 1)}
                             placeholder="Qté"
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-bold text-center bg-white focus:border-blue-600 focus:outline-none"
+                            className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-black text-center bg-slate-50/50 focus:bg-white focus:border-indigo-600 focus:outline-none tabular-nums transition-all"
                           />
                         </div>
 
                         <div className="col-span-2 relative">
                           <input
                             type="number"
-                            step="0.01"
+                            step="0.001"
                             value={line.prixUnitaireHT}
                             onChange={(e) => handleLinePriceChange(idx, parseFloat(e.target.value) || 0)}
                             placeholder="P.U HT"
-                            disabled={isPriceLocked}
-                            readOnly={isPriceLocked}
-                            title={isPriceLocked ? "Prix catalogue verrouillé en mode caissier" : "Prix modifiable (Autorisation Admin)"}
-                            className={`w-full px-3 py-2 border rounded-xl text-sm font-bold text-right transition-all ${
-                              isPriceLocked 
-                                ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' 
-                                : 'bg-white border-slate-200 focus:border-blue-600 focus:outline-none'
-                            }`}
+                            title="Prix unitaire modifiable"
+                            className="w-full px-3.5 py-2.5 border rounded-xl text-sm font-black text-right tabular-nums transition-all bg-slate-50/50 focus:bg-white border-slate-200 focus:border-indigo-600 focus:outline-none"
                           />
-                          {isPriceLocked && (
-                            <span className="absolute left-2 top-2.5 text-slate-400 text-xs" title="Prix verrouillé">
-                              🔒
-                            </span>
-                          )}
                         </div>
 
-                        <div className="col-span-2 text-right font-bold text-slate-900 text-base">
+                        <div className="col-span-2 text-right font-black text-slate-900 text-base tabular-nums">
                           {(line.totalTTC || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT
                         </div>
 
-                        <div className="col-span-1 text-center">
+                        <div className="col-span-1 flex justify-center">
                           <button
                             type="button"
                             onClick={() => handleRemoveLine(idx)}
-                            className="text-slate-400 hover:text-rose-600 transition-colors"
+                            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-all cursor-pointer"
+                            title="Supprimer la ligne"
                           >
                             <span className="material-symbols-outlined text-[20px]">delete</span>
                           </button>
@@ -1629,9 +1978,9 @@ export function Ventes({
 
               {/* Devis Quick Discount Actions & Commercial Margin Indicator */}
               {modalMode === 'Devis' && (
-                <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2">
+                <div className="p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-amber-900 flex items-center gap-1">
+                    <span className="text-xs font-black text-amber-950 flex items-center gap-1.5 uppercase tracking-wider">
                       <span className="material-symbols-outlined text-[16px]">percent</span>
                       Appliquer Remise Globale au Devis :
                     </span>
@@ -1639,28 +1988,28 @@ export function Ventes({
                       <button
                         type="button"
                         onClick={() => applyGlobalDiscount(5)}
-                        className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+                        className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-lg cursor-pointer transition-colors shadow-2xs"
                       >
                         -5%
                       </button>
                       <button
                         type="button"
                         onClick={() => applyGlobalDiscount(10)}
-                        className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+                        className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-lg cursor-pointer transition-colors shadow-2xs"
                       >
                         -10%
                       </button>
                       <button
                         type="button"
                         onClick={() => applyGlobalDiscount(15)}
-                        className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+                        className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-lg cursor-pointer transition-colors shadow-2xs"
                       >
                         -15%
                       </button>
                       <button
                         type="button"
                         onClick={() => applyGlobalDiscount(0)}
-                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-[11px] rounded-lg cursor-pointer transition-colors"
+                        className="px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-lg cursor-pointer transition-colors"
                       >
                         Réinitialiser
                       </button>
@@ -1668,9 +2017,9 @@ export function Ventes({
                   </div>
 
                   {/* Commercial Margin Calculation Display for Devis */}
-                  <div className="pt-2 border-t border-amber-200/60 flex items-center justify-between text-xs">
-                    <span className="text-slate-600 font-medium">Coût d'Achat Estimé HT : <span className="font-bold text-slate-800">{estimatedCostHT.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span></span>
-                    <span className={`font-bold flex items-center gap-1 px-2 py-0.5 rounded-md ${marginDT >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                  <div className="pt-2 border-t border-amber-200/70 flex items-center justify-between text-xs">
+                    <span className="text-slate-600 font-medium">Coût d'Achat Estimé HT : <span className="font-bold text-slate-900 tabular-nums">{estimatedCostHT.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span></span>
+                    <span className={`font-black flex items-center gap-1 px-2.5 py-1 rounded-lg ${marginDT >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
                       Marge Théorique : {marginDT >= 0 ? '+' : ''}{marginDT.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT ({marginPercent.toFixed(1)}%)
                     </span>
                   </div>
@@ -1680,36 +2029,36 @@ export function Ventes({
               {/* Notes & Commercial Terms */}
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-1.5">
-                  <label className="block text-xs font-bold text-slate-700 uppercase">
+                  <label className="block text-xs font-black text-slate-800 uppercase tracking-wider">
                     {modalMode === 'Devis' ? "Conditions Commerciales & Notes du Devis" : "Notes & Observations"}
                   </label>
                   {modalMode === 'Devis' && (
-                    <div className="flex flex-wrap items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Validité de l'offre : 30 jours à compter de l'émission.`)}
-                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 rounded-md cursor-pointer"
+                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Conditions de paiement : Échéance de règlement à 1 mois (30 jours) après la date d'émission.`)}
+                        className="px-2.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-[10.5px] font-bold text-indigo-900 rounded-lg cursor-pointer transition-colors shadow-2xs"
                       >
-                        + Validité 30j
+                        + Échéance 1 mois
                       </button>
                       <button
                         type="button"
-                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Modalités : 30% d'acompte à la commande, solde à la livraison.`)}
-                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 rounded-md cursor-pointer"
+                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Validité de l'offre : 30 jours (1 mois) à compter de la date d'émission.`)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-[10.5px] font-bold text-slate-700 rounded-lg cursor-pointer transition-colors"
+                      >
+                        + Validité 1 mois
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Modalités : 30% d'acompte à la commande, solde à l'échéance.`)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-[10.5px] font-bold text-slate-700 rounded-lg cursor-pointer transition-colors"
                       >
                         + Acompte 30%
                       </button>
                       <button
                         type="button"
-                        onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Paiement : Comptant à la livraison.`)}
-                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 rounded-md cursor-pointer"
-                      >
-                        + Comptant
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => setNewNotes((prev) => `${prev ? prev + '\n' : ''}• Garantie : 12 mois pièces et main d'œuvre.`)}
-                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 rounded-md cursor-pointer"
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-[10.5px] font-bold text-slate-700 rounded-lg cursor-pointer transition-colors"
                       >
                         + Garantie 1 an
                       </button>
@@ -1721,44 +2070,65 @@ export function Ventes({
                   value={newNotes}
                   onChange={(e) => setNewNotes(e.target.value)}
                   placeholder={modalMode === 'Devis' ? "Conditions particulières, délais de livraison, modalités de paiement..." : "Observations éventuelles..."}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 bg-white focus:border-blue-600 focus:outline-none"
+                  className="w-full p-3.5 border border-slate-200/90 rounded-2xl text-xs font-medium text-slate-800 bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all resize-none shadow-2xs"
                 />
               </div>
 
               {/* Totals Summary */}
-              <div className="p-4 bg-blue-50/70 border border-blue-100 rounded-xl space-y-2 text-sm">
-                <div className="flex justify-between font-medium text-slate-600">
+              <div className="p-5 bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 text-white rounded-2xl shadow-xl border border-slate-800 space-y-2.5 text-xs sm:text-sm">
+                <div className="flex justify-between font-medium text-slate-300">
                   <span>Total Brut HT :</span>
-                  <span>{calculatedTotalHT.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
+                  <span className="tabular-nums font-semibold">{calculatedTotalHT.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT</span>
                 </div>
-                <div className="flex justify-between font-medium text-slate-600">
+                <div className="flex justify-between font-medium text-slate-300">
                   <span>Total TVA Estimée :</span>
-                  <span>{(calculatedTotalTTC - calculatedTotalHT).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
+                  <span className="tabular-nums font-semibold">{calculatedTotalTVA.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT</span>
                 </div>
-                <div className="flex justify-between font-bold text-slate-900 text-base pt-2 border-t border-blue-200">
-                  <span>Montant Net TTC :</span>
-                  <span className="text-blue-700 text-lg">{calculatedTotalTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DT</span>
+                {modalMode === 'Facture' && (
+                  <div className="flex justify-between font-bold text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
+                    <span className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-base">verified</span>
+                      Timbre Fiscal Obligatoire :
+                    </span>
+                    <span className="font-bold tabular-nums">{timbreFiscalValue.toFixed(3)} DT</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center font-black text-white text-base sm:text-lg pt-3 border-t border-slate-800">
+                  <span>Montant Net TTC à Payer :</span>
+                  <span className="text-emerald-400 text-xl sm:text-2xl font-black tabular-nums tracking-tight">{calculatedTotalTTC.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} DT</span>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              {/* Action Footer */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200/80">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                  className="px-6 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl cursor-pointer transition-colors"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl shadow-md cursor-pointer"
+                  className="px-7 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-extrabold rounded-xl shadow-lg shadow-indigo-500/25 cursor-pointer transition-all hover:scale-[1.01] active:scale-95 flex items-center gap-2"
                 >
+                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
                   {editingSaleId ? 'Enregistrer les Modifications' : 'Valider et Enregistrer'}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* CAMERA BARCODE SCANNER MODAL */}
+      {isCameraScannerOpen && (
+        <CameraBarcodeScannerModal
+          articles={scopedArticles}
+          onScanSuccess={handleCameraScanSuccess}
+          onClose={() => setIsCameraScannerOpen(false)}
+          title="Scanner Caméra Smartphone (Ventes & Factures)"
+        />
       )}
 
       {/* QUICK PAYMENT MODAL (BOUTON DE PAIEMENT) */}
@@ -2221,6 +2591,17 @@ export function Ventes({
           client={clients.find(c => c.id === showFacturePrintModal.clientId || c.nom === showFacturePrintModal.clientNom)}
           projet={projets.find(p => p.id === showFacturePrintModal.projetId) || (selectedProjectId ? projets.find(p => p.id === selectedProjectId) : null) || projets[0]}
           onClose={() => setShowFacturePrintModal(null)}
+        />
+      )}
+
+      {/* TICKET DE PANIER MODAL */}
+      {viewingCartSale && (
+        <TicketPanierModal
+          vente={viewingCartSale}
+          client={clients.find(c => c.id === viewingCartSale.clientId || c.nom === viewingCartSale.clientNom)}
+          projet={projets.find(p => p.id === viewingCartSale.projetId) || currentProject || projets[0]}
+          currentUser={currentUser}
+          onClose={() => setViewingCartSale(null)}
         />
       )}
     </div>

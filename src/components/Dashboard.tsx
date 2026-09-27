@@ -478,30 +478,30 @@ export function Dashboard({
             <p className="text-xs text-slate-500 font-medium">Lancement immédiat des opérations courantes de gestion commercial & stock</p>
           </div>
           <span className="self-start sm:self-auto px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full text-[11px] font-bold border border-slate-200/60">
-            8 Raccourcis Opérationnels
+            7 Raccourcis Opérationnels
           </span>
         </div>
 
         {/* Quick Actions Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-3.5">
-          {/* 1. Facture / Devis */}
+          {/* 2. Devis */}
           <button
-            onClick={() => onTabChange && onTabChange('ventes')}
-            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-blue-50/60 border border-slate-200/60 hover:border-blue-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
+            onClick={() => onTabChange && onTabChange('devis')}
+            className="flex flex-col justify-between p-4 bg-slate-50/80 hover:bg-amber-50/60 border border-slate-200/60 hover:border-amber-300 rounded-2xl transition-all duration-300 group text-left relative overflow-hidden shadow-xs hover:shadow-md cursor-pointer min-h-[140px]"
           >
             <div className="flex items-center justify-between w-full mb-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
-                <span className="material-symbols-outlined text-[20px]">receipt_long</span>
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xs">
+                <span className="material-symbols-outlined text-[20px]">request_quote</span>
               </div>
-              <span className="text-[9px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                Ventes
+              <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                Devis
               </span>
             </div>
             <div>
-              <span className="block text-xs font-bold text-slate-800 group-hover:text-blue-700 leading-tight mb-1">Facture / Devis</span>
-              <span className="block text-[10px] font-medium text-slate-500 leading-tight">Création & Édition</span>
+              <span className="block text-xs font-bold text-slate-800 group-hover:text-amber-700 leading-tight mb-1">Devis</span>
+              <span className="block text-[10px] font-medium text-slate-500 leading-tight">Propositions & Offres</span>
             </div>
-            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-blue-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
+            <span className="material-symbols-outlined absolute right-3 bottom-3 text-slate-300 group-hover:text-amber-500 text-[16px] opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">arrow_forward</span>
           </button>
 
           {/* 2. Bon de Livraison */}

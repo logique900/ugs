@@ -39,6 +39,122 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// ==========================================
+// REAL-TIME POS CART SYNC (SMARTPHONE <-> PC)
+// ==========================================
+interface PosCartSyncPayload {
+  syncKey: string;
+  cart: any[];
+  posClientId?: string;
+  posPaymentMode?: string;
+  remiseGlobale?: number;
+  lastAction?: string;
+  lastItemName?: string;
+  senderDeviceId?: string;
+  deviceType?: 'smartphone' | 'desktop' | 'tablet';
+  updatedAt: number;
+}
+
+const posSyncStore = new Map<string, PosCartSyncPayload>();
+const posSseSubscribers = new Map<string, Set<express.Response>>();
+
+// Stream SSE pour la synchronisation instantanée Smartphone <-> PC
+app.get('/api/caisse/stream/:syncKey', (req, res) => {
+  const syncKey = req.params.syncKey;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  if (!posSseSubscribers.has(syncKey)) {
+    posSseSubscribers.set(syncKey, new Set());
+  }
+  const subscribers = posSseSubscribers.get(syncKey)!;
+  subscribers.add(res);
+
+  // Envoyer l'état actuel s'il existe
+  const currentState = posSyncStore.get(syncKey);
+  if (currentState) {
+    res.write(`data: ${JSON.stringify({ type: 'sync', payload: currentState })}\n\n`);
+  } else {
+    res.write(`data: ${JSON.stringify({ type: 'connected', syncKey })}\n\n`);
+  }
+
+  // Heartbeat keep-alive toutes les 20 secondes
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`: heartbeat ${Date.now()}\n\n`);
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 20000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    subscribers.delete(res);
+    if (subscribers.size === 0) {
+      posSseSubscribers.delete(syncKey);
+    }
+  });
+});
+
+// Récupérer l'état du panier d'une session
+app.get('/api/caisse/sync/:syncKey', (req, res) => {
+  const syncKey = req.params.syncKey;
+  const state = posSyncStore.get(syncKey);
+  if (state) {
+    res.json(state);
+  } else {
+    res.json({ syncKey, cart: [], updatedAt: Date.now() });
+  }
+});
+
+// Mettre à jour le panier et diffuser instantanément aux autres appareils connectés
+app.post('/api/caisse/sync', (req, res) => {
+  try {
+    const { syncKey, cart, posClientId, posPaymentMode, remiseGlobale, lastAction, lastItemName, senderDeviceId, deviceType } = req.body;
+    if (!syncKey) {
+      return res.status(400).json({ error: "syncKey requis pour la synchronisation." });
+    }
+
+    const payload: PosCartSyncPayload = {
+      syncKey,
+      cart: Array.isArray(cart) ? cart : [],
+      posClientId: posClientId || '',
+      posPaymentMode: posPaymentMode || 'Espèces',
+      remiseGlobale: typeof remiseGlobale === 'number' ? remiseGlobale : 0,
+      lastAction: lastAction || 'update',
+      lastItemName: lastItemName || '',
+      senderDeviceId: senderDeviceId || 'unknown',
+      deviceType: deviceType || 'desktop',
+      updatedAt: Date.now()
+    };
+
+    posSyncStore.set(syncKey, payload);
+
+    // Diffuser à tous les terminaux abonnés (Smartphone & PC)
+    const subscribers = posSseSubscribers.get(syncKey);
+    if (subscribers && subscribers.size > 0) {
+      const message = `data: ${JSON.stringify({ type: 'sync', payload })}\n\n`;
+      subscribers.forEach(client => {
+        try {
+          client.write(message);
+        } catch {
+          subscribers.delete(client);
+        }
+      });
+    }
+
+    res.json({ success: true, updatedAt: payload.updatedAt, subscribersCount: subscribers ? subscribers.size : 0 });
+  } catch (error: any) {
+    console.error('Erreur lors de la synchronisation de caisse:', error);
+    res.status(500).json({ error: error.message || 'Erreur serveur de synchronisation' });
+  }
+});
+
+
 // Endpoint OCR pour les factures
 app.post('/api/ocr-invoice', upload.single('invoice'), async (req, res) => {
   try {

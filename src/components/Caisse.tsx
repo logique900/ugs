@@ -1,8 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Reglement, Projet, Vente, Achat, Client, Fournisseur, Utilisateur, Article, LigneVente, MouvementStock, SessionCaisse, SessionActionLog } from '../types';
-import { generateReceiptPdf } from '../utils/pdfExportEngine';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Reglement, Projet, Vente, Achat, Client, Fournisseur, Utilisateur, Article, LigneVente, MouvementStock, SessionCaisse, SessionActionLog, RetourVente, LigneRetourVente, ModeRemboursement } from '../types';
+import { generateReceiptPdf, generateReturnSlipPdf } from '../utils/pdfExportEngine';
+import { generateNextDocNumber } from '../utils/numbering';
 import { generateZReportPdf } from '../utils/caisseZReport';
 import { CameraBarcodeScannerModal } from './CameraBarcodeScannerModal';
+import { TicketPanierModal } from './TicketPanierModal';
 import { getArticleStock, updateArticleStock } from '../utils/stockUtils';
 import { createGuaranteedStockMovement } from '../utils/stockIntegrityEngine';
 
@@ -26,6 +28,8 @@ interface CaisseProps {
   mouvements?: MouvementStock[];
   sessions: SessionCaisse[];
   actionLogs: SessionActionLog[];
+  retours?: RetourVente[];
+  onRetoursChange?: (retours: RetourVente[]) => void;
   onReglementsChange: (reglements: Reglement[]) => void;
   onVentesChange?: (ventes: Vente[]) => void;
   onArticlesChange?: (articles: Article[]) => void;
@@ -49,6 +53,8 @@ export function Caisse({
   mouvements = [],
   sessions = [],
   actionLogs = [],
+  retours = [],
+  onRetoursChange,
   onReglementsChange,
   onVentesChange,
   onArticlesChange,
@@ -235,7 +241,28 @@ export function Caisse({
   const [posSuccessMsg, setPosSuccessMsg] = useState<string | null>(null);
   // Mobile active sub-tab for POS ('catalog' vs 'cart')
   const [posMobileTab, setPosMobileTab] = useState<'catalog' | 'cart'>('catalog');
-  const [posMode, setPosMode] = useState<'Vente' | 'Devis'>('Vente');
+
+  // Returns Management (Gestion des Retours)
+  const [isPosReturnModalOpen, setIsPosReturnModalOpen] = useState(false);
+  const [posReturnActiveTab, setPosReturnActiveTab] = useState<'nouveau' | 'historique'>('nouveau');
+  const [posReturnType, setPosReturnType] = useState<'ticket' | 'libre'>('ticket');
+  const [posReturnSelectedSaleId, setPosReturnSelectedSaleId] = useState<string>('');
+  const [posReturnTicketSearch, setPosReturnTicketSearch] = useState<string>('');
+  const [posReturnClientId, setPosReturnClientId] = useState<string>('');
+  const [posReturnRefundMode, setPosReturnRefundMode] = useState<ModeRemboursement>('Espèces');
+  const [posReturnMotif, setPosReturnMotif] = useState<string>('Retour article au comptoir');
+  const [posReturnLines, setPosReturnLines] = useState<Array<{
+    articleId: string;
+    articleCode?: string;
+    designation: string;
+    quantiteVendue: number;
+    quantiteRetournee: number;
+    prixUnitaire: number;
+    motif: string;
+    remettreEnStock: boolean;
+  }>>([]);
+  const [posViewingReturn, setPosViewingReturn] = useState<RetourVente | null>(null);
+  const [selectedTicketVente, setSelectedTicketVente] = useState<Vente | null>(null);
 
   // Scanner Engine State (BF-PROD-020)
   const [scannerInput, setScannerInput] = useState('');
@@ -245,6 +272,76 @@ export function Caisse({
     message: string;
     article?: Article;
   } | null>(null);
+
+  // REAL-TIME POS CART SYNC (Smartphone <-> PC)
+  const [syncStatus, setSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('connected');
+  const [syncNotification, setSyncNotification] = useState<{
+    message: string;
+    sourceDevice: 'smartphone' | 'desktop' | 'tablet';
+    itemName?: string;
+    timestamp: number;
+  } | null>(null);
+
+  const deviceId = useMemo(() => {
+    let id = sessionStorage.getItem('pos_device_id');
+    if (!id) {
+      id = `dev-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      sessionStorage.setItem('pos_device_id', id);
+    }
+    return id;
+  }, []);
+
+  const isMobileDevice = useMemo(() => {
+    return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent) || window.innerWidth < 1024;
+  }, []);
+
+  const syncKey = useMemo(() => {
+    if (activeSession) return `session_${activeSession.id}`;
+    return `project_${selectedProjectId}`;
+  }, [activeSession, selectedProjectId]);
+
+  const isRemoteUpdateRef = useRef(false);
+
+  // Helper pour diffuser les mises à jour aux autres appareils
+  const broadcastCartUpdate = useCallback((
+    newCart: CartItem[], 
+    newClientId?: string, 
+    newPaymentMode?: string, 
+    actionName?: string, 
+    itemName?: string
+  ) => {
+    if (isRemoteUpdateRef.current) return;
+    setSyncStatus('syncing');
+
+    const payload = {
+      syncKey,
+      cart: newCart,
+      posClientId: newClientId !== undefined ? newClientId : posClientId,
+      posPaymentMode: newPaymentMode !== undefined ? newPaymentMode : posPaymentMode,
+      lastAction: actionName || 'update',
+      lastItemName: itemName || '',
+      senderDeviceId: deviceId,
+      deviceType: isMobileDevice ? 'smartphone' : 'desktop',
+      updatedAt: Date.now()
+    };
+
+    // 1. Envoyer au serveur Express
+    fetch('/api/caisse/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(() => setSyncStatus('connected'))
+    .catch(() => setSyncStatus('connected'));
+
+    // 2. Diffuser par BroadcastChannel pour les onglets/fenêtres locales
+    try {
+      const channel = new BroadcastChannel('pos_cart_sync_channel');
+      channel.postMessage(payload);
+      channel.close();
+    } catch {}
+  }, [syncKey, posClientId, posPaymentMode, deviceId, isMobileDevice]);
+
 
   // Web Audio Synth Beep feedback (BF-PROD-020)
   const playBeep = (type: 'success' | 'error' = 'success') => {
@@ -266,7 +363,139 @@ export function Caisse({
     }
   };
 
+  // Real-Time SSE and BroadcastChannel Synchronizer
+  useEffect(() => {
+    if (!syncKey) return;
+
+    // 1. Initial fetch from server
+    fetch(`/api/caisse/sync/${syncKey}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data.cart) && data.cart.length > 0) {
+          isRemoteUpdateRef.current = true;
+          setCart(prev => prev.length === 0 ? data.cart : prev);
+          if (data.posClientId) setPosClientId(data.posClientId);
+          if (data.posPaymentMode) setPosPaymentMode(data.posPaymentMode);
+          setTimeout(() => { isRemoteUpdateRef.current = false; }, 100);
+        }
+      })
+      .catch(() => {});
+
+    // 2. Server-Sent Events (SSE) Stream
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource(`/api/caisse/stream/${syncKey}`);
+      
+      eventSource.onopen = () => {
+        setSyncStatus('connected');
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === 'sync' && parsed.payload) {
+            const p = parsed.payload;
+            if (p.senderDeviceId !== deviceId) {
+              isRemoteUpdateRef.current = true;
+              setCart(p.cart || []);
+              if (p.posClientId !== undefined) setPosClientId(p.posClientId);
+              if (p.posPaymentMode !== undefined) setPosPaymentMode(p.posPaymentMode);
+
+              if (p.lastItemName) {
+                setSyncNotification({
+                  message: `Article scanné / ajouté depuis ${p.deviceType === 'smartphone' ? 'le smartphone 📱' : 'un autre poste 💻'} : "${p.lastItemName}"`,
+                  sourceDevice: p.deviceType || 'smartphone',
+                  itemName: p.lastItemName,
+                  timestamp: Date.now()
+                });
+                playBeep('success');
+              } else if (p.lastAction === 'checkout') {
+                setSyncNotification({
+                  message: `Encaissement validé sur un autre appareil. Le panier a été réinitialisé.`,
+                  sourceDevice: p.deviceType || 'smartphone',
+                  timestamp: Date.now()
+                });
+              }
+
+              setTimeout(() => {
+                isRemoteUpdateRef.current = false;
+              }, 100);
+            }
+          }
+        } catch (e) {
+          console.error("Erreur de parsing SSE", e);
+        }
+      };
+
+      eventSource.onerror = () => {
+        setSyncStatus('syncing');
+      };
+    } catch (e) {
+      console.error("SSE stream unavailable", e);
+    }
+
+    // 3. BroadcastChannel listener (inter-onglets instantané)
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('pos_cart_sync_channel');
+      channel.onmessage = (event) => {
+        const p = event.data;
+        if (p && p.syncKey === syncKey && p.senderDeviceId !== deviceId) {
+          isRemoteUpdateRef.current = true;
+          setCart(p.cart || []);
+          if (p.posClientId !== undefined) setPosClientId(p.posClientId);
+          if (p.posPaymentMode !== undefined) setPosPaymentMode(p.posPaymentMode);
+          if (p.lastItemName) {
+            setSyncNotification({
+              message: `Article scanné / ajouté depuis ${p.deviceType === 'smartphone' ? 'le smartphone 📱' : 'un autre écran 💻'} : "${p.lastItemName}"`,
+              sourceDevice: p.deviceType || 'smartphone',
+              itemName: p.lastItemName,
+              timestamp: Date.now()
+            });
+            playBeep('success');
+          }
+          setTimeout(() => {
+            isRemoteUpdateRef.current = false;
+          }, 100);
+        }
+      };
+    } catch {}
+
+    // 4. Polling de secours toutes les 2.5 secondes
+    const pollTimer = setInterval(() => {
+      fetch(`/api/caisse/sync/${syncKey}`)
+        .then(res => res.json())
+        .then(p => {
+          if (p && p.senderDeviceId && p.senderDeviceId !== deviceId && p.updatedAt && (Date.now() - p.updatedAt < 4000)) {
+            isRemoteUpdateRef.current = true;
+            setCart(p.cart || []);
+            if (p.posClientId !== undefined) setPosClientId(p.posClientId);
+            if (p.posPaymentMode !== undefined) setPosPaymentMode(p.posPaymentMode);
+            setTimeout(() => {
+              isRemoteUpdateRef.current = false;
+            }, 100);
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+
+    return () => {
+      if (eventSource) eventSource.close();
+      if (channel) channel.close();
+      clearInterval(pollTimer);
+    };
+  }, [syncKey, deviceId]);
+
+  // Auto-dismiss sync notification after 5s
+  useEffect(() => {
+    if (syncNotification) {
+      const t = setTimeout(() => setSyncNotification(null), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [syncNotification]);
+
   // Journal Filters State
+
   const [filterType, setFilterType] = useState<'all' | 'Encaissement' | 'Décaissement'>('all');
   const [filterMode, setFilterMode] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -304,22 +533,19 @@ export function Caisse({
   }, [articles, isGlobal, selectedProjectId]);
 
   const getDefaultCart = (): CartItem[] => {
-    const moArticle = scopedArticles.find(a => a.id === 'mo-install');
-    if (moArticle) {
-      return [{ article: moArticle, quantite: 1, prixVenteHT: moArticle.prixVenteHT || 0 }];
-    }
     return [];
   };
 
   useEffect(() => {
-    setCart(getDefaultCart());
-  }, [selectedProjectId, scopedArticles.length]); // Reset cart when project changes or articles load
+    setCart([]);
+  }, [selectedProjectId]); // Reset cart to empty when project changes
 
   const handleCancelPosSale = () => {
-    setCart(getDefaultCart());
+    setCart([]);
     setPosClientId('');
     setPosPaymentMode('Espèces');
     setPosSuccessMsg(null);
+    broadcastCartUpdate([], '', 'Espèces', 'clear');
   };
 
   // Categories list
@@ -376,63 +602,77 @@ export function Caisse({
     return result;
   }, [scopedArticles, posSearchTerm, posCategoryFilter, posTypeFilter, posSortBy, articleSalesCount]);
 
-  // POS Cart Calculations
-  const cartTotalHT = useMemo(() => {
+  // POS Cart Calculations (TVA et timbre fiscal retirés du panier conformément aux consignes)
+  const cartTotalNet = useMemo(() => {
     return cart.reduce((sum, item) => sum + (item.quantite * (item.prixVenteHT || 0)), 0);
   }, [cart]);
 
-  const cartTotalTTC = useMemo(() => {
-    return cart.reduce((sum, item) => {
-      const pu = item.prixVenteHT || 0;
-      const tva = item.article.tva || 19;
-      return sum + (item.quantite * pu * (1 + tva / 100));
-    }, 0);
-  }, [cart]);
+  const cartTotalHT = cartTotalNet;
+  const posTimbreFiscal = 0;
+  const cartTotalTTC = cartTotalNet;
 
   // Add Article to POS Cart (BF-PROD-019)
   const handleAddToCart = (article: Article, initialQty: number = 1) => {
     setCart(prev => {
+      let updated: CartItem[];
       const existingIndex = prev.findIndex(item => item.article.id === article.id);
       if (existingIndex >= 0) {
-        const updated = [...prev];
+        updated = [...prev];
         updated[existingIndex] = {
           ...updated[existingIndex],
           quantite: updated[existingIndex].quantite + initialQty
         };
-        return updated;
       } else {
-        return [...prev, { article, quantite: initialQty, prixVenteHT: article.prixVenteHT || 0 }];
+        updated = [...prev, { article, quantite: initialQty, prixVenteHT: article.prixVenteHT || 0 }];
       }
+      broadcastCartUpdate(updated, undefined, undefined, 'add_item', article.designation);
+      return updated;
     });
   };
 
   const handleUpdateCartQty = (articleId: string, delta: number) => {
     setCart(prev => {
-      return prev.map(item => {
+      const updated = prev.map(item => {
         if (item.article.id === articleId) {
           const newQ = item.quantite + delta;
           return newQ > 0 ? { ...item, quantite: newQ } : null;
         }
         return item;
       }).filter(Boolean) as CartItem[];
+      broadcastCartUpdate(updated, undefined, undefined, 'update_qty');
+      return updated;
     });
   };
 
   const handleSetCartQty = (articleId: string, exactQty: number) => {
-    if (exactQty <= 0) {
-      setCart(prev => prev.filter(item => item.article.id !== articleId));
-    } else {
-      setCart(prev => prev.map(item => item.article.id === articleId ? { ...item, quantite: exactQty } : item));
-    }
+    setCart(prev => {
+      let updated: CartItem[];
+      if (exactQty <= 0) {
+        updated = prev.filter(item => item.article.id !== articleId);
+      } else {
+        updated = prev.map(item => item.article.id === articleId ? { ...item, quantite: exactQty } : item);
+      }
+      broadcastCartUpdate(updated, undefined, undefined, 'set_qty');
+      return updated;
+    });
   };
 
   const handleUpdateCartPrice = (articleId: string, newPrice: number) => {
-    setCart(prev => prev.map(item => item.article.id === articleId ? { ...item, prixVenteHT: newPrice } : item));
+    setCart(prev => {
+      const updated = prev.map(item => item.article.id === articleId ? { ...item, prixVenteHT: newPrice } : item);
+      broadcastCartUpdate(updated, undefined, undefined, 'update_price');
+      return updated;
+    });
   };
 
   const handleRemoveFromCart = (articleId: string) => {
-    setCart(prev => prev.filter(item => item.article.id !== articleId));
+    setCart(prev => {
+      const updated = prev.filter(item => item.article.id !== articleId);
+      broadcastCartUpdate(updated, undefined, undefined, 'remove_item');
+      return updated;
+    });
   };
+
 
   // Process Scanner Barcode / QR Code Pipeline
   // Flow: SCAN -> Code-barres -> Recherche produit -> Produit identifié -> Vérification disponibilité -> Ajout panier
@@ -484,7 +724,7 @@ export function Caisse({
       return;
     }
 
-    if (posMode === 'Vente') {
+    if (found.typeArticle !== 'Service') {
       if (availableStock <= 0) {
         playBeep('error');
         setScannerFeedback({
@@ -542,26 +782,22 @@ export function Caisse({
       };
     }
 
-    const year = new Date().getFullYear();
-    const saleCount = ventes.length + 1;
-    const saleNum = `TC-${year}-${saleCount.toString().padStart(4, '0')}`;
     const today = new Date().toISOString().split('T')[0];
+    const saleNum = generateNextDocNumber('FAC', ventes.map(v => v.numero), today);
 
     const lignes: LigneVente[] = cart.map((item, idx) => {
       const pu = item.prixVenteHT || 0;
-      const tva = item.article.tva || 19;
-      const totalHT = item.quantite * pu;
-      const totalTTC = totalHT * (1 + tva / 100);
+      const totalLigne = item.quantite * pu;
       return {
         id: `l-${Date.now()}-${idx}`,
         articleId: item.article.id,
         designation: item.article.designation,
         quantite: item.quantite,
         prixUnitaireHT: pu,
-        tauxTVA: tva,
+        tauxTVA: 0,
         remisePourcentage: 0,
-        totalHT,
-        totalTTC
+        totalHT: totalLigne,
+        totalTTC: totalLigne
       };
     });
 
@@ -575,11 +811,12 @@ export function Caisse({
       auteurNom: currentUser.nom,
       date: today,
       dateEcheance: today,
-      montantHT: cartTotalHT,
-      montantTTC: cartTotalTTC,
-      montantPaye: cartTotalTTC,
+      montantHT: cartTotalNet,
+      montantTTC: cartTotalNet,
+      montantPaye: cartTotalNet,
       statut: 'Payée',
       modePaiement: posPaymentMode,
+      timbreFiscal: 0,
       lignes,
       notes: 'Vente directe au comptoir (Panier Caisse)'
     };
@@ -589,8 +826,7 @@ export function Caisse({
     }
 
     // Generate Reglement Encaissement
-    const regCount = reglements.length + 1;
-    const numeroPiece = `ENC-${year}-${regCount.toString().padStart(4, '0')}`;
+    const numeroPiece = generateNextDocNumber('ENC', reglements.map(r => r.numeroPiece), today);
     const newReg: Reglement = {
       id: `reg-${Date.now()}`,
       projetId: newSale.projetId,
@@ -611,61 +847,215 @@ export function Caisse({
 
     onReglementsChange([newReg, ...reglements]);
 
-    // Update Article Stocks & Automatically Register Stock Movements (Only if Vente)
-    if (posMode === 'Vente') {
-      const currentBoutiqueNom = currentProject?.nom || 'Global';
-      const storeId = selectedProjectId === 'all' ? 'p1' : selectedProjectId;
-      const newStockMouvements: MouvementStock[] = [];
+    // Update Article Stocks & Automatically Register Stock Movements
+    const currentBoutiqueNom = currentProject?.nom || 'Global';
+    const storeId = selectedProjectId === 'all' ? 'p1' : selectedProjectId;
+    const newStockMouvements: MouvementStock[] = [];
 
-      if (onArticlesChange) {
-        const updatedArticles = articles.map(art => {
-          const cartMatch = cart.find(ci => ci.article.id === art.id);
-          if (cartMatch && art.typeArticle !== 'Service') {
+    if (onArticlesChange) {
+      const updatedArticles = articles.map(art => {
+        const cartMatch = cart.find(ci => ci.article.id === art.id);
+        if (cartMatch && art.typeArticle !== 'Service') {
+          const stockAvant = getArticleStock(art, storeId);
+          const updatedArt = updateArticleStock(art, storeId, -cartMatch.quantite);
+          const stockApres = getArticleStock(updatedArt, storeId);
+
+          const mvt = createGuaranteedStockMovement({
+            article: art,
+            projetId: storeId,
+            projetNom: currentBoutiqueNom,
+            type: 'VENTE',
+            quantite: cartMatch.quantite,
+            quantiteAvant: stockAvant,
+            quantiteApres: stockApres,
+            motif: `Vente caisse (Ticket ${saleNum})`,
+            currentUser,
+            referencePiece: saleNum
+          });
+          newStockMouvements.push(mvt);
+
+          return updatedArt;
+        }
+        return art;
+      });
+      onArticlesChange(updatedArticles);
+    }
+
+    if (onMouvementsChange && newStockMouvements.length > 0) {
+      onMouvementsChange([...newStockMouvements, ...mouvements]);
+    }
+
+    // Log the sale
+    logAction(`Vente ${saleNum}`, 'Vente', cartTotalTTC, `Vente à ${targetClient.nom}`);
+    
+    setPosSuccessMsg(
+      `Vente ${saleNum} validée (${cartTotalTTC.toFixed(3)} DT) ! Mouvements de stock enregistrés.`
+    );
+    setCart([]);
+    setTimeout(() => setPosSuccessMsg(null), 5000);
+  };
+
+  // Retours Scoped List & Sales
+  const scopedRetours = useMemo(() => {
+    return retours.filter(r => selectedProjectId === 'all' || r.projetId === selectedProjectId);
+  }, [retours, selectedProjectId]);
+
+  const posAvailableSales = useMemo(() => {
+    return ventes.filter(v => {
+      if (selectedProjectId !== 'all' && v.projetId && v.projetId !== selectedProjectId) return false;
+      if (posReturnTicketSearch) {
+        const q = posReturnTicketSearch.toLowerCase();
+        return (
+          v.numero.toLowerCase().includes(q) ||
+          (v.clientNom && v.clientNom.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    }).slice(0, 30);
+  }, [ventes, selectedProjectId, posReturnTicketSearch]);
+
+  const handlePosSelectSale = (sale: Vente) => {
+    setPosReturnSelectedSaleId(sale.id);
+    setPosReturnClientId(sale.clientId);
+    if (sale.lignes && sale.lignes.length > 0) {
+      setPosReturnLines(sale.lignes.map(l => ({
+        articleId: l.articleId,
+        articleCode: l.code || '',
+        designation: l.designation,
+        quantiteVendue: l.quantite,
+        quantiteRetournee: 0,
+        prixUnitaire: l.prixUnitaireHT || (l.totalTTC / (l.quantite || 1)),
+        motif: 'Changement d\'avis',
+        remettreEnStock: true
+      })));
+    } else {
+      setPosReturnLines([]);
+    }
+  };
+
+  const handlePosSubmitReturn = (e: React.FormEvent) => {
+    e.preventDefault();
+    const activeLines = posReturnLines.filter(l => l.quantiteRetournee > 0);
+    if (activeLines.length === 0) {
+      alert('Veuillez sélectionner au moins un article avec une quantité supérieure à 0.');
+      return;
+    }
+
+    const calculatedTotal = activeLines.reduce((acc, l) => acc + (l.quantiteRetournee * l.prixUnitaire), 0);
+    const targetClient = clients.find(c => c.id === posReturnClientId) || { id: 'c-walkin', nom: 'Client Comptoir' };
+    const storeId = selectedProjectId === 'all' ? (projets[0]?.id || 'p1') : selectedProjectId;
+    const storeNom = currentProject?.nom || 'Boutique';
+    const now = new Date();
+    const dateFormatted = `${now.toISOString().split('T')[0]} ${now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+    const returnNumber = `RET-${now.getFullYear()}-${(retours.length + 1).toString().padStart(4, '0')}`;
+    const codeAvoir = posReturnRefundMode === 'Avoir' ? `AVR-${now.getFullYear()}-${(retours.filter(r => r.codeAvoir).length + 1).toString().padStart(4, '0')}` : undefined;
+
+    const sourceSale = ventes.find(v => v.id === posReturnSelectedSaleId);
+
+    // Stock updates & movements
+    const newStockMovements: MouvementStock[] = [];
+    if (onArticlesChange) {
+      let updatedArticlesList = [...articles];
+      activeLines.forEach(line => {
+        if (line.remettreEnStock) {
+          const art = updatedArticlesList.find(a => a.id === line.articleId);
+          if (art && art.typeArticle !== 'Service') {
             const stockAvant = getArticleStock(art, storeId);
-            const updatedArt = updateArticleStock(art, storeId, -cartMatch.quantite);
+            const updatedArt = updateArticleStock(art, storeId, line.quantiteRetournee);
             const stockApres = getArticleStock(updatedArt, storeId);
+            updatedArticlesList = updatedArticlesList.map(a => a.id === art.id ? updatedArt : a);
 
             const mvt = createGuaranteedStockMovement({
               article: art,
               projetId: storeId,
-              projetNom: currentBoutiqueNom,
-              type: 'VENTE',
-              quantite: cartMatch.quantite,
+              projetNom: storeNom,
+              type: 'ENTRÉE',
+              quantite: line.quantiteRetournee,
               quantiteAvant: stockAvant,
               quantiteApres: stockApres,
-              motif: `Vente caisse (Ticket ${saleNum})`,
+              motif: `Retour caisse (${returnNumber}) - ${line.motif}`,
               currentUser,
-              referencePiece: saleNum
+              referencePiece: returnNumber
             });
-            newStockMouvements.push(mvt);
-
-            return updatedArt;
+            newStockMovements.push(mvt);
           }
-          return art;
-        });
-        onArticlesChange(updatedArticles);
+        }
+      });
+      onArticlesChange(updatedArticlesList);
+      if (onMouvementsChange && newStockMovements.length > 0) {
+        onMouvementsChange([...newStockMovements, ...mouvements]);
       }
-
-      if (onMouvementsChange && newStockMouvements.length > 0) {
-        onMouvementsChange([...newStockMouvements, ...mouvements]);
-      }
-
-      // Log the sale
-      logAction(`Vente ${saleNum}`, 'Vente', cartTotalTTC, `Vente à ${targetClient.nom}`);
-
-      // Auto PDF Receipt
-      generateReceiptPdf(newReg, currentProject);
-      
-      setPosSuccessMsg(
-        `Vente ${saleNum} validée (${cartTotalTTC.toFixed(3)} DT) ! Mouvements de stock enregistrés.`
-      );
-    } else {
-      setPosSuccessMsg(
-        `Devis ${saleNum} généré avec succès (${cartTotalTTC.toFixed(3)} DT) !`
-      );
     }
-    setCart(getDefaultCart());
-    setTimeout(() => setPosSuccessMsg(null), 5000);
+
+    // Décaissement for cash refund
+    let newRegId: string | undefined = undefined;
+    if (posReturnRefundMode === 'Espèces' && calculatedTotal > 0) {
+      const regId = `reg-ret-${Date.now()}`;
+      newRegId = regId;
+      const decaissementReg: Reglement = {
+        id: regId,
+        projetId: storeId,
+        numeroPiece: `DEC-${Date.now().toString().slice(-6)}`,
+        type: 'Décaissement',
+        tierId: targetClient.id,
+        tierNom: targetClient.nom,
+        tierType: 'Client',
+        documentRef: returnNumber,
+        date: now.toISOString().split('T')[0],
+        montant: calculatedTotal,
+        modePaiement: 'Espèces',
+        banque: 'Caisse Centrale',
+        referencePaiement: `Remboursement Retour ${returnNumber}`,
+        notes: `Remboursement immédiat comptoir suite au retour de vente ${sourceSale ? sourceSale.numero : 'direct'}`,
+        statut: 'Validé'
+      };
+      onReglementsChange([decaissementReg, ...reglements]);
+    }
+
+    // Log in register action logs
+    logAction(`Retour ${returnNumber}`, 'Ajustement', calculatedTotal, `Remboursement (${posReturnRefundMode})`);
+
+    const linesPayload: LigneRetourVente[] = activeLines.map(l => ({
+      articleId: l.articleId,
+      articleCode: l.articleCode,
+      designation: l.designation,
+      quantiteVendue: l.quantiteVendue,
+      quantiteRetournee: l.quantiteRetournee,
+      prixUnitaire: l.prixUnitaire,
+      totalLigne: l.quantiteRetournee * l.prixUnitaire,
+      motif: l.motif,
+      remettreEnStock: l.remettreEnStock
+    }));
+
+    const newReturn: RetourVente = {
+      id: `ret-${Date.now()}`,
+      numero: returnNumber,
+      type: posReturnType === 'ticket' ? 'Vente Caisse' : 'Retour Libre',
+      venteId: sourceSale?.id,
+      venteNumero: sourceSale?.numero,
+      clientId: targetClient.id,
+      clientNom: targetClient.nom,
+      projetId: storeId,
+      projetNom: storeNom,
+      date: dateFormatted,
+      lignes: linesPayload,
+      montantTotal: calculatedTotal,
+      modeRemboursement: posReturnRefundMode,
+      codeAvoir,
+      statut: 'Validé',
+      motifGeneral: posReturnMotif,
+      auteurId: currentUser.id,
+      auteurNom: currentUser.nom,
+      reglementId: newRegId,
+      mouvementStockIds: newStockMovements.map(m => m.id)
+    };
+
+    if (onRetoursChange) {
+      onRetoursChange([newReturn, ...retours]);
+    }
+
+    setIsPosReturnModalOpen(false);
+    setPosSuccessMsg(`Retour ${returnNumber} validé avec succès (${calculatedTotal.toFixed(3)} DT) ! Stock réintégré.`);
   };
 
   // Journal Filtered List
@@ -917,49 +1307,7 @@ export function Caisse({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {activeSession && !isComptable && (
-            <button
-              onClick={() => setIsClosingModalOpen(true)}
-              className="px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border border-rose-200"
-            >
-              <span className="material-symbols-outlined text-[18px]">lock_clock</span>
-              Fermer la Caisse
-            </button>
-          )}
-
-          {/* View Mode Tabs */}
-          {!isComptable && (
-            <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-100 p-1 sm:p-1.5 rounded-xl border border-slate-200 w-full sm:w-auto ml-2">
-              {isSuperAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('journal')}
-                  className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 ${
-                    activeTab === 'journal'
-                      ? 'bg-purple-600 text-white shadow-md'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px]">receipt_long</span>
-                  <span>Audit des Caisses (Tickets Z)</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setActiveTab('pos')}
-                className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 ${
-                  activeTab === 'pos'
-                    ? 'bg-purple-600 text-white shadow-md'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[18px]">shopping_cart_checkout</span>
-                <span>Terminal de Vente (Panier)</span>
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Header action toolbar removed as requested */}
       </div>
 
       {/* Session Opening / Guard */}
@@ -1050,11 +1398,6 @@ export function Caisse({
                     <p className="text-xs sm:text-sm font-bold font-mono text-emerald-400">+{totalVentesEspeces.toFixed(3)} DT</p>
                   </div>
 
-                  <div className="bg-white/10 backdrop-blur-md rounded-xl px-3 py-2 border border-white/10 flex-1 sm:flex-initial">
-                    <p className="text-[10px] uppercase font-bold text-slate-400">Chèques / Autres</p>
-                    <p className="text-xs sm:text-sm font-bold font-mono text-indigo-300">{(totalVentesCheque + totalVentesAutres).toFixed(3)} DT</p>
-                  </div>
-
                   <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl px-3.5 py-2 border border-purple-400/40 shadow-md flex-1 sm:flex-initial">
                     <p className="text-[10px] uppercase font-black tracking-wider text-purple-200 flex items-center gap-1">
                       <span className="material-symbols-outlined text-[13px]">lock</span>
@@ -1071,22 +1414,36 @@ export function Caisse({
                     <span className="material-symbols-outlined text-[17px]">lock</span>
                     <span>Clôturer Caisse</span>
                   </button>
+
                 </div>
               </div>
             </div>
           )}
 
-          {/* POS Mode Selection */}
-          <div className="flex bg-slate-100 p-1 rounded-xl w-max border border-slate-200">
-            <button
-              type="button"
-              onClick={() => setPosMode('Vente')}
-              className="px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 bg-emerald-500 text-white shadow-md"
-            >
-              <span className="material-symbols-outlined text-[16px]">receipt</span>
-              Vente Directe
-            </button>
-          </div>
+          {/* Toast Notification Sync Smartphone */}
+          {syncNotification && (
+            <div className="p-3.5 bg-gradient-to-r from-purple-700 via-indigo-700 to-slate-900 text-white font-extrabold text-xs rounded-xl shadow-xl flex items-center justify-between animate-in slide-in-from-top duration-300 border border-purple-400/40">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white shrink-0">
+                  <span className="material-symbols-outlined text-[20px] animate-bounce">
+                    {syncNotification.sourceDevice === 'smartphone' ? 'phone_iphone' : 'desktop_windows'}
+                  </span>
+                </div>
+                <div>
+                  <p className="font-black text-amber-300 text-[11px] uppercase tracking-wide">
+                    ⚡ Synchronisation en direct
+                  </p>
+                  <p className="text-xs font-bold text-white mt-0.5">{syncNotification.message}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSyncNotification(null)}
+                className="p-1 text-purple-200 hover:text-white rounded-lg transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+          )}
 
           {/* Scanner Console Control Panel */}
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md">
@@ -1111,25 +1468,20 @@ export function Caisse({
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-all font-mono shadow-inner"
                   />
                 </div>
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                >
-                  <span className="material-symbols-outlined text-[18px]">bolt</span>
-                  Scanner
-                </button>
               </form>
 
               <button
                 type="button"
                 onClick={() => setIsCameraScannerOpen(true)}
-                className="px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 border border-purple-500"
+                className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 border border-purple-400/40 active:scale-95"
+                title="Scanner par caméra smartphone en continu sans fatigue"
               >
-                <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-                Caméra Web / QR Code
+                <span className="material-symbols-outlined text-[19px]">photo_camera</span>
+                <span>Scanner Caméra (Scan Rapide ⚡)</span>
               </button>
             </div>
           </div>
+
 
           {/* Scanner Feedback Notification Toast */}
           {scannerFeedback && (
@@ -1406,7 +1758,7 @@ export function Caisse({
 
                       <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
                         <div>
-                          <span className="text-[10px] text-slate-400 font-bold block uppercase">Prix HT Automatique</span>
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase">Prix Unitaire</span>
                           <span className="text-base font-bold text-slate-900">
                             {price.toFixed(3)} <span className="text-xs font-bold text-slate-500">DT</span>
                           </span>
@@ -1459,11 +1811,12 @@ export function Caisse({
                   {cart.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setCart(getDefaultCart())}
-                      className="text-[11px] text-rose-300 hover:text-white font-bold flex items-center gap-1 cursor-pointer"
+                      onClick={() => setCart([])}
+                      className="text-[11px] text-rose-300 hover:text-white font-bold flex items-center gap-1 cursor-pointer bg-rose-500/20 hover:bg-rose-500/30 px-2 py-1 rounded-lg transition-colors"
+                      title="Supprimer tous les articles du panier"
                     >
-                      <span className="material-symbols-outlined text-[14px]">delete</span>
-                      Vider
+                      <span className="material-symbols-outlined text-[14px]">delete_sweep</span>
+                      Supprimer tous
                     </button>
                   )}
                 </div>
@@ -1496,25 +1849,46 @@ export function Caisse({
                             <p className="text-xs font-extrabold text-slate-900 leading-tight">
                               {item.article.designation}
                             </p>
-                            {item.article.typeArticle === 'Service' ? (
-                              <div className="mt-1 flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-slate-400 font-mono">P.U:</span>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {item.article.code}
+                              </span>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                                item.article.typeArticle === 'Service'
+                                  ? 'bg-purple-100 text-purple-700'
+                                  : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {item.article.typeArticle || 'Produit'}
+                              </span>
+                            </div>
+
+                            {/* Accès caissier pour modifier le montant unitaire de chaque produit ou service */}
+                            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-0.5">
+                                <span className="material-symbols-outlined text-[13px] text-purple-600">edit</span>
+                                P.U :
+                              </span>
+                              <div className="relative flex items-center">
                                 <input
                                   type="number"
                                   min="0"
                                   step="0.001"
                                   value={item.prixVenteHT}
-                                  onChange={(e) => handleUpdateCartPrice(item.article.id, parseFloat(e.target.value) || 0)}
-                                  className="w-20 text-xs px-1 py-0.5 border border-slate-300 rounded focus:outline-none focus:border-indigo-500 font-bold text-indigo-700"
-                                  title="Prix modifiable (Service)"
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    handleUpdateCartPrice(item.article.id, isNaN(val) ? 0 : val);
+                                  }}
+                                  className="w-20 text-xs font-bold px-2 py-0.5 bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-600 text-purple-900 font-mono"
+                                  title="Modifier le montant de ce produit ou service"
                                 />
-                                <span className="text-[10px] font-bold text-slate-400 font-mono">DT</span>
+                                <span className="ml-1 text-[10px] font-bold text-slate-600 font-mono">DT</span>
                               </div>
-                            ) : (
-                              <span className="text-[10px] font-bold text-slate-400 font-mono">
-                                {item.article.code} | Prix unitaire: {pu.toFixed(3)} DT
-                              </span>
-                            )}
+                              {item.article.prixVenteHT !== undefined && item.prixVenteHT !== item.article.prixVenteHT && (
+                                <span className="text-[9px] text-slate-400 italic">
+                                  (Base: {item.article.prixVenteHT.toFixed(3)} DT)
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <button
                             type="button"
@@ -1554,7 +1928,7 @@ export function Caisse({
 
                           {/* Subtotal calculation */}
                           <div className="text-right">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase block">Sous-total HT</span>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase block">Sous-total</span>
                             <span className="text-xs font-bold text-purple-700">
                               {subtotal.toFixed(3)} DT
                             </span>
@@ -1573,25 +1947,25 @@ export function Caisse({
                   )}
                 </div>
 
-                {/* Total Calculation Footer (BF-PROD-019) */}
+                {/* Total Calculation Footer (TVA & Timbre fiscal retirés) */}
                 <div className="p-4 bg-slate-900 text-white space-y-3 border-t border-slate-800">
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between text-slate-400 font-bold">
-                      <span>Total HT :</span>
-                      <span className="text-white font-mono">{cartTotalHT.toFixed(3)} DT</span>
+                      <span>Total ({cart.reduce((s, i) => s + i.quantite, 0)} articles) :</span>
+                      <span className="text-white font-mono">{cartTotalNet.toFixed(3)} DT</span>
                     </div>
-                    <div className="flex justify-between text-slate-400 font-bold">
-                      <span>TVA Estimée (19%) :</span>
-                      <span className="text-white font-mono">{(cartTotalTTC - cartTotalHT).toFixed(3)} DT</span>
+                    <div className="flex items-center gap-1.5 text-[10.5px] text-emerald-400 font-medium py-0.5">
+                      <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                      <span>Sans TVA • Sans Timbre Fiscal</span>
                     </div>
                     <div className="flex justify-between text-base font-bold text-emerald-400 pt-2 border-t border-slate-800">
                       <span>TOTAL À PAYER :</span>
-                      <span>{cartTotalTTC.toFixed(3)} DT</span>
+                      <span>{cartTotalNet.toFixed(3)} DT</span>
                     </div>
                   </div>
 
-                  {/* Payment Mode Selector (Only for Vente) - Hidden for School shop to simplify */}
-                  {posMode === 'Vente' && selectedProjectId !== '2' && (
+                  {/* Payment Mode Selector - Hidden for School shop to simplify */}
+                  {selectedProjectId !== '2' && (
                     <div className="space-y-1 pt-2 border-t border-slate-800">
                       <label className="block text-[10px] font-bold text-slate-400 uppercase">Moyen de Paiement :</label>
                       <div className="grid grid-cols-2 gap-1.5">
@@ -1613,7 +1987,7 @@ export function Caisse({
                     </div>
                   )}
 
-                  {selectedProjectId === '2' && posMode === 'Vente' && (
+                  {selectedProjectId === '2' && (
                     <div className="pt-2 border-t border-slate-800">
                       <p className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-[16px]">payments</span>
@@ -1627,10 +2001,10 @@ export function Caisse({
                     type="button"
                     disabled={cart.length === 0}
                     onClick={handleCheckoutPosSale}
-                    className={`w-full py-3 ${posMode === 'Devis' ? 'bg-amber-400 hover:bg-amber-300 border-amber-400' : 'bg-emerald-500 hover:bg-emerald-400 border-emerald-400'} disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-bold text-sm rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 border disabled:border-slate-800`}
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 border-emerald-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-bold text-sm rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 border disabled:border-slate-800"
                   >
-                    <span className="material-symbols-outlined text-[20px]">{posMode === 'Devis' ? 'request_quote' : 'payments'}</span>
-                    {posMode === 'Devis' ? `Créer le Devis (${cartTotalTTC.toFixed(3)} DT)` : `Encaisser (${cartTotalTTC.toFixed(3)} DT)`}
+                    <span className="material-symbols-outlined text-[20px]">payments</span>
+                    <span>Encaisser ({cartTotalNet.toFixed(3)} DT)</span>
                   </button>
                 </div>
               </div>
@@ -1645,16 +2019,16 @@ export function Caisse({
                   {cart.reduce((s, i) => s + i.quantite, 0)}
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block font-bold uppercase">Total TTC Panier</span>
-                  <span className="text-sm font-bold text-emerald-400 font-mono">{cartTotalTTC.toFixed(3)} DT</span>
+                  <span className="text-[10px] text-slate-400 block font-bold uppercase">Total Panier</span>
+                  <span className="text-sm font-bold text-emerald-400 font-mono">{cartTotalNet.toFixed(3)} DT</span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setPosMobileTab('cart')}
-                className={`px-4 py-2 ${posMode === 'Devis' ? 'bg-amber-400 hover:bg-amber-300' : 'bg-emerald-500 hover:bg-emerald-400'} text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer`}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer"
               >
-                <span>{posMode === 'Devis' ? 'Voir Devis' : 'Encaisser'}</span>
+                <span>Encaisser</span>
                 <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
               </button>
             </div>
@@ -1868,13 +2242,34 @@ export function Caisse({
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => generateReceiptPdf(reg, currentProject)}
-                          className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
-                          title="Télécharger le Reçu PDF"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          {(() => {
+                            const matchedSale = ventes.find(v => v.numero === reg.documentRef || v.id === reg.documentRef);
+                            if (matchedSale) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTicketVente(matchedSale)}
+                                  className="flex items-center gap-1 px-2 py-1 bg-purple-50 hover:bg-purple-600 text-purple-700 hover:text-white border border-purple-200 hover:border-purple-600 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer shadow-2xs"
+                                  title="Consulter le ticket de panier complet"
+                                >
+                                  <span className="material-symbols-outlined text-[13px]">receipt_long</span>
+                                  <span>Ticket</span>
+                                </button>
+                              );
+                            }
+                            return null;
+                          })()}
+
+                          <button
+                            type="button"
+                            onClick={() => generateReceiptPdf(reg, currentProject)}
+                            className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                            title="Télécharger le Reçu PDF"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -2265,6 +2660,582 @@ export function Caisse({
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL GESTION DES RETOURS & AVOIRS DE CAISSE */}
+      {isPosReturnModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-8 max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-xl">assignment_return</span>
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                    Gestion des Retours & Avoirs
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Session Caisse : <span className="font-semibold text-slate-700">{currentUser.nom}</span> • Boutique {currentProject?.nom || ''}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex bg-slate-100 p-1 rounded-xl text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPosReturnActiveTab('nouveau')}
+                    className={`px-3 py-1.5 font-bold rounded-lg transition-colors cursor-pointer ${
+                      posReturnActiveTab === 'nouveau' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Nouveau Retour
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPosReturnActiveTab('historique')}
+                    className={`px-3 py-1.5 font-bold rounded-lg transition-colors cursor-pointer ${
+                      posReturnActiveTab === 'historique' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Historique ({scopedRetours.length})
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsPosReturnModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-xl">close</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Tab: Nouveau Retour */}
+            {posReturnActiveTab === 'nouveau' && (
+              <form onSubmit={handlePosSubmitReturn} className="flex-1 overflow-y-auto py-4 space-y-4">
+                {/* Mode: avec ticket vs sans ticket */}
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-max">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPosReturnType('ticket');
+                      setPosReturnLines([]);
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                      posReturnType === 'ticket' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600'
+                    }`}
+                  >
+                    À partir d'un Ticket / Facture
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPosReturnType('libre');
+                      setPosReturnSelectedSaleId('');
+                      const defArt = articles[0];
+                      if (defArt) {
+                        setPosReturnLines([{
+                          articleId: defArt.id,
+                          articleCode: defArt.code,
+                          designation: defArt.designation,
+                          quantiteVendue: 1,
+                          quantiteRetournee: 1,
+                          prixUnitaire: defArt.prixVenteHT,
+                          motif: 'Changement d\'avis',
+                          remettreEnStock: true
+                        }]);
+                      }
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                      posReturnType === 'libre' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600'
+                    }`}
+                  >
+                    Retour direct sans ticket
+                  </button>
+                </div>
+
+                {/* Recherche & Sélection de vente */}
+                {posReturnType === 'ticket' && (
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Sélectionner le ticket ou la facture de vente
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Rechercher par N° ticket (V-...) ou nom du client..."
+                      value={posReturnTicketSearch}
+                      onChange={(e) => setPosReturnTicketSearch(e.target.value)}
+                      className="w-full px-3 py-1.5 mb-2 text-xs bg-white border border-slate-200 rounded-lg text-slate-900"
+                    />
+
+                    <div className="max-h-36 overflow-y-auto divide-y divide-slate-200 bg-white border border-slate-200 rounded-lg">
+                      {posAvailableSales.map(v => (
+                        <div
+                          key={v.id}
+                          onClick={() => handlePosSelectSale(v)}
+                          className={`p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                            posReturnSelectedSaleId === v.id ? 'bg-indigo-50 border-l-4 border-indigo-600' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <div>
+                            <span className="font-mono font-bold text-slate-900">{v.numero}</span>
+                            <span className="text-slate-400 mx-1.5">•</span>
+                            <span className="text-slate-600">{v.clientNom}</span>
+                            <span className="text-slate-400 mx-1.5">•</span>
+                            <span className="text-slate-500">{v.date}</span>
+                          </div>
+                          <span className="font-mono font-bold text-indigo-600">
+                            {v.montantTTC.toFixed(3)} DT
+                          </span>
+                        </div>
+                      ))}
+                      {posAvailableSales.length === 0 && (
+                        <p className="p-3 text-center text-xs text-slate-400">Aucune vente trouvée.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Client selector if return is direct */}
+                {posReturnType === 'libre' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Client</label>
+                    <select
+                      value={posReturnClientId}
+                      onChange={(e) => setPosReturnClientId(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
+                    >
+                      {clients.map(c => (
+                        <option key={c.id} value={c.id}>{c.nom} ({c.telephone || 'Client'})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Table of items to return */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">Articles à retourner</span>
+                    {posReturnType === 'libre' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const defArt = articles[0];
+                          if (defArt) {
+                            setPosReturnLines(prev => [...prev, {
+                              articleId: defArt.id,
+                              articleCode: defArt.code,
+                              designation: defArt.designation,
+                              quantiteVendue: 1,
+                              quantiteRetournee: 1,
+                              prixUnitaire: defArt.prixVenteHT,
+                              motif: 'Changement d\'avis',
+                              remettreEnStock: true
+                            }]);
+                          }
+                        }}
+                        className="text-xs text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-sm">add</span>
+                        Ajouter un article
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100/60 text-slate-500 font-semibold text-[11px] border-b border-slate-200">
+                        <tr>
+                          <th className="py-2 px-3">Article</th>
+                          {posReturnType === 'ticket' && <th className="py-2 px-2 text-center">Qté Vendue</th>}
+                          <th className="py-2 px-2 text-center w-28">Qté à Retourner</th>
+                          <th className="py-2 px-2 text-right">P.U (DT)</th>
+                          <th className="py-2 px-3">Motif</th>
+                          <th className="py-2 px-2 text-center">Remettre stock</th>
+                          <th className="py-2 px-3 text-right">Total (DT)</th>
+                          {posReturnType === 'libre' && <th className="py-2 px-2 text-center w-8"></th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {posReturnLines.map((l, index) => (
+                          <tr key={index} className="hover:bg-slate-50/60">
+                            <td className="py-2.5 px-3">
+                              {posReturnType === 'libre' ? (
+                                <select
+                                  value={l.articleId}
+                                  onChange={(e) => {
+                                    const art = articles.find(a => a.id === e.target.value);
+                                    if (art) {
+                                      setPosReturnLines(prev => prev.map((item, idx) => idx === index ? {
+                                        ...item,
+                                        articleId: art.id,
+                                        articleCode: art.code,
+                                        designation: art.designation,
+                                        prixUnitaire: art.prixVenteHT
+                                      } : item));
+                                    }
+                                  }}
+                                  className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded"
+                                >
+                                  {articles.map(a => (
+                                    <option key={a.id} value={a.id}>{a.designation} ({a.prixVenteHT.toFixed(3)} DT)</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div>
+                                  <p className="font-semibold text-slate-900">{l.designation}</p>
+                                  {l.articleCode && <p className="text-[10px] text-slate-400 font-mono">{l.articleCode}</p>}
+                                </div>
+                              )}
+                            </td>
+
+                            {posReturnType === 'ticket' && (
+                              <td className="py-2.5 px-2 text-center font-mono text-slate-500">
+                                {l.quantiteVendue}
+                              </td>
+                            )}
+
+                            <td className="py-2.5 px-2 text-center">
+                              <input
+                                type="number"
+                                min="0"
+                                max={posReturnType === 'ticket' ? l.quantiteVendue : 999}
+                                value={l.quantiteRetournee}
+                                onChange={(e) => {
+                                  const val = Math.max(0, parseInt(e.target.value) || 0);
+                                  setPosReturnLines(prev => prev.map((item, idx) => idx === index ? {
+                                    ...item,
+                                    quantiteRetournee: posReturnType === 'ticket' ? Math.min(val, item.quantiteVendue) : val
+                                  } : item));
+                                }}
+                                className="w-18 px-2 py-1 text-center font-mono font-bold text-xs bg-white border border-slate-200 rounded"
+                              />
+                            </td>
+
+                            <td className="py-2.5 px-2 text-right font-mono text-slate-700">
+                              {l.prixUnitaire.toFixed(3)}
+                            </td>
+
+                            <td className="py-2.5 px-3">
+                              <select
+                                value={l.motif}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setPosReturnLines(prev => prev.map((item, idx) => idx === index ? { ...item, motif: val } : item));
+                                }}
+                                className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded"
+                              >
+                                <option value="Changement d'avis">Changement d'avis</option>
+                                <option value="Défectueux">Défectueux</option>
+                                <option value="Erreur de référence">Erreur de référence</option>
+                                <option value="Non conforme">Non conforme</option>
+                                <option value="Article endommagé">Article endommagé</option>
+                                <option value="Autre">Autre</option>
+                              </select>
+                            </td>
+
+                            <td className="py-2.5 px-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={l.remettreEnStock}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setPosReturnLines(prev => prev.map((item, idx) => idx === index ? { ...item, remettreEnStock: checked } : item));
+                                }}
+                                className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                              />
+                            </td>
+
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                              {(l.quantiteRetournee * l.prixUnitaire).toFixed(3)} DT
+                            </td>
+
+                            {posReturnType === 'libre' && (
+                              <td className="py-2.5 px-2 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setPosReturnLines(prev => prev.filter((_, idx) => idx !== index))}
+                                  className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-base">delete</span>
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+
+                        {posReturnLines.length === 0 && (
+                          <tr>
+                            <td colSpan={7} className="text-center py-6 text-slate-400">
+                              Sélectionnez une vente ci-dessus pour charger ses articles.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Mode de restitution & Récapitulatif */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Mode de restitution du montant
+                    </label>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg cursor-pointer">
+                        <input
+                          type="radio"
+                          name="posRefundMode"
+                          value="Espèces"
+                          checked={posReturnRefundMode === 'Espèces'}
+                          onChange={() => setPosReturnRefundMode('Espèces')}
+                          className="text-indigo-600"
+                        />
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Remboursement Espèces (Tiroir Caisse)</p>
+                          <p className="text-[10px] text-slate-500">Déduit directement de la caisse (décaissement immédiat du tiroir)</p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg cursor-pointer">
+                        <input
+                          type="radio"
+                          name="posRefundMode"
+                          value="Avoir"
+                          checked={posReturnRefundMode === 'Avoir'}
+                          onChange={() => setPosReturnRefundMode('Avoir')}
+                          className="text-indigo-600"
+                        />
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Avoir Client (Bon d'achat)</p>
+                          <p className="text-[10px] text-slate-500">Génère un bon d'avoir pour un prochain achat (aucun décaissement)</p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg cursor-pointer">
+                        <input
+                          type="radio"
+                          name="posRefundMode"
+                          value="Échange"
+                          checked={posReturnRefundMode === 'Échange'}
+                          onChange={() => setPosReturnRefundMode('Échange')}
+                          className="text-indigo-600"
+                        />
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Échange direct d'article</p>
+                          <p className="text-[10px] text-slate-500">Échange en magasin sans sortie de fonds</p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Motif général / Remarque
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={posReturnMotif}
+                        onChange={(e) => setPosReturnMotif(e.target.value)}
+                        placeholder="Observation sur le retour..."
+                        className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg text-slate-900"
+                      />
+                    </div>
+
+                    <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider">
+                          Montant à Rembourser / Avoir
+                        </p>
+                        <p className="text-[11px] text-indigo-600">
+                          {posReturnRefundMode === 'Espèces' ? 'Espèces à retirer du tiroir' : 'Montant de l\'avoir'}
+                        </p>
+                      </div>
+                      <span className="text-xl font-black font-mono text-indigo-700 tabular-nums">
+                        {posReturnLines.reduce((acc, l) => acc + (l.quantiteRetournee * l.prixUnitaire), 0).toFixed(3)} DT
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPosReturnModalOpen(false)}
+                    className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={posReturnLines.filter(l => l.quantiteRetournee > 0).length === 0}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-lg">check</span>
+                    <span>Valider le Retour</span>
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Tab: Historique des Retours */}
+            {posReturnActiveTab === 'historique' && (
+              <div className="flex-1 overflow-y-auto py-4">
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3">N° Retour</th>
+                        <th className="py-2.5 px-3">Date</th>
+                        <th className="py-2.5 px-3">Ticket Vente</th>
+                        <th className="py-2.5 px-3">Client</th>
+                        <th className="py-2.5 px-2 text-right">Montant</th>
+                        <th className="py-2.5 px-3 text-center">Restitution</th>
+                        <th className="py-2.5 px-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {scopedRetours.map(r => (
+                        <tr key={r.id} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-3 font-mono font-bold text-indigo-600">{r.numero}</td>
+                          <td className="py-2.5 px-3 text-slate-600">{r.date}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-700">{r.venteNumero || 'Direct'}</td>
+                          <td className="py-2.5 px-3 text-slate-900 font-medium">{r.clientNom}</td>
+                          <td className="py-2.5 px-2 text-right font-mono font-bold text-slate-900">
+                            {r.montantTotal.toFixed(3)} DT
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">
+                              {r.modeRemboursement}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setPosViewingReturn(r)}
+                                className="p-1 text-slate-400 hover:text-indigo-600 rounded cursor-pointer"
+                                title="Voir détails"
+                              >
+                                <span className="material-symbols-outlined text-base">visibility</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => generateReturnSlipPdf(r, currentProject)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                                title="Imprimer Bon de Retour (PDF)"
+                              >
+                                <span className="material-symbols-outlined text-base">picture_as_pdf</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {scopedRetours.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="text-center py-8 text-slate-400">
+                            Aucun retour enregistré pour cette boutique.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL VOIR DETAIL RETOUR */}
+      {posViewingReturn && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-5 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-sm font-bold text-slate-900">
+                Détail Bon de Retour {posViewingReturn.numero}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPosViewingReturn(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+
+            <div className="py-3 space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-lg">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Client</span>
+                  <span className="font-semibold text-slate-900">{posViewingReturn.clientNom}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Mode de restitution</span>
+                  <span className="font-bold text-indigo-700">{posViewingReturn.modeRemboursement}</span>
+                </div>
+              </div>
+
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="py-1.5 px-2">Article</th>
+                      <th className="py-1.5 px-2 text-center">Qté</th>
+                      <th className="py-1.5 px-2 text-right">P.U</th>
+                      <th className="py-1.5 px-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {posViewingReturn.lignes.map((l, i) => (
+                      <tr key={i}>
+                        <td className="py-1.5 px-2 font-medium">{l.designation}</td>
+                        <td className="py-1.5 px-2 text-center font-mono">{l.quantiteRetournee}</td>
+                        <td className="py-1.5 px-2 text-right font-mono">{l.prixUnitaire.toFixed(3)}</td>
+                        <td className="py-1.5 px-2 text-right font-mono font-bold">{(l.quantiteRetournee * l.prixUnitaire).toFixed(3)} DT</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-between items-center bg-slate-50 p-2 rounded-lg">
+                <span className="font-bold text-slate-700">Total :</span>
+                <span className="font-mono font-bold text-rose-600">{posViewingReturn.montantTotal.toFixed(3)} DT</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => generateReturnSlipPdf(posViewingReturn, currentProject)}
+                className="px-3 py-1.5 bg-slate-900 text-white font-bold text-xs rounded-lg flex items-center gap-1 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">picture_as_pdf</span>
+                <span>Imprimer (PDF)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TICKET DE PANIER MODAL */}
+
+
+      {selectedTicketVente && (
+        <TicketPanierModal
+          vente={selectedTicketVente}
+          client={clients.find(c => c.id === selectedTicketVente.clientId || c.nom === selectedTicketVente.clientNom)}
+          projet={projets.find(p => p.id === selectedTicketVente.projetId) || currentProject || projets[0]}
+          currentUser={currentUser}
+          onClose={() => setSelectedTicketVente(null)}
+        />
       )}
     </div>
   );

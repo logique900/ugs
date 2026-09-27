@@ -15,8 +15,15 @@ export function canPerformAction(user: Utilisateur | null, action: 'create' | 'm
     return action === 'create' || action === 'modify';
   }
 
-  if (user.role === 'caissier' || user.role === 'agent') {
-    // Cashier can create sales, register payments, but cannot delete records, manage users, or modify sensitive settings
+  if (user.role === 'caissier') {
+    // Le rôle caissier est dédié au terminal de caisse et aux retours, pas aux documents commerciaux
+    if (action === 'delete' || action === 'manage_users' || action === 'sensitive_settings') {
+      return false;
+    }
+    return action === 'create' || action === 'modify';
+  }
+
+  if (user.role === 'agent') {
     if (action === 'delete' || action === 'manage_users' || action === 'sensitive_settings') {
       return false;
     }
@@ -35,7 +42,13 @@ export function canAccessTab(user: Utilisateur | null, tabId: string): boolean {
     return allowed.includes(tabId);
   }
 
-  if (user.role === 'caissier' || user.role === 'agent') {
+  if (user.role === 'caissier') {
+    // Le caissier ne travaille pas avec les documents commerciaux (factures, devis, BL, BA, BS)
+    const allowed = ['caisse', 'retours', 'ventes', 'stock', 'articles', 'clients', 'credits'];
+    return allowed.includes(tabId);
+  }
+
+  if (user.role === 'agent') {
     const allowed = ['articles', 'stock', 'caisse', 'ventes', 'clients'];
     return allowed.includes(tabId);
   }

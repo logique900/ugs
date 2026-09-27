@@ -25,6 +25,7 @@ import { NotificationsPanel } from './components/NotificationsPanel';
 import BonsDeLivraison from './components/BonsDeLivraison';
 import BonsDAchat from './components/BonsDAchat';
 import BonsDeSortie from './components/BonsDeSortie';
+import Retours from './components/Retours';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { 
   mockProjets as initialProjets, 
@@ -40,6 +41,7 @@ import {
   mockBonsDeLivraison as initialBonsDeLivraison,
   mockStockOperations as initialStockOperations,
   mockRetoursMarchandise as initialRetoursMarchandise,
+  mockRetoursVente,
   mockBonsDAchat as initialBonsDAchat,
   mockBonsDeSortie as initialBonsDeSortie,
   mockUsers,
@@ -61,11 +63,13 @@ import {
   BonDeLivraison,
   StockOperation,
   RetourMarchandise,
+  RetourVente,
   BonDAchat,
   BonDeSortie,
   AuditLog,
   TabType, 
-  Utilisateur 
+  Utilisateur,
+  Role
 } from './types';
 
 export default function App() {
@@ -74,6 +78,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
   // Global State for ERP Entities
   const [projets, setProjets] = useState<Projet[]>(initialProjets);
@@ -112,6 +117,24 @@ export default function App() {
   const [bonsDeSortie, setBonsDeSortie] = useState<BonDeSortie[]>(initialBonsDeSortie);
   const [stockOperations, setStockOperations] = useState<StockOperation[]>(initialStockOperations);
   const [retoursMarchandise, setRetoursMarchandise] = useState<RetourMarchandise[]>(initialRetoursMarchandise);
+  const [retoursVente, setRetoursVente] = useState<RetourVente[]>(() => {
+    try {
+      const saved = localStorage.getItem('erp_retours_vente_v1');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return mockRetoursVente;
+  });
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('erp_retours_vente_v1', JSON.stringify(retoursVente));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [retoursVente]);
+
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   // Règle d'accès stricte : L'administrateur a l'accès sur Société UGS ('1') uniquement
@@ -120,6 +143,16 @@ export default function App() {
       setSelectedProjectId('1');
     }
   }, [currentUser, selectedProjectId]);
+
+  // Règle d'accès stricte : Le rôle caissier ne travaille pas avec les documents commerciaux
+  React.useEffect(() => {
+    if (currentUser?.role === 'caissier') {
+      const commercialDocTabs: TabType[] = ['factures', 'devis', 'livraisons', 'bons_achat', 'bons_sortie', 'achats'];
+      if (commercialDocTabs.includes(activeTab)) {
+        setActiveTab('caisse');
+      }
+    }
+  }, [currentUser, activeTab]);
 
   const handleLogout = () => {
     setCurrentUser(null);
@@ -148,6 +181,28 @@ export default function App() {
       // Agent commercial
       setSelectedProjectId(affectations[0] || user.projetId || '1');
       setActiveTab('ventes');
+    }
+  };
+
+  const handleQuickSwitchRole = (targetRole: Role, specificEmail?: string) => {
+    let targetUser: Utilisateur | undefined;
+    if (specificEmail) {
+      targetUser = utilisateurs.find(u => u.email.toLowerCase() === specificEmail.toLowerCase());
+    }
+    if (!targetUser) {
+      targetUser = utilisateurs.find(u => u.role === targetRole);
+    }
+    if (!targetUser) {
+      targetUser = mockUsers.find(u => u.role === targetRole);
+    }
+    if (targetUser) {
+      if (currentUser && currentUser.role !== targetRole) {
+        if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
+          setImpersonatorAdmin(currentUser);
+        }
+      }
+      setIsProfileMenuOpen(false);
+      handleLogin(targetUser);
     }
   };
 
@@ -385,6 +440,44 @@ export default function App() {
             onClientsChange={setClients}
             onArticlesChange={setArticles}
             onMouvementsChange={setMouvements}
+            activeDocType="All"
+            onNavigateToCaisse={() => setActiveTab('caisse')}
+          />
+        );
+      case 'factures':
+        return (
+          <Ventes currentUser={currentUser} articles={articles} 
+            selectedProjectId={selectedProjectId}
+            ventes={ventes}
+            clients={clients}
+            projets={projets}
+            reglements={reglements}
+            mouvements={mouvements}
+            onVentesChange={setVentes}
+            onReglementsChange={setReglements}
+            onClientsChange={setClients}
+            onArticlesChange={setArticles}
+            onMouvementsChange={setMouvements}
+            activeDocType="Facture"
+            onNavigateToCaisse={() => setActiveTab('caisse')}
+          />
+        );
+      case 'devis':
+        return (
+          <Ventes currentUser={currentUser} articles={articles} 
+            selectedProjectId={selectedProjectId}
+            ventes={ventes}
+            clients={clients}
+            projets={projets}
+            reglements={reglements}
+            mouvements={mouvements}
+            onVentesChange={setVentes}
+            onReglementsChange={setReglements}
+            onClientsChange={setClients}
+            onArticlesChange={setArticles}
+            onMouvementsChange={setMouvements}
+            activeDocType="Devis"
+            onNavigateToCaisse={() => setActiveTab('caisse')}
           />
         );
       case 'achats':
@@ -433,6 +526,8 @@ export default function App() {
             mouvements={mouvements}
             sessions={sessionsCaisse}
             actionLogs={actionLogs}
+            retours={retoursVente}
+            onRetoursChange={setRetoursVente}
             onReglementsChange={setReglements}
             onVentesChange={setVentes}
             onArticlesChange={setArticles}
@@ -440,6 +535,24 @@ export default function App() {
             onMouvementsChange={setMouvements}
             onSessionsChange={setSessionsCaisse}
             onActionLogsChange={setActionLogs}
+          />
+        );
+      case 'retours':
+        return (
+          <Retours
+            retours={retoursVente}
+            onRetoursChange={setRetoursVente}
+            ventes={ventes}
+            articles={articles}
+            onArticlesChange={setArticles}
+            mouvements={mouvements}
+            onMouvementsChange={setMouvements}
+            reglements={reglements}
+            onReglementsChange={setReglements}
+            clients={clients}
+            projets={projets}
+            selectedProjectId={selectedProjectId}
+            currentUser={currentUser!}
           />
         );
       case 'livraisons':
@@ -649,15 +762,55 @@ export default function App() {
             <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
             {/* Profile Dropdown */}
-            <button className="flex items-center gap-3 pl-1 pr-2 py-1 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-slate-200">
-              <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center border border-blue-200 shadow-sm shrink-0">
-                {currentUser?.nom?.charAt(0) || 'A'}
-              </div>
-              <div className="hidden sm:flex flex-col items-start">
-                <span className="font-bold text-sm text-slate-800 leading-tight">{currentUser?.nom || 'Admin Magasin Principal'}</span>
-                <span className="text-[11px] font-semibold text-slate-500 leading-tight">Administrateur</span>
-              </div>
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                className="flex items-center gap-2.5 pl-1.5 pr-2.5 py-1 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-slate-200"
+              >
+                <div className={`w-9 h-9 rounded-full font-black text-sm flex items-center justify-center border shadow-xs shrink-0 ${
+                  currentUser?.role === 'caissier'
+                    ? 'bg-purple-100 text-purple-700 border-purple-300'
+                    : currentUser?.role === 'super_admin'
+                    ? 'bg-indigo-100 text-indigo-700 border-indigo-300'
+                    : 'bg-blue-100 text-blue-700 border-blue-200'
+                }`}>
+                  {currentUser?.nom?.charAt(0) || 'U'}
+                </div>
+                <div className="hidden sm:flex flex-col items-start text-left">
+                  <span className="font-bold text-xs text-slate-800 leading-tight truncate max-w-[130px]">{currentUser?.nom || 'Utilisateur'}</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-tight flex items-center gap-1">
+                    <span className={`w-1.5 h-1.5 rounded-full ${currentUser?.role === 'caissier' ? 'bg-purple-500' : 'bg-emerald-500'}`}></span>
+                    {currentUser?.role === 'caissier' ? 'Caissier' : currentUser?.role === 'super_admin' ? 'Super Admin' : currentUser?.role === 'admin' ? 'Admin Dépôt' : 'Comptable'}
+                  </span>
+                </div>
+                <span className="material-symbols-outlined text-[16px] text-slate-400">expand_more</span>
+              </button>
+
+              {/* Dropdown Menu */}
+              {isProfileMenuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Connecté en tant que</p>
+                    <p className="font-extrabold text-sm text-slate-900 truncate mt-0.5">{currentUser?.nom}</p>
+                    <p className="text-xs text-slate-500 font-mono truncate">{currentUser?.email}</p>
+                    <span className="mt-1.5 inline-block px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10.5px] font-black rounded-md uppercase tracking-wider border border-indigo-200">
+                      Rôle : {currentUser?.role}
+                    </span>
+                  </div>
+
+                  <div className="p-1.5">
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">logout</span>
+                      Déconnexion
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

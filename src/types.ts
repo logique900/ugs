@@ -1,4 +1,4 @@
-export type TabType = 'dashboard' | 'projets' | 'articles' | 'categories' | 'stock' | 'clients' | 'fournisseurs' | 'achats' | 'bons_achat' | 'bons_sortie' | 'ventes' | 'livraisons' | 'transferts' | 'caisse' | 'credits' | 'admin' | 'rapports' | 'objectifs' | 'predictive' | 'utilisateurs' | 'statistiques' | 'audit';
+export type TabType = 'dashboard' | 'projets' | 'articles' | 'categories' | 'stock' | 'clients' | 'fournisseurs' | 'achats' | 'bons_achat' | 'bons_sortie' | 'ventes' | 'factures' | 'devis' | 'livraisons' | 'transferts' | 'caisse' | 'credits' | 'admin' | 'rapports' | 'objectifs' | 'predictive' | 'utilisateurs' | 'statistiques' | 'audit' | 'retours';
 
 export interface CategorieItem {
   id: string;
@@ -168,6 +168,16 @@ export interface Client {
   banque?: string;
   notes?: string;
   scoreSolvabilite?: number; // 0 - 100
+
+  // Champs spécifiques Boutique & Programme Fidélité (Retail / POS)
+  carteFideliteNumero?: string;
+  pointsFidelite?: number;
+  tierFidelite?: 'Bronze' | 'Silver' | 'Gold' | 'VIP';
+  reductionFidelitePourcent?: number;
+  boutiquePrincipaleNom?: string;
+  totalAchatsBoutique?: number;
+  nombrePassagesCaisse?: number;
+  derniereVisiteDate?: string;
 }
 
 export interface Fournisseur {
@@ -228,7 +238,8 @@ export interface Vente {
   montantTTC: number;
   montantPaye?: number;
   statut: 'Devis' | 'En Négociation' | 'Commande' | 'Facture' | 'Payée' | 'Annulée';
-  modePaiement?: 'Espèces' | 'Chèque' | 'Virement' | 'Traite' | 'Crédit';
+  modePaiement?: 'Espèces' | 'Carte' | 'Carte Bancaire' | 'Chèque' | 'Virement' | 'Traite' | 'Crédit';
+  timbreFiscal?: number;
   lignes?: LigneVente[];
   notes?: string;
 }
@@ -505,6 +516,53 @@ export interface RetourMarchandise {
   stockOperationId?: string; // Mouvement de stock d'entrée généré
   statut: 'Validé' | 'En attente' | 'Annulé';
   auteurNom: string;
+}
+
+export type MotifRetour = 
+  | 'Défectueux' 
+  | 'Erreur de référence' 
+  | 'Changement d\'avis' 
+  | 'Non conforme' 
+  | 'Article endommagé' 
+  | 'Garantie' 
+  | 'Autre';
+
+export type ModeRemboursement = 'Espèces' | 'Avoir' | 'Échange' | 'Virement';
+
+export interface LigneRetourVente {
+  articleId: string;
+  articleCode?: string;
+  designation: string;
+  quantiteVendue: number;
+  quantiteRetournee: number;
+  prixUnitaire: number;
+  totalLigne: number;
+  motif: MotifRetour | string;
+  remettreEnStock: boolean;
+}
+
+export interface RetourVente {
+  id: string;
+  numero: string; // Ex: RET-2026-0001
+  type: 'Vente Caisse' | 'Facture' | 'Retour Libre';
+  venteId?: string;
+  venteNumero?: string;
+  clientId: string;
+  clientNom: string;
+  projetId: string;
+  projetNom?: string;
+  date: string;
+  lignes: LigneRetourVente[];
+  montantTotal: number;
+  modeRemboursement: ModeRemboursement;
+  codeAvoir?: string;
+  statut: 'Validé' | 'En attente' | 'Traité' | 'Annulé';
+  motifGeneral: string;
+  remarques?: string;
+  auteurId?: string;
+  auteurNom: string;
+  reglementId?: string;
+  mouvementStockIds?: string[];
 }
 
 // ==========================================

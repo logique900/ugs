@@ -3,6 +3,8 @@ import { BonDeLivraison, StatutBL, LigneBL, Client, Article, Vente, StockOperati
 import { Barcode1D } from './Barcode1D';
 import { numberToFrenchWords } from './FacturePrintModal';
 import { BonDeLivraisonPrintModal } from './BonDeLivraisonPrintModal';
+import { generateDeliveryNotePdf } from '../utils/pdfExportEngine';
+import { generateNextDocNumber } from '../utils/numbering';
 
 interface BonsDeLivraisonProps {
   bonsDeLivraison: BonDeLivraison[];
@@ -217,9 +219,8 @@ export default function BonsDeLivraison({
     const client = clients.find(c => c.id === formClientId);
     const boutique = projets.find(p => p.id === formProjetId);
     
-    // Generate unique BL Number
-    const nextNum = (bonsDeLivraison.length + 125).toString().padStart(6, '0');
-    const blNum = `BL-2026-${nextNum}`;
+    // Generate unique BL Number (BL-2026-00001)
+    const blNum = generateNextDocNumber('BL', bonsDeLivraison.map(b => b.numero));
 
     const montantHT = formLignes.reduce((sum, l) => sum + l.totalHT, 0);
     const montantTTC = formLignes.reduce((sum, l) => sum + l.totalTTC, 0);
@@ -908,11 +909,11 @@ export default function BonsDeLivraison({
                               <span className="material-symbols-outlined text-[18px]">visibility</span>
                             </button>
 
-                            {/* Print PDF */}
+                            {/* Aperçu & Impression BL */}
                             <button
                               onClick={() => setShowPrintModal(bl)}
-                              className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-lg transition-all"
-                              title="Imprimer / PDF Pro"
+                              className="p-1.5 text-indigo-600 hover:text-white hover:bg-indigo-600 rounded-lg transition-all cursor-pointer shadow-2xs"
+                              title="Aperçu avant impression / Imprimer Bon de Livraison"
                             >
                               <span className="material-symbols-outlined text-[18px]">print</span>
                             </button>

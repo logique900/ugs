@@ -45,6 +45,8 @@ export function Categories({
 
   const currentProject = projets.find(p => p.id === selectedProjectId);
   const isGlobal = selectedProjectId === 'all';
+  const isCaissier = currentUser?.role === 'caissier';
+  const canManageCategories = !isCaissier && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.role === 'directeur');
 
   // Articles filtered by current selected project
   const scopedArticles = isGlobal ? articles : articles.filter(a => a.projetId === selectedProjectId);
@@ -202,65 +204,77 @@ export function Categories({
         </div>
       </div>
 
-      {/* Form: Nouvelle Catégorie */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-          <span className="material-symbols-outlined text-indigo-600 text-[20px]">add_circle</span>
-          <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Ajouter une catégorie</h2>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Code / Réf <span className="text-slate-400 font-normal">(Optionnel)</span>
-            </label>
-            <input
-              type="text"
-              placeholder="Ex: CAT-INFO"
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
-              value={newCode}
-              onChange={(e) => setNewCode(e.target.value)}
-            />
+      {/* Form: Nouvelle Catégorie - Masqué pour Caissier (Lecture Seule) */}
+      {canManageCategories ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <span className="material-symbols-outlined text-indigo-600 text-[20px]">add_circle</span>
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Ajouter une catégorie</h2>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Nom de la catégorie <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="text"
-              placeholder="Ex: Informatique, Outillage..."
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Description <span className="text-slate-400 font-normal">(Optionnel)</span>
-            </label>
-            <div className="flex gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Code / Réf <span className="text-slate-400 font-normal">(Optionnel)</span>
+              </label>
               <input
                 type="text"
-                placeholder="Ex: Équipements informatiques et matériel"
-                className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
-                value={newDesc}
-                onChange={(e) => setNewDesc(e.target.value)}
+                placeholder="Ex: CAT-INFO"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
+                value={newCode}
+                onChange={(e) => setNewCode(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Nom de la catégorie <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: Informatique, Outillage..."
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
               />
-              <button
-                onClick={handleAddCategory}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-2 shrink-0 hover:scale-[1.01]"
-              >
-                <span className="material-symbols-outlined text-[18px]">add</span>
-                Créer
-              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Description <span className="text-slate-400 font-normal">(Optionnel)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ex: Équipements informatiques et matériel"
+                  className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all shadow-2xs"
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                />
+                <button
+                  onClick={handleAddCategory}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-2 shrink-0 hover:scale-[1.01]"
+                >
+                  <span className="material-symbols-outlined text-[18px]">add</span>
+                  Créer
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center gap-3 text-slate-600 text-xs">
+          <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-[20px]">visibility</span>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900">Mode Consultation des Catégories (Lecture Seule)</h4>
+            <p className="text-slate-500">Le profil Caissier peut consulter l'organisation du catalogue et les articles rattachés sans modification.</p>
+          </div>
+        </div>
+      )}
 
       {/* Toolbar & Filters */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -397,40 +411,44 @@ export function Categories({
                             {isExpanded ? 'Masquer articles' : `Voir articles (${attachedProducts.length})`}
                           </button>
 
-                          <button
-                            onClick={() => handleToggleStatus(cat.id)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                              cat.statut === 'Actif'
-                                ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                            }`}
-                          >
-                            <span className="material-symbols-outlined text-[16px]">
-                              {cat.statut === 'Actif' ? 'block' : 'check_circle'}
-                            </span>
-                            {cat.statut === 'Actif' ? 'Désactiver' : 'Activer'}
-                          </button>
+                          {canManageCategories && (
+                            <>
+                              <button
+                                onClick={() => handleToggleStatus(cat.id)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                  cat.statut === 'Actif'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                }`}
+                              >
+                                <span className="material-symbols-outlined text-[16px]">
+                                  {cat.statut === 'Actif' ? 'block' : 'check_circle'}
+                                </span>
+                                {cat.statut === 'Actif' ? 'Désactiver' : 'Activer'}
+                              </button>
 
-                          <button
-                            onClick={() => {
-                              setEditingId(cat.id);
-                              setEditingName(cat.nom);
-                              setEditingCode(cat.code || '');
-                              setEditingDesc(cat.description || '');
-                            }}
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer"
-                            title="Modifier la catégorie"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">edit</span>
-                          </button>
+                              <button
+                                onClick={() => {
+                                  setEditingId(cat.id);
+                                  setEditingName(cat.nom);
+                                  setEditingCode(cat.code || '');
+                                  setEditingDesc(cat.description || '');
+                                }}
+                                className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer"
+                                title="Modifier la catégorie"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">edit</span>
+                              </button>
 
-                          <button
-                            onClick={() => handleDelete(cat.id)}
-                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                            title="Supprimer la catégorie"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">delete</span>
-                          </button>
+                              <button
+                                onClick={() => handleDelete(cat.id)}
+                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                title="Supprimer la catégorie"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">delete</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       </>
                     )}

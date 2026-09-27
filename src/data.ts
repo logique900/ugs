@@ -1,4 +1,4 @@
-import { Article, AuditLog, Client, Fournisseur, Projet, Utilisateur } from './types';
+import { Article, AuditLog, Client, Fournisseur, Projet, Utilisateur, RetourVente } from './types';
 
 export const mockUsers: Utilisateur[] = [
   { 
@@ -71,8 +71,8 @@ export const mockUsers: Utilisateur[] = [
     motDePasse: 'demo123', 
     role: 'caissier', 
     statut: 'Actif', 
-    projetId: '1', 
-    projetsAffectes: ['1'],
+    projetId: '2', 
+    projetsAffectes: ['2', '3'],
     dateCreation: '2023-05-12',
     derniereConnexion: '2026-09-08 08:30',
     permissions: {
@@ -632,7 +632,7 @@ export const mockVentes = [
   { 
     id: 'hist-a52', 
     projetId: '1', 
-    numero: 'FAC-HIST-2025-089', 
+    numero: 'FAC-2025-00089', 
     clientId: '1', 
     clientNom: 'Société Générale de Construction',
     date: '2025-11-20', 
@@ -650,7 +650,7 @@ export const mockVentes = [
   { 
     id: '1', 
     projetId: '1', 
-    numero: 'FAC-ALP-001', 
+    numero: 'FAC-2026-00001', 
     clientId: '1', 
     date: '2026-07-15', 
     dateEcheance: '2026-09-15',
@@ -668,7 +668,7 @@ export const mockVentes = [
   { 
     id: '2', 
     projetId: '1', 
-    numero: 'FAC-ALP-002', 
+    numero: 'FAC-2026-00002', 
     clientId: '1', 
     date: '2026-06-10', 
     dateEcheance: '2026-08-10',
@@ -686,7 +686,7 @@ export const mockVentes = [
   { 
     id: '3', 
     projetId: '1', 
-    numero: 'DEV-ALP-042', 
+    numero: 'DEV-2026-00001', 
     clientId: '1', 
     date: '2026-08-12', 
     dateEcheance: '2026-09-12',
@@ -704,7 +704,7 @@ export const mockVentes = [
   { 
     id: '4', 
     projetId: '2', 
-    numero: 'FAC-BET-001', 
+    numero: 'FAC-2026-00003', 
     clientId: '2', 
     date: '2026-07-01', 
     dateEcheance: '2026-07-31',
@@ -722,7 +722,7 @@ export const mockVentes = [
   { 
     id: '5', 
     projetId: '3', 
-    numero: 'FAC-GAM-001', 
+    numero: 'FAC-2026-00004', 
     clientId: '3', 
     date: '2026-05-15', 
     dateEcheance: '2026-08-15',
@@ -740,7 +740,7 @@ export const mockVentes = [
   { 
     id: '6', 
     projetId: '1', 
-    numero: 'FAC-ALP-003', 
+    numero: 'FAC-2026-00005', 
     clientId: '4', 
     date: '2026-08-05', 
     dateEcheance: '2026-08-05',
@@ -1031,7 +1031,7 @@ export const mockObjectifs: any[] = [
 export const mockBonsDeLivraison: any[] = [
   {
     id: 'bl-101',
-    numero: 'BL-2026-000125',
+    numero: 'BL-2026-00001',
     projetId: '1',
     boutiqueNom: 'ERP Management - Stock Central',
     dateCreation: '2026-08-28',
@@ -1268,6 +1268,73 @@ export const mockRetoursMarchandise: any[] = [
     stockOperationId: 'IN-2026-000001',
     statut: 'Validé',
     auteurNom: 'Ahmed'
+  }
+];
+
+export const mockRetoursVente: RetourVente[] = [
+  {
+    id: 'ret-v-1',
+    numero: 'RET-2026-0001',
+    type: 'Vente Caisse',
+    venteId: 'hist-a52',
+    venteNumero: 'V-2026-0089',
+    clientId: '1',
+    clientNom: 'Client Comptoir',
+    projetId: '2',
+    projetNom: 'Boutique Alpha',
+    date: '2026-09-25 14:30',
+    lignes: [
+      {
+        articleId: '1',
+        articleCode: 'ART001',
+        designation: 'Ciment Haute Résistance 50kg',
+        quantiteVendue: 5,
+        quantiteRetournee: 1,
+        prixUnitaire: 18.000,
+        totalLigne: 18.000,
+        motif: 'Changement d\'avis',
+        remettreEnStock: true
+      }
+    ],
+    montantTotal: 18.000,
+    modeRemboursement: 'Espèces',
+    statut: 'Validé',
+    motifGeneral: 'Client a pris un sac de trop',
+    remarques: 'Remboursement immédiat en espèces du tiroir caisse',
+    auteurId: 'demo-caissier-1',
+    auteurNom: 'Youssef Trabelsi'
+  },
+  {
+    id: 'ret-v-2',
+    numero: 'RET-2026-0002',
+    type: 'Vente Caisse',
+    venteNumero: 'V-2026-0094',
+    clientId: '2',
+    clientNom: 'Bâtiment & Travaux Alpha SAS',
+    projetId: '2',
+    projetNom: 'Boutique Alpha',
+    date: '2026-09-26 10:15',
+    lignes: [
+      {
+        articleId: '2',
+        articleCode: 'ART002',
+        designation: 'Fer à Béton Ø12 Barre 12m',
+        quantiteVendue: 10,
+        quantiteRetournee: 2,
+        prixUnitaire: 24.500,
+        totalLigne: 49.000,
+        motif: 'Erreur de référence',
+        remettreEnStock: true
+      }
+    ],
+    montantTotal: 49.000,
+    modeRemboursement: 'Avoir',
+    codeAvoir: 'AVR-2026-0001',
+    statut: 'Validé',
+    motifGeneral: 'Erreur de diamètre commandé par le client',
+    remarques: 'Bon d\'achat / Avoir client émis valable 90 jours',
+    auteurId: 'demo-caissier-1',
+    auteurNom: 'Youssef Trabelsi'
   }
 ];
 

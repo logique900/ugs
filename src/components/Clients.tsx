@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import {  Client, Projet, Vente, Reglement , Utilisateur } from '../types';
 import { mockVentes, mockReglements } from '../data';
-import { generateReceiptPdf, generateCreditAgreementPdf } from '../utils/pdfExportEngine';
+import { generateReceiptPdf, generateCreditAgreementPdf, generateLoyaltyCardPdf } from '../utils/pdfExportEngine';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 interface ClientsProps {
   currentUser: Utilisateur;
   selectedProjectId: string;
+  onSelectProject?: (projectId: string) => void;
   clients: Client[];
   onClientsChange: (clients: Client[]) => void;
   projets: Projet[];
@@ -32,6 +33,9 @@ export function Clients({ currentUser,
   const isGlobal = selectedProjectId === 'all';
   const currentProject = isGlobal ? null : projets.find(p => p.id === selectedProjectId);
 
+  // Main Section Sub-Tabs (Portefeuille, Fidélité Boutique, Carnet Dettes)
+  const [clientMainTab, setClientMainTab] = useState<'tous' | 'fidelite_boutique' | 'carnet_dettes'>('tous');
+
   // States
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -47,6 +51,18 @@ export function Clients({ currentUser,
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [selectedClientDetail, setSelectedClientDetail] = useState<Client | null>(null);
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
+
+  // Boutique Quick Client Modal & Loyalty Preview
+  const [isQuickBoutiqueModalOpen, setIsQuickBoutiqueModalOpen] = useState(false);
+  const [quickNom, setQuickNom] = useState('');
+  const [quickTel, setQuickTel] = useState('');
+  const [quickEmail, setQuickEmail] = useState('');
+  const [quickType, setQuickType] = useState<'Particulier' | 'Entreprise'>('Particulier');
+  const [quickPoints, setQuickPoints] = useState(50);
+  const [previewLoyaltyClient, setPreviewLoyaltyClient] = useState<Client | null>(null);
+  const [pointsAdjustClient, setPointsAdjustClient] = useState<Client | null>(null);
+  const [pointsAdjustValue, setPointsAdjustValue] = useState<number>(50);
+
 
   // --- BOUTON DE PAIEMENT MODAL STATE ---
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -117,6 +133,117 @@ export function Clients({ currentUser,
 
     return { totalFacture, totalPaye, soldeDu, facturesCount, facturesEnAttente, clientVentes };
   };
+
+  // Helper to calculate Loyalty status per client
+  const getClientLoyalty = (client: Client) => {
+    const fin = getClientFinancials(client.id);
+    const totalAchats = fin.totalFacture;
+    // 1 DT = 1 point fidélité par défaut ou points manuels
+    const points = client.pointsFidelite !== undefined ? client.pointsFidelite : Math.floor(totalAchats);
+    const passagesCount = client.nombrePassagesCaisse !== undefined ? client.nombrePassagesCaisse : fin.facturesCount;
+    
+    let tier: 'Bronze' | 'Silver' | 'Gold' | 'VIP' = 'Bronze';
+    let discount = 0;
+    let nextTierPoints = 200;
+    let nextTierName = 'Silver';
+    let progressPct = 0;
+
+    if (points >= 1000) {
+      tier = 'VIP';
+      discount = 10;
+      nextTierPoints = 1000;
+      nextTierName = 'VIP';
+      progressPct = 100;
+    } else if (points >= 500) {
+      tier = 'Gold';
+      discount = 5;
+      nextTierPoints = 1000;
+      nextTierName = 'VIP';
+      progressPct = Math.min(100, Math.round(((points - 500) / 500) * 100));
+    } else if (points >= 200) {
+      tier = 'Silver';
+      discount = 3;
+      nextTierPoints = 500;
+      nextTierName = 'Gold';
+      progressPct = Math.min(100, Math.round(((points - 200) / 300) * 100));
+    } else {
+      tier = 'Bronze';
+      discount = 0;
+      nextTierPoints = 200;
+      nextTierName = 'Silver';
+      progressPct = Math.min(100, Math.round((points / 200) * 100));
+    }
+
+    const carteNumero = client.carteFideliteNumero || `FID-${(client.code || client.id).replace(/\D/g, '').padStart(6, '0') || '619001'}`;
+
+    return { 
+      points, 
+      tier, 
+      discount, 
+      passagesCount, 
+      totalAchats, 
+      carteNumero, 
+      nextTierPoints, 
+      nextTierName, 
+      progressPct 
+    };
+  };
+
+  // Adjust loyalty points
+  const handleConfirmAdjustPoints = (client: Client, newPoints: number) => {
+    const updated = clients.map(c => {
+      if (c.id === client.id) {
+        return {
+          ...c,
+          pointsFidelite: Math.max(0, newPoints)
+        };
+      }
+      return c;
+    });
+    onClientsChange(updated);
+    setPointsAdjustClient(null);
+  };
+
+  // Create Quick Boutique Customer
+  const handleCreateQuickBoutiqueClient = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickNom.trim()) return;
+
+    const nextNum = clients.length + 1;
+    const generatedCode = `CLI-${String(nextNum).padStart(3, '0')}`;
+    const generatedFid = `FID-${String(nextNum).padStart(6, '0')}`;
+
+    const newClient: Client = {
+      id: String(Date.now()),
+      nom: quickNom.trim(),
+      code: generatedCode,
+      typeTier: quickType,
+      telephone: quickTel.trim() || '+216 ',
+      email: quickEmail.trim(),
+      adresse: 'Boutique / Vente Comptoir',
+      ville: 'Tunis',
+      pays: 'Tunisie',
+      statut: 'Actif',
+      categorie: quickType === 'Particulier' ? 'Particulier' : 'PME',
+      plafondCredit: 5000,
+      delaiPaiement: 0,
+      soldeInitial: 0,
+      carteFideliteNumero: generatedFid,
+      pointsFidelite: Number(quickPoints) || 50,
+      tierFidelite: Number(quickPoints) >= 200 ? 'Silver' : 'Bronze',
+      reductionFidelitePourcent: Number(quickPoints) >= 200 ? 3 : 0,
+      boutiquePrincipaleNom: currentProject?.nom || 'Boutique Principale',
+      projetId: isGlobal ? (projets[0]?.id || '1') : selectedProjectId
+    };
+
+    onClientsChange([newClient, ...clients]);
+    setIsQuickBoutiqueModalOpen(false);
+    setQuickNom('');
+    setQuickTel('');
+    setQuickEmail('');
+    setQuickPoints(50);
+  };
+
 
   // Base list filtered by project
   const clientsBase = useMemo(() => {
@@ -747,18 +874,18 @@ export function Clients({ currentUser,
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="font-display-md text-display-md text-on-surface">
-              {selectedProjectId === '2' ? 'Parents & Élèves' : 'Clients & Tiers'}
+              {selectedProjectId === '2' ? 'Parents & Élèves' : 'Clients & Tiers Boutique'}
             </h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
-              {filteredClients.length} {selectedProjectId === '2' ? 'comptes' : 'tiers'}
+              {filteredClients.length} {selectedProjectId === '2' ? 'comptes' : 'clients enregistrés'}
             </span>
           </div>
           <p className="font-body-md text-body-md text-on-surface-variant mt-1">
             {isGlobal 
-              ? "Supervision complète du portefeuille clients, encours et gestion des risques de crédit."
+              ? "Supervision complète du portefeuille clients, programme de fidélité boutique et gestion des risques de crédit."
               : selectedProjectId === '2'
-                ? `Liste des parents et élèves de la boutique ${currentProject?.nom || ''}.`
-                : `Gestion commerciale et suivi des clients du projet ${currentProject?.nom || ''}.`}
+                ? `Gestion des parents, élèves et comptes de la boutique ${currentProject?.nom || ''}.`
+                : `Gestion commerciale, cartes de fidélité et carnet de crédit de la boutique ${currentProject?.nom || ''}.`}
           </p>
         </div>
 
@@ -766,7 +893,7 @@ export function Clients({ currentUser,
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={handleExportClientsPdf}
-            className="flex items-center gap-2 px-3.5 py-2.5 bg-surface-container-lowest border border-outline-variant hover:bg-surface-container-low text-on-surface rounded-xl text-sm font-medium transition-colors shadow-xs"
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-surface-container-lowest border border-outline-variant hover:bg-surface-container-low text-on-surface rounded-xl text-sm font-medium transition-colors shadow-xs cursor-pointer"
             title="Exporter la balance et le répertoire complet en PDF"
           >
             <span className="material-symbols-outlined text-[18px] text-emerald-600">picture_as_pdf</span>
@@ -775,12 +902,23 @@ export function Clients({ currentUser,
 
           <button
             onClick={handleExportCsv}
-            className="flex items-center gap-2 px-3.5 py-2.5 bg-surface-container-lowest border border-outline-variant hover:bg-surface-container-low text-on-surface rounded-xl text-sm font-medium transition-colors shadow-xs"
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-surface-container-lowest border border-outline-variant hover:bg-surface-container-low text-on-surface rounded-xl text-sm font-medium transition-colors shadow-xs cursor-pointer"
             title="Exporter la liste sous format CSV / Excel"
           >
             <span className="material-symbols-outlined text-[18px] text-primary">download</span>
             <span>Export CSV</span>
           </button>
+
+          {currentUser.role !== 'comptable' && (
+            <button
+              onClick={() => setIsQuickBoutiqueModalOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+              title="Inscription rapide client comptoir avec carte fidélité automatique"
+            >
+              <span className="material-symbols-outlined text-[19px]">loyalty</span>
+              <span>Nouveau Client Boutique ⚡</span>
+            </button>
+          )}
 
           {currentUser.role === 'comptable' ? (
             <div className="flex items-center gap-2 px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl text-xs font-bold">
@@ -793,11 +931,54 @@ export function Clients({ currentUser,
               className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[20px]">person_add</span>
-              <span>Nouveau Client</span>
+              <span>Fiche Complète B2B</span>
             </button>
           )}
         </div>
       </div>
+
+      {/* Boutique Client Sub-Tabs Switcher */}
+      <div className="flex items-center gap-2 p-1.5 bg-surface-container-low border border-outline-variant rounded-2xl w-full sm:w-fit overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setClientMainTab('tous')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            clientMainTab === 'tous'
+              ? 'bg-surface-container-lowest text-on-surface shadow-xs'
+              : 'text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">groups</span>
+          <span>Portefeuille & Tiers ({filteredClients.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setClientMainTab('fidelite_boutique')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            clientMainTab === 'fidelite_boutique'
+              ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white shadow-md shadow-purple-500/20'
+              : 'text-on-surface-variant hover:text-purple-700'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">loyalty</span>
+          <span>Programme Fidélité & Cartes 🎁</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setClientMainTab('carnet_dettes')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            clientMainTab === 'carnet_dettes'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'text-on-surface-variant hover:text-amber-700'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">menu_book</span>
+          <span>Carnet de Dettes & Crédits ({filteredClients.filter(c => getClientFinancials(c.id).soldeDu > 0).length})</span>
+        </button>
+      </div>
+
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1013,379 +1194,744 @@ export function Clients({ currentUser,
         </div>
       </div>
 
-      {/* Main List Display */}
-      {viewMode === 'cards' ? (
-        /* CARDS VIEW */
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {filteredClients.map((client) => {
-            const fin = getClientFinancials(client.id);
-            const isExceeded = client.plafondCredit ? fin.soldeDu > client.plafondCredit : false;
-            const creditPct = client.plafondCredit ? Math.min(100, Math.round((fin.soldeDu / client.plafondCredit) * 100)) : 0;
-            const clientProject = projets.find(p => p.id === client.projetId);
+      {/* Main List Display (Switching according to clientMainTab) */}
+      {clientMainTab === 'tous' ? (
+        viewMode === 'cards' ? (
+          /* CARDS VIEW */
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {filteredClients.map((client) => {
+              const fin = getClientFinancials(client.id);
+              const isExceeded = client.plafondCredit ? fin.soldeDu > client.plafondCredit : false;
+              const creditPct = client.plafondCredit ? Math.min(100, Math.round((fin.soldeDu / client.plafondCredit) * 100)) : 0;
+              const clientProject = projets.find(p => p.id === client.projetId);
+              const loyalty = getClientLoyalty(client);
 
-            return (
-              <div 
-                key={client.id}
-                className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 hover:shadow-md transition-all flex flex-col justify-between group relative overflow-hidden"
-              >
-                {/* Top card accent line */}
-                <div className={`absolute top-0 left-0 right-0 h-1.5 ${
-                  client.statut === 'Bloqué' || client.statut === 'Contentieux' 
-                    ? 'bg-error' 
-                    : isExceeded 
-                      ? 'bg-amber-500' 
-                      : 'bg-emerald-500'
-                }`} />
+              return (
+                <div 
+                  key={client.id}
+                  className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 hover:shadow-md transition-all flex flex-col justify-between group relative overflow-hidden"
+                >
+                  {/* Top card accent line */}
+                  <div className={`absolute top-0 left-0 right-0 h-1.5 ${
+                    client.statut === 'Bloqué' || client.statut === 'Contentieux' 
+                      ? 'bg-error' 
+                      : isExceeded 
+                        ? 'bg-amber-500' 
+                        : 'bg-emerald-500'
+                  }`} />
 
-                <div>
-                  {/* Header Row */}
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center font-bold text-base text-primary shrink-0 border border-outline-variant/60 shadow-xs">
-                        {client.typeTier === 'Particulier' ? (
-                          <span className="material-symbols-outlined text-[24px] text-blue-600">person</span>
-                        ) : (
-                          client.nom.charAt(0)
-                        )}
-                      </div>
-                      <div className="overflow-hidden">
-                        <h3 className="font-bold text-sm text-on-surface truncate group-hover:text-primary transition-colors" title={client.nom}>
-                          {client.nom}
-                        </h3>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[11px] font-mono text-on-surface-variant">{client.code || `CLI-${client.id}`}</span>
-                          <span className="text-on-surface-variant/40">•</span>
-                          <span className="text-[11px] font-medium text-on-surface-variant truncate">{client.ville || 'Tunisie'}</span>
+                  <div>
+                    {/* Header Row */}
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center font-bold text-base text-primary shrink-0 border border-outline-variant/60 shadow-xs">
+                          {client.typeTier === 'Particulier' ? (
+                            <span className="material-symbols-outlined text-[24px] text-blue-600">person</span>
+                          ) : (
+                            client.nom.charAt(0)
+                          )}
+                        </div>
+                        <div className="overflow-hidden">
+                          <h3 className="font-bold text-sm text-on-surface truncate group-hover:text-primary transition-colors" title={client.nom}>
+                            {client.nom}
+                          </h3>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[11px] font-mono text-on-surface-variant">{client.code || `CLI-${client.id}`}</span>
+                            <span className="text-on-surface-variant/40">•</span>
+                            <span className="text-[11px] font-medium text-on-surface-variant truncate">{client.ville || 'Tunisie'}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Status Badge */}
-                    <span className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border ${
-                      client.statut === 'Actif'
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : client.statut === 'Prospect'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-error/10 text-error border-error/20'
-                    }`}>
-                      {client.statut || 'Actif'}
-                    </span>
-                  </div>
-
-                  {/* Badges and Category */}
-                  <div className="flex flex-wrap items-center gap-1.5 mb-4">
-                    <span className="px-2 py-0.5 bg-surface-container-low rounded-md text-[11px] font-semibold text-on-surface-variant">
-                      {client.typeTier || 'Entreprise'}
-                    </span>
-                    <span className="px-2 py-0.5 bg-surface-container-low rounded-md text-[11px] font-semibold text-on-surface-variant">
-                      {client.categorie || 'PME'}
-                    </span>
-                    {client.scoreSolvabilite && (
-                      <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 ${
-                        client.scoreSolvabilite >= 85 
-                          ? 'bg-emerald-50 text-emerald-700' 
-                          : client.scoreSolvabilite >= 70 
-                            ? 'bg-amber-50 text-amber-700' 
-                            : 'bg-error/10 text-error'
+                      {/* Status Badge */}
+                      <span className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border ${
+                        client.statut === 'Actif'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : client.statut === 'Prospect'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-error/10 text-error border-error/20'
                       }`}>
-                        <span className="material-symbols-outlined text-[12px]">speed</span>
-                        Score {client.scoreSolvabilite}%
-                      </span>
-                    )}
-                    {isGlobal && clientProject && (
-                      <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-md text-[10px] font-semibold truncate max-w-[130px]" title={clientProject.nom}>
-                        {clientProject.nom}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Financial Snapshot */}
-                  <div className="bg-surface-container-low/60 rounded-xl p-3 mb-4 space-y-2 border border-outline-variant/40">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-on-surface-variant">Chiffre d'Affaires</span>
-                      <span className="font-bold text-on-surface">{fin.totalFacture.toLocaleString('fr-FR')} DT</span>
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-on-surface-variant font-medium">Solde Restant Dû</span>
-                      <span className={`font-bold text-sm ${fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                        {fin.soldeDu.toLocaleString('fr-FR')} DT
+                        {client.statut || 'Actif'}
                       </span>
                     </div>
 
-                    {/* Credit progress bar */}
-                    {client.plafondCredit && client.plafondCredit > 0 && (
-                      <div className="pt-1">
-                        <div className="flex justify-between text-[10px] text-on-surface-variant mb-1 font-medium">
-                          <span>Plafond: {client.plafondCredit.toLocaleString('fr-FR')} DT</span>
-                          <span className={isExceeded ? 'text-error font-bold' : ''}>{creditPct}% utilisé</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all ${isExceeded ? 'bg-error' : creditPct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                            style={{ width: `${Math.min(100, creditPct)}%` }}
-                          />
-                        </div>
+                    {/* Badges and Category */}
+                    <div className="flex flex-wrap items-center gap-1.5 mb-4">
+                      <span className="px-2 py-0.5 bg-surface-container-low rounded-md text-[11px] font-semibold text-on-surface-variant">
+                        {client.typeTier || 'Entreprise'}
+                      </span>
+                      <span className="px-2 py-0.5 bg-surface-container-low rounded-md text-[11px] font-semibold text-on-surface-variant">
+                        {client.categorie || 'PME'}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-md text-[10.5px] font-extrabold flex items-center gap-1 ${
+                        loyalty.tier === 'VIP' ? 'bg-purple-100 text-purple-800 border border-purple-200' :
+                        loyalty.tier === 'Gold' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                        loyalty.tier === 'Silver' ? 'bg-slate-200 text-slate-800' : 'bg-orange-50 text-orange-800'
+                      }`}>
+                        <span className="material-symbols-outlined text-[13px]">loyalty</span>
+                        {loyalty.tier} ({loyalty.points} pts)
+                      </span>
+                      {isGlobal && clientProject && (
+                        <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-md text-[10px] font-semibold truncate max-w-[130px]" title={clientProject.nom}>
+                          {clientProject.nom}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Financial Snapshot */}
+                    <div className="bg-surface-container-low/60 rounded-xl p-3 mb-4 space-y-2 border border-outline-variant/40">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-on-surface-variant">Chiffre d'Affaires</span>
+                        <span className="font-bold text-on-surface">{fin.totalFacture.toLocaleString('fr-FR')} DT</span>
                       </div>
-                    )}
+
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-on-surface-variant font-medium">Solde Restant Dû</span>
+                        <span className={`font-bold text-sm ${fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {fin.soldeDu.toLocaleString('fr-FR')} DT
+                        </span>
+                      </div>
+
+                      {/* Credit progress bar */}
+                      {client.plafondCredit && client.plafondCredit > 0 && (
+                        <div className="pt-1">
+                          <div className="flex justify-between text-[10px] text-on-surface-variant mb-1 font-medium">
+                            <span>Plafond: {client.plafondCredit.toLocaleString('fr-FR')} DT</span>
+                            <span className={isExceeded ? 'text-error font-bold' : ''}>{creditPct}% utilisé</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all ${isExceeded ? 'bg-error' : creditPct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                              style={{ width: `${Math.min(100, creditPct)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Contact Info Compact */}
+                    <div className="space-y-1.5 text-xs text-on-surface-variant mb-4">
+                      {client.telephone && (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">phone</span>
+                            <a href={`tel:${client.telephone}`} className="hover:text-primary hover:underline truncate">
+                              {client.telephone}
+                            </a>
+                          </div>
+                          <a
+                            href={`https://wa.me/216${client.telephone.replace(/\D/g, '')}?text=${encodeURIComponent(`Bonjour ${client.nom}, votre solde actuel chez ${currentProject?.nom || 'notre boutique'} est de ${fin.soldeDu.toFixed(3)} DT. Vous disposez également de ${loyalty.points} points de fidélité.`)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 text-[11px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200"
+                            title="Envoyer un message WhatsApp"
+                          >
+                            <span>WhatsApp</span>
+                          </a>
+                        </div>
+                      )}
+                      {client.email && (
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">mail</span>
+                          <a href={`mailto:${client.email}`} className="hover:text-primary hover:underline truncate">
+                            {client.email}
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Contact Info Compact */}
-                  <div className="space-y-1.5 text-xs text-on-surface-variant mb-4">
-                    {client.telephone && (
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">phone</span>
-                        <a href={`tel:${client.telephone}`} className="hover:text-primary hover:underline truncate">
-                          {client.telephone}
-                        </a>
-                      </div>
-                    )}
-                    {client.email && (
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">mail</span>
-                        <a href={`mailto:${client.email}`} className="hover:text-primary hover:underline truncate">
-                          {client.email}
-                        </a>
-                      </div>
-                    )}
-                    {client.contactNom && (
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">person</span>
-                        <span className="truncate">{client.contactNom} {client.contactPoste ? `(${client.contactPoste})` : ''}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  {/* Card Footer Actions */}
+                  <div className="pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-1.5 flex-wrap">
+                    {currentUser.role !== 'comptable' ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleOpenPaymentModal(client)}
+                          className="py-1 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 border border-emerald-200 cursor-pointer"
+                          title="Encaisser un paiement pour ce client"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">payments</span>
+                          Paiement
+                        </button>
 
-                {/* Card Footer Actions */}
-                <div className="pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-1.5 flex-wrap">
-                  {currentUser.role !== 'comptable' ? (
+                        <button
+                          onClick={() => handleOpenCreditModal(client)}
+                          className="py-1 px-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 border border-purple-200 cursor-pointer shadow-xs"
+                          title="Enregistrer un crédit ou convention de paiement"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">calendar_month</span>
+                          Enregistrer Crédit
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                        Audit Client
+                      </span>
+                    )}
+
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => handleOpenPaymentModal(client)}
-                        className="py-1 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 border border-emerald-200 cursor-pointer"
-                        title="Encaisser un paiement pour ce client"
+                        onClick={() => generateLoyaltyCardPdf(client, currentProject)}
+                        className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                        title="Imprimer Carte de Fidélité (Badge PDF avec Code-barres)"
                       >
-                        <span className="material-symbols-outlined text-[15px]">payments</span>
-                        Paiement
+                        <span className="material-symbols-outlined text-[18px]">badge</span>
                       </button>
 
                       <button
-                        onClick={() => handleOpenCreditModal(client)}
-                        className="py-1 px-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 border border-purple-200 cursor-pointer"
-                        title="Échéancier & Convention de Crédit"
+                        onClick={() => setSelectedClientDetail(client)}
+                        className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
+                        title="Voir la fiche complète & relevé"
                       >
-                        <span className="material-symbols-outlined text-[15px]">calendar_month</span>
-                        Crédit
+                        <span className="material-symbols-outlined text-[18px]">visibility</span>
                       </button>
+
+                      <button
+                        onClick={() => handleExportStatementPdf(client)}
+                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                        title="Télécharger le relevé de compte en PDF"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+                      </button>
+
+                      {currentUser.role !== 'comptable' && (
+                        <>
+                          <button
+                            onClick={() => handleOpenEditModal(client)}
+                            className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
+                            title="Modifier ce client"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">edit</span>
+                          </button>
+
+                          <button
+                            onClick={() => setDeleteConfirmationId(client.id)}
+                            className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors cursor-pointer"
+                            title="Supprimer ce client"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">delete</span>
+                          </button>
+                        </>
+                      )}
                     </div>
-                  ) : (
-                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                      Audit Client
-                    </span>
-                  )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* TABLE VIEW */
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-surface-container-low border-b border-outline-variant text-on-surface-variant uppercase font-bold tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3.5">Code & Raison Sociale</th>
+                    <th className="px-4 py-3.5">Type & Catégorie</th>
+                    <th className="px-4 py-3.5">Fidélité & Carte</th>
+                    <th className="px-4 py-3.5">Coordonnées</th>
+                    <th className="px-4 py-3.5 text-right">CA Réalisé</th>
+                    <th className="px-4 py-3.5 text-right">Solde Dû</th>
+                    <th className="px-4 py-3.5 text-right">Plafond Crédit</th>
+                    <th className="px-4 py-3.5 text-center">Score</th>
+                    <th className="px-4 py-3.5 text-center">Statut</th>
+                    <th className="px-4 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/60 font-body-md text-on-surface">
+                  {filteredClients.map((client) => {
+                    const fin = getClientFinancials(client.id);
+                    const isExceeded = client.plafondCredit ? fin.soldeDu > client.plafondCredit : false;
+                    const loyalty = getClientLoyalty(client);
 
-                  <div className="flex items-center gap-1">
+                    return (
+                      <tr key={client.id} className="hover:bg-surface-container-low/50 transition-colors">
+                        {/* Name & Code */}
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-surface-container text-primary font-bold flex items-center justify-center shrink-0">
+                              {client.nom.charAt(0)}
+                            </div>
+                            <div>
+                              <button 
+                                onClick={() => setSelectedClientDetail(client)}
+                                className="font-bold text-on-surface hover:text-primary text-left truncate max-w-[200px] block"
+                              >
+                                {client.nom}
+                              </button>
+                              <span className="text-[11px] font-mono text-on-surface-variant">{client.code || `CLI-${client.id}`}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Type & Categorie */}
+                        <td className="px-4 py-3.5">
+                          <div>
+                            <p className="font-semibold text-on-surface">{client.typeTier || 'Entreprise'}</p>
+                            <p className="text-[11px] text-on-surface-variant">{client.categorie || 'PME'}</p>
+                          </div>
+                        </td>
+
+                        {/* Loyalty & Card */}
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[10.5px] font-bold ${
+                              loyalty.tier === 'VIP' ? 'bg-purple-100 text-purple-800' :
+                              loyalty.tier === 'Gold' ? 'bg-amber-100 text-amber-800' :
+                              loyalty.tier === 'Silver' ? 'bg-slate-200 text-slate-800' : 'bg-orange-50 text-orange-800'
+                            }`}>
+                              {loyalty.tier}
+                            </span>
+                            <span className="font-mono text-slate-500 text-[11px]">{loyalty.points} pts</span>
+                          </div>
+                        </td>
+
+                        {/* Contact */}
+                        <td className="px-4 py-3.5">
+                          <div>
+                            <p className="text-on-surface font-medium">{client.telephone}</p>
+                            <p className="text-[11px] text-on-surface-variant truncate max-w-[180px]">{client.email}</p>
+                          </div>
+                        </td>
+
+                        {/* CA */}
+                        <td className="px-4 py-3.5 text-right font-semibold text-on-surface">
+                          {fin.totalFacture.toLocaleString('fr-FR')} DT
+                        </td>
+
+                        {/* Solde Dû */}
+                        <td className={`px-4 py-3.5 text-right font-bold ${fin.soldeDu > 0 ? (isExceeded ? 'text-error' : 'text-amber-600') : 'text-emerald-600'}`}>
+                          {fin.soldeDu.toLocaleString('fr-FR')} DT
+                        </td>
+
+                        {/* Plafond */}
+                        <td className="px-4 py-3.5 text-right text-on-surface-variant">
+                          {(client.plafondCredit || 0).toLocaleString('fr-FR')} DT
+                        </td>
+
+                        {/* Score */}
+                        <td className="px-4 py-3.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                            (client.scoreSolvabilite || 0) >= 85 
+                              ? 'bg-emerald-50 text-emerald-700' 
+                              : 'bg-amber-50 text-amber-700'
+                          }`}>
+                            {client.scoreSolvabilite || 80}%
+                          </span>
+                        </td>
+
+                        {/* Statut */}
+                        <td className="px-4 py-3.5 text-center">
+                          <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                            client.statut === 'Actif'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-surface-container-highest text-on-surface-variant border-outline-variant'
+                          }`}>
+                            {client.statut || 'Actif'}
+                          </span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-4 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {currentUser.role !== 'comptable' && (
+                              <>
+                                <button
+                                  onClick={() => handleOpenPaymentModal(client)}
+                                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg border border-emerald-200 cursor-pointer"
+                                  title="Bouton Paiement (Encaisser)"
+                                >
+                                  <span className="material-symbols-outlined text-[17px]">payments</span>
+                                </button>
+                                <button
+                                  onClick={() => handleOpenCreditModal(client)}
+                                  className="p-1 text-purple-600 hover:bg-purple-50 rounded-lg border border-purple-200 cursor-pointer"
+                                  title="Bouton Crédit (Convention & Échéancier)"
+                                >
+                                  <span className="material-symbols-outlined text-[17px]">calendar_month</span>
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => generateLoyaltyCardPdf(client, currentProject)}
+                              className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg cursor-pointer"
+                              title="Imprimer Carte Fidélité PDF"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">badge</span>
+                            </button>
+                            <button
+                              onClick={() => setSelectedClientDetail(client)}
+                              className="p-1.5 text-primary hover:bg-primary/10 rounded-lg cursor-pointer"
+                              title="Voir la fiche détaillée"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">visibility</span>
+                            </button>
+                            <button
+                              onClick={() => handleExportStatementPdf(client)}
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer"
+                              title="Exporter relevé PDF"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+                            </button>
+                            {currentUser.role !== 'comptable' && (
+                              <>
+                                <button
+                                  onClick={() => handleOpenEditModal(client)}
+                                  className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-lg cursor-pointer"
+                                  title="Modifier"
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">edit</span>
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirmationId(client.id)}
+                                  className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg cursor-pointer"
+                                  title="Supprimer"
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      ) : clientMainTab === 'fidelite_boutique' ? (
+        /* ========================================================================= */
+        /* VUE PROGRAMME FIDÉLITÉ & CARTES BOUTIQUE                                  */
+        /* ========================================================================= */
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Top Loyalty Overview Banner */}
+          <div className="bg-gradient-to-r from-purple-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-purple-800/40">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-300 shrink-0 shadow-inner">
+                  <span className="material-symbols-outlined text-[30px]">card_membership</span>
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg sm:text-xl text-white">Programme de Fidélité Boutique</h3>
+                  <p className="text-xs text-purple-200 mt-0.5">
+                    Attribution de points en caisse (1 DT = 1 point), cartes physiques scannables & remises VIP automatiques
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickBoutiqueModalOpen(true)}
+                  className="px-4 py-2.5 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[18px]">person_add</span>
+                  <span>Adhérer Nouveau Membre ⚡</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Loyalty Tiers Legend */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-purple-800/50">
+              <div className="bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-white/10">
+                <span className="text-[10px] font-bold text-orange-300 uppercase tracking-wider block">🥉 Bronze (0 - 200 pts)</span>
+                <span className="text-xs font-semibold text-white mt-0.5 block">Tarif Standard</span>
+              </div>
+              <div className="bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-white/10">
+                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">🥈 Silver (201 - 500 pts)</span>
+                <span className="text-xs font-bold text-slate-200 mt-0.5 block">-3% Remise Immédiate</span>
+              </div>
+              <div className="bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-white/10">
+                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block">🥇 Gold (501 - 1000 pts)</span>
+                <span className="text-xs font-bold text-amber-300 mt-0.5 block">-5% Remise Immédiate</span>
+              </div>
+              <div className="bg-purple-600/30 backdrop-blur-sm p-3 rounded-xl border border-purple-400/30">
+                <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">💎 VIP (&gt; 1000 pts)</span>
+                <span className="text-xs font-black text-purple-200 mt-0.5 block">-10% Remise Immédiate</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Loyalty Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredClients.map(client => {
+              const loyalty = getClientLoyalty(client);
+              const fin = getClientFinancials(client.id);
+
+              return (
+                <div 
+                  key={client.id}
+                  className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-md hover:shadow-xl transition-all flex flex-col justify-between"
+                >
+                  {/* Visual Loyalty Card Header */}
+                  <div className={`p-5 text-white relative overflow-hidden ${
+                    loyalty.tier === 'VIP' ? 'bg-gradient-to-br from-purple-900 via-indigo-900 to-slate-900' :
+                    loyalty.tier === 'Gold' ? 'bg-gradient-to-br from-amber-700 via-amber-800 to-slate-900' :
+                    loyalty.tier === 'Silver' ? 'bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900' :
+                    'bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950'
+                  }`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-white/80">
+                        {currentProject?.nom || 'Boutique Officielle'}
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                        loyalty.tier === 'VIP' ? 'bg-purple-500/30 text-purple-200 border-purple-400/40' :
+                        loyalty.tier === 'Gold' ? 'bg-amber-400/30 text-amber-200 border-amber-300/40' :
+                        loyalty.tier === 'Silver' ? 'bg-slate-300/20 text-slate-200 border-slate-300/40' :
+                        'bg-orange-500/20 text-orange-200 border-orange-400/30'
+                      }`}>
+                        {loyalty.tier === 'VIP' ? '💎 VIP' : loyalty.tier === 'Gold' ? '🥇 Gold' : loyalty.tier === 'Silver' ? '🥈 Silver' : '🥉 Bronze'}
+                      </span>
+                    </div>
+
+                    <h4 className="text-base font-black text-white truncate">{client.nom}</h4>
+                    <p className="text-[11px] text-white/70 font-mono mt-0.5">{loyalty.carteNumero}</p>
+
+                    <div className="mt-4 flex items-end justify-between">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-white/60 block">Solde Actuel</span>
+                        <span className="text-xl font-black font-mono text-amber-300">{loyalty.points} <span className="text-xs font-bold text-white">pts</span></span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] uppercase font-bold text-white/60 block">Avantage Caisse</span>
+                        <span className="text-xs font-bold text-emerald-300">
+                          {loyalty.discount > 0 ? `-${loyalty.discount}% de réduction` : 'Cumul de points'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress to next tier */}
+                    <div className="mt-3 pt-2 border-t border-white/10">
+                      <div className="flex justify-between text-[9.5px] text-white/70 mb-1 font-medium">
+                        <span>Palier {loyalty.nextTierName}</span>
+                        <span>{loyalty.points} / {loyalty.nextTierPoints} pts</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-amber-400 rounded-full transition-all"
+                          style={{ width: `${loyalty.progressPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Body details */}
+                  <div className="p-4 space-y-3 text-xs bg-slate-50 flex-1">
+                    <div className="grid grid-cols-2 gap-2 bg-white p-3 rounded-2xl border border-slate-200 text-[11px]">
+                      <div>
+                        <span className="text-slate-400 uppercase text-[9.5px] font-bold block">Passages Caisse</span>
+                        <span className="font-bold text-slate-800 text-xs">{loyalty.passagesCount} visite(s)</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase text-[9.5px] font-bold block">Total Achats</span>
+                        <span className="font-bold text-slate-800 text-xs">{fin.totalFacture.toFixed(3)} DT</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-slate-600 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span>Téléphone :</span>
+                        <span className="font-bold text-slate-900 font-mono">{client.telephone || 'Non renseigné'}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Solde Créance / Dette :</span>
+                        <span className={`font-bold font-mono ${fin.soldeDu > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {fin.soldeDu > 0 ? `${fin.soldeDu.toFixed(3)} DT` : 'À jour (0 DT)'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Actions Footer */}
+                  <div className="p-3 bg-white border-t border-slate-100 flex items-center justify-between gap-1.5">
                     <button
-                      onClick={() => setSelectedClientDetail(client)}
-                      className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
-                      title="Voir la fiche complète & relevé"
+                      type="button"
+                      onClick={() => generateLoyaltyCardPdf(client, currentProject)}
+                      className="flex-1 py-2 px-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 border border-purple-200 cursor-pointer"
+                      title="Imprimer Carte de Fidélité Badge PDF"
                     >
-                      <span className="material-symbols-outlined text-[18px]">visibility</span>
+                      <span className="material-symbols-outlined text-[16px]">badge</span>
+                      <span>Imprimer Carte</span>
                     </button>
 
                     <button
-                      onClick={() => handleExportStatementPdf(client)}
-                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                      title="Télécharger le relevé de compte en PDF"
+                      type="button"
+                      onClick={() => {
+                        setPointsAdjustClient(client);
+                        setPointsAdjustValue(loyalty.points);
+                      }}
+                      className="py-2 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                      title="Ajuster les points manuellement"
                     >
-                      <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+                      <span className="material-symbols-outlined text-[16px]">edit_note</span>
+                      <span>Points</span>
                     </button>
 
-                    {currentUser.role !== 'comptable' && (
-                      <>
-                        <button
-                          onClick={() => handleOpenEditModal(client)}
-                          className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
-                          title="Modifier ce client"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">edit</span>
-                        </button>
-
-                        <button
-                          onClick={() => setDeleteConfirmationId(client.id)}
-                          className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors cursor-pointer"
-                          title="Supprimer ce client"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">delete</span>
-                        </button>
-                      </>
+                    {client.telephone && (
+                      <a
+                        href={`https://wa.me/216${client.telephone.replace(/\D/g, '')}?text=${encodeURIComponent(`Cher(e) ${client.nom}, vous avez actuellement ${loyalty.points} points de fidélité (${loyalty.tier}) chez ${currentProject?.nom || 'notre boutique'}. Profitez de vos remises exclusives lors de votre prochain passage !`)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="py-2 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl transition-all flex items-center gap-1 border border-emerald-200"
+                        title="Envoyer notification WhatsApp de points"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">chat</span>
+                      </a>
                     )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       ) : (
-        /* TABLE VIEW */
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-xs">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs whitespace-nowrap">
-              <thead className="bg-surface-container-low border-b border-outline-variant text-on-surface-variant uppercase font-bold tracking-wider">
-                <tr>
-                  <th className="px-4 py-3.5">Code & Raison Sociale</th>
-                  <th className="px-4 py-3.5">Type & Catégorie</th>
-                  <th className="px-4 py-3.5">Coordonnées</th>
-                  <th className="px-4 py-3.5 text-right">CA Réalisé</th>
-                  <th className="px-4 py-3.5 text-right">Solde Dû</th>
-                  <th className="px-4 py-3.5 text-right">Plafond Crédit</th>
-                  <th className="px-4 py-3.5 text-center">Score</th>
-                  <th className="px-4 py-3.5 text-center">Statut</th>
-                  <th className="px-4 py-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/60 font-body-md text-on-surface">
-                {filteredClients.map((client) => {
-                  const fin = getClientFinancials(client.id);
-                  const isExceeded = client.plafondCredit ? fin.soldeDu > client.plafondCredit : false;
+        /* ========================================================================= */
+        /* VUE CARNET DE DETTES & CRÉDITS COMPTOIR                                   */
+        /* ========================================================================= */
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-slate-900 rounded-2xl p-6 text-white shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-white shrink-0">
+                  <span className="material-symbols-outlined text-[30px]">menu_book</span>
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg sm:text-xl text-white">Carnet de Dettes & Crédits Comptoir</h3>
+                  <p className="text-xs text-amber-100 mt-0.5">
+                    Suivi précis des facilités de paiement accordées, ardoises boutique et règlements différés
+                  </p>
+                </div>
+              </div>
 
-                  return (
-                    <tr key={client.id} className="hover:bg-surface-container-low/50 transition-colors">
-                      {/* Name & Code */}
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-surface-container text-primary font-bold flex items-center justify-center shrink-0">
-                            {client.nom.charAt(0)}
-                          </div>
-                          <div>
-                            <button 
-                              onClick={() => setSelectedClientDetail(client)}
-                              className="font-bold text-on-surface hover:text-primary text-left truncate max-w-[200px] block"
-                            >
-                              {client.nom}
-                            </button>
-                            <span className="text-[11px] font-mono text-on-surface-variant">{client.code || `CLI-${client.id}`}</span>
-                          </div>
-                        </div>
-                      </td>
+              <div className="flex items-center gap-3">
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 px-5 border border-white/20 text-right">
+                  <span className="text-[10px] uppercase font-bold text-amber-200 block">Total Créances Boutique</span>
+                  <span className="text-xl sm:text-2xl font-black font-mono text-white">
+                    {filteredClients.reduce((sum, c) => sum + getClientFinancials(c.id).soldeDu, 0).toFixed(3)} DT
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenCreditModal()}
+                  className="px-4 py-3 bg-white hover:bg-amber-50 text-amber-900 font-black text-xs rounded-2xl shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Enregistrer un nouveau crédit ou échéancier pour un client"
+                >
+                  <span className="material-symbols-outlined text-[18px]">calendar_month</span>
+                  <span>Enregistrer un Crédit 📝</span>
+                </button>
+              </div>
+            </div>
+          </div>
 
-                      {/* Type & Categorie */}
-                      <td className="px-4 py-3.5">
-                        <div>
-                          <p className="font-semibold text-on-surface">{client.typeTier || 'Entreprise'}</p>
-                          <p className="text-[11px] text-on-surface-variant">{client.categorie || 'PME'}</p>
-                        </div>
-                      </td>
+          {/* Dettes Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3.5">Client & Contact</th>
+                    <th className="px-4 py-3.5">Boutique Rattachée</th>
+                    <th className="px-4 py-3.5 text-right">Solde Dû (Ardoise)</th>
+                    <th className="px-4 py-3.5 text-right">Plafond Crédit</th>
+                    <th className="px-4 py-3.5 text-center">Factures Impayées</th>
+                    <th className="px-4 py-3.5 text-right">Actions Directes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredClients
+                    .filter(c => getClientFinancials(c.id).soldeDu > 0)
+                    .map(client => {
+                      const fin = getClientFinancials(client.id);
+                      const isExceeded = client.plafondCredit ? fin.soldeDu > client.plafondCredit : false;
+                      const clientProject = projets.find(p => p.id === client.projetId);
 
-                      {/* Contact */}
-                      <td className="px-4 py-3.5">
-                        <div>
-                          <p className="text-on-surface font-medium">{client.telephone}</p>
-                          <p className="text-[11px] text-on-surface-variant truncate max-w-[180px]">{client.email}</p>
-                        </div>
-                      </td>
+                      return (
+                        <tr key={client.id} className="hover:bg-amber-50/40 transition-colors">
+                          <td className="px-4 py-3.5">
+                            <div className="font-bold text-slate-900">{client.nom}</div>
+                            <div className="text-[11px] text-slate-500 font-mono">{client.telephone}</div>
+                          </td>
 
-                      {/* CA */}
-                      <td className="px-4 py-3.5 text-right font-semibold text-on-surface">
-                        {fin.totalFacture.toLocaleString('fr-FR')} DT
-                      </td>
+                          <td className="px-4 py-3.5">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] font-medium">
+                              {clientProject?.nom || 'Boutique Principale'}
+                            </span>
+                          </td>
 
-                      {/* Solde Dû */}
-                      <td className={`px-4 py-3.5 text-right font-bold ${fin.soldeDu > 0 ? (isExceeded ? 'text-error' : 'text-amber-600') : 'text-emerald-600'}`}>
-                        {fin.soldeDu.toLocaleString('fr-FR')} DT
-                      </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <span className="text-sm font-black font-mono text-rose-600">
+                              {fin.soldeDu.toFixed(3)} DT
+                            </span>
+                          </td>
 
-                      {/* Plafond */}
-                      <td className="px-4 py-3.5 text-right text-on-surface-variant">
-                        {(client.plafondCredit || 0).toLocaleString('fr-FR')} DT
-                      </td>
+                          <td className="px-4 py-3.5 text-right font-mono text-slate-700">
+                            {(client.plafondCredit || 0).toFixed(3)} DT
+                            {isExceeded && (
+                              <span className="block text-[10px] font-bold text-rose-600 uppercase">Dépassement !</span>
+                            )}
+                          </td>
 
-                      {/* Score */}
-                      <td className="px-4 py-3.5 text-center">
-                        <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
-                          (client.scoreSolvabilite || 0) >= 85 
-                            ? 'bg-emerald-50 text-emerald-700' 
-                            : 'bg-amber-50 text-amber-700'
-                        }`}>
-                          {client.scoreSolvabilite || 80}%
-                        </span>
-                      </td>
+                          <td className="px-4 py-3.5 text-center">
+                            <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full font-bold text-[11px]">
+                              {fin.facturesEnAttente} pièce(s)
+                            </span>
+                          </td>
 
-                      {/* Statut */}
-                      <td className="px-4 py-3.5 text-center">
-                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                          client.statut === 'Actif'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-surface-container-highest text-on-surface-variant border-outline-variant'
-                        }`}>
-                          {client.statut || 'Actif'}
-                        </span>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-4 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {currentUser.role !== 'comptable' && (
-                            <>
+                          <td className="px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
+                                type="button"
                                 onClick={() => handleOpenPaymentModal(client)}
-                                className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg border border-emerald-200 cursor-pointer"
-                                title="Bouton Paiement (Encaisser)"
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-sm transition-all flex items-center gap-1 cursor-pointer"
+                                title="Encaisser un règlement direct"
                               >
-                                <span className="material-symbols-outlined text-[17px]">payments</span>
+                                <span className="material-symbols-outlined text-[15px]">payments</span>
+                                <span>Encaisser</span>
                               </button>
+
+                              {client.telephone && (
+                                <a
+                                  href={`https://wa.me/216${client.telephone.replace(/\D/g, '')}?text=${encodeURIComponent(`Bonjour ${client.nom}, nous vous rappelons que votre solde restant dû chez ${currentProject?.nom || 'notre boutique'} est de ${fin.soldeDu.toFixed(3)} DT. Merci de bien vouloir régulariser votre compte à votre convenance.`)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 transition-colors"
+                                  title="Envoyer rappel WhatsApp avec le montant dû"
+                                >
+                                  <span className="material-symbols-outlined text-[17px]">chat</span>
+                                </a>
+                              )}
+
                               <button
-                                onClick={() => handleOpenCreditModal(client)}
-                                className="p-1 text-purple-600 hover:bg-purple-50 rounded-lg border border-purple-200 cursor-pointer"
-                                title="Bouton Crédit (Convention & Échéancier)"
+                                type="button"
+                                onClick={() => handleExportStatementPdf(client)}
+                                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer"
+                                title="Générer relevé de compte officiel (PDF)"
                               >
-                                <span className="material-symbols-outlined text-[17px]">calendar_month</span>
+                                <span className="material-symbols-outlined text-[17px]">picture_as_pdf</span>
                               </button>
-                            </>
-                          )}
-                          <button
-                            onClick={() => setSelectedClientDetail(client)}
-                            className="p-1.5 text-primary hover:bg-primary/10 rounded-lg cursor-pointer"
-                            title="Voir la fiche détaillée"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">visibility</span>
-                          </button>
-                          <button
-                            onClick={() => handleExportStatementPdf(client)}
-                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer"
-                            title="Exporter relevé PDF"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-                          </button>
-                          {currentUser.role !== 'comptable' && (
-                            <>
-                              <button
-                                onClick={() => handleOpenEditModal(client)}
-                                className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-lg cursor-pointer"
-                                title="Modifier"
-                              >
-                                <span className="material-symbols-outlined text-[18px]">edit</span>
-                              </button>
-                              <button
-                                onClick={() => setDeleteConfirmationId(client.id)}
-                                className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg cursor-pointer"
-                                title="Supprimer"
-                              >
-                                <span className="material-symbols-outlined text-[18px]">delete</span>
-                              </button>
-                            </>
-                          )}
-                        </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                  {filteredClients.filter(c => getClientFinancials(c.id).soldeDu > 0).length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-slate-400">
+                        <span className="material-symbols-outlined text-[40px] text-emerald-400">check_circle</span>
+                        <p className="text-xs font-bold text-slate-600 mt-2">Tous les comptes clients sont à jour ! Aucune dette en cours.</p>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
+
 
       {/* Empty State */}
       {filteredClients.length === 0 && (
@@ -1914,10 +2460,10 @@ export function Clients({ currentUser,
                       setSelectedClientDetail(null);
                       handleOpenCreditModal(client);
                     }}
-                    className="px-3.5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
+                    className="px-3.5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-                    Bouton Crédit
+                    Enregistrer un Crédit
                   </button>
 
                   <button
@@ -2351,6 +2897,181 @@ export function Clients({ currentUser,
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL : NOUVEAU MEMBRE BOUTIQUE (FIDÉLITÉ RAPIDE)                         */}
+      {/* ========================================================================= */}
+      {isQuickBoutiqueModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 my-8">
+            <div className="p-5 border-b border-outline-variant bg-gradient-to-r from-purple-900 to-indigo-950 text-white flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-purple-300">
+                  <span className="material-symbols-outlined text-[24px]">card_membership</span>
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">Adhésion Nouveau Membre Boutique ⚡</h3>
+                  <p className="text-xs text-purple-200">Enrôlement rapide & attribution de points fidélité initiaux</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsQuickBoutiqueModalOpen(false)}
+                className="text-white/80 hover:text-white transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateQuickBoutiqueClient}>
+              <div className="p-6 space-y-4 text-xs">
+                <div>
+                  <label className="font-bold text-on-surface mb-1.5 block">Nom complet / Raison Sociale *</label>
+                  <input
+                    type="text"
+                    required
+                    value={quickNom}
+                    onChange={(e) => setQuickNom(e.target.value)}
+                    placeholder="Ex: Mohamed Ben Salah"
+                    className="w-full p-3 border border-outline-variant rounded-xl text-sm bg-surface-container-lowest focus:ring-2 focus:ring-purple-600 outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-on-surface mb-1.5 block">Téléphone / WhatsApp</label>
+                    <input
+                      type="tel"
+                      value={quickTel}
+                      onChange={(e) => setQuickTel(e.target.value)}
+                      placeholder="Ex: +216 98 000 000"
+                      className="w-full p-3 border border-outline-variant rounded-xl text-xs bg-surface-container-lowest focus:ring-2 focus:ring-purple-600 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-on-surface mb-1.5 block">Type de Client</label>
+                    <select
+                      value={quickType}
+                      onChange={(e) => setQuickType(e.target.value as any)}
+                      className="w-full p-3 border border-outline-variant rounded-xl text-xs bg-surface-container-lowest focus:ring-2 focus:ring-purple-600 outline-none"
+                    >
+                      <option value="Particulier">Particulier (B2C)</option>
+                      <option value="Entreprise">Entreprise (B2B)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-on-surface mb-1.5 block">Email (Optionnel)</label>
+                  <input
+                    type="email"
+                    value={quickEmail}
+                    onChange={(e) => setQuickEmail(e.target.value)}
+                    placeholder="Ex: client@email.com"
+                    className="w-full p-3 border border-outline-variant rounded-xl text-xs bg-surface-container-lowest focus:ring-2 focus:ring-purple-600 outline-none"
+                  />
+                </div>
+
+                <div className="bg-purple-50 border border-purple-200 p-4 rounded-2xl">
+                  <label className="font-bold text-purple-900 mb-1.5 block">Points Fidélité Initiaux (Offerts à l'inscription)</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="0"
+                      step="10"
+                      value={quickPoints}
+                      onChange={(e) => setQuickPoints(Number(e.target.value))}
+                      className="w-32 p-3 border border-purple-300 rounded-xl text-sm font-black text-purple-900 bg-white outline-none"
+                    />
+                    <div className="text-purple-700 text-[11px] font-medium">
+                      💡 50 points offerts par défaut. Un badge de fidélité numérique avec QR Code sera généré instantanément.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-outline-variant bg-surface-container-low flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickBoutiqueModalOpen(false)}
+                  className="px-4 py-2 text-xs font-medium text-on-surface-variant hover:bg-surface-container-high rounded-xl cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 text-xs font-black text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">card_membership</span>
+                  Enrôler & Créer la Carte Boutique
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL : AJUSTEMENT MANUEL DE POINTS DE FIDÉLITÉ                           */}
+      {/* ========================================================================= */}
+      {pointsAdjustClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-600 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[26px]">edit_note</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-on-surface">Ajustement Points Fidélité</h3>
+                <p className="text-xs text-on-surface-variant">Client : {pointsAdjustClient.nom}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-xs mb-6">
+              <div className="bg-surface-container-low p-3 rounded-xl flex justify-between items-center">
+                <span className="font-medium text-on-surface-variant">Solde Actuel :</span>
+                <span className="font-black text-purple-700 text-sm font-mono">{getClientLoyalty(pointsAdjustClient).points} points</span>
+              </div>
+
+              <div>
+                <label className="font-bold text-on-surface mb-1.5 block">Nouveau Solde de Points *</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={pointsAdjustValue}
+                  onChange={(e) => setPointsAdjustValue(Number(e.target.value))}
+                  className="w-full p-3 border border-outline-variant rounded-xl text-sm font-bold text-on-surface bg-surface-container-lowest focus:ring-2 focus:ring-purple-600 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-on-surface mb-1.5 block">Motif de l'ajustement</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Geste commercial, Correction caisse, Bonus..."
+                  className="w-full p-3 border border-outline-variant rounded-xl text-xs bg-surface-container-lowest outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPointsAdjustClient(null)}
+                className="px-4 py-2 text-xs font-bold text-on-surface-variant hover:bg-surface-container-high rounded-xl cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmAdjustPoints(pointsAdjustClient, pointsAdjustValue)}
+                className="px-5 py-2.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-md cursor-pointer"
+              >
+                Enregistrer l'Ajustement
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -63,7 +63,8 @@ export function Sidebar({
         {
           title: 'DOCUMENTS COMMERCIAUX & CONTRÔLE',
           items: [
-            { id: 'ventes', label: 'Factures & Tickets (POS)', icon: 'assignment' },
+            { id: 'factures', label: 'Factures de Vente', icon: 'receipt_long' },
+            { id: 'devis', label: 'Devis & Proformas', icon: 'request_quote' },
             { id: 'livraisons', label: 'Bons de Livraison (BL)', icon: 'local_shipping' },
             { id: 'bons_sortie', label: 'Bons de Sortie (BS)', icon: 'output' },
             { id: 'bons_achat', label: 'Bons d\'Achat (BA)', icon: 'shopping_bag' }
@@ -96,9 +97,12 @@ export function Sidebar({
     // --- ARCHITECTURE : RÔLE CAISSIER ---
     if (currentUser?.role === 'caissier') {
       sections = [
-        { title: 'TERMINAL DE VENTE (POS)', items: [{ id: 'caisse', label: 'Caisse & Vente Directe', icon: 'point_of_sale' }] },
+        { title: 'TERMINAL DE VENTE (POS)', items: [
+          { id: 'caisse', label: 'Caisse & Vente Directe', icon: 'point_of_sale' },
+          { id: 'retours', label: 'Gestion des Retours', icon: 'assignment_return' }
+        ] },
         { title: 'CONSULTATION BOUTIQUE', items: [
-          { id: 'ventes', label: 'Historique des Ventes', icon: 'receipt_long' },
+          { id: 'ventes', label: 'Historique Ventes (Tickets)', icon: 'receipt_long' },
           { id: 'stock', label: 'Disponibilité du Stock', icon: 'warehouse' },
           { id: 'clients', label: 'Clients Boutique', icon: 'groups' },
           { id: 'credits', label: 'Carnet de Crédit', icon: 'account_balance_wallet' }
@@ -107,13 +111,15 @@ export function Sidebar({
     }
     // --- ARCHITECTURE : Société UGS (Dépôt Central) ---
     // According to the new simplified setup, the admin only manages wholesale (distribution to boutiques).
-    // No POS (Caisse), only factures, bons de livraison, bons de sortie, bons d'achat, stock.
+    // No POS (Caisse), only factures, devis, bons de livraison, bons de sortie, bons d'achat, stock.
     else if (selectedProjectId === '1' || currentUser?.role === 'admin') {
       sections = [
         { title: 'TABLEAU DE BORD', items: [{ id: 'dashboard', label: 'Vue générale', icon: 'dashboard' }] },
         { title: 'DOCUMENTS COMMERCIAUX', items: [
-          { id: 'ventes', label: 'Factures & Devis', icon: 'assignment' },
+          { id: 'factures', label: 'Factures', icon: 'receipt_long' },
+          { id: 'devis', label: 'Devis', icon: 'request_quote' },
           { id: 'livraisons', label: 'Bons de Livraison (BL)', icon: 'local_shipping' },
+          { id: 'retours', label: 'Retours Marchandise & Avoirs', icon: 'assignment_return' },
           { id: 'bons_sortie', label: 'Bons de Sortie (BS)', icon: 'output' },
           { id: 'bons_achat', label: 'Bons d\'Achat (BA)', icon: 'shopping_bag' }
         ] },
@@ -130,9 +136,16 @@ export function Sidebar({
     // --- ARCHITECTURE : BOUTIQUES ---
     else if (selectedProjectId !== '1' && selectedProjectId !== 'all') {
       sections = [
-        { title: 'TERMINAL DE VENTE (POS)', items: [{ id: 'caisse', label: 'Caisse & Encaissement', icon: 'point_of_sale' }] },
+        { title: 'TERMINAL DE VENTE (POS)', items: [
+          { id: 'caisse', label: 'Caisse & Encaissement', icon: 'point_of_sale' },
+          { id: 'retours', label: 'Gestion des Retours', icon: 'assignment_return' }
+        ] },
         { title: 'PILOTAGE BOUTIQUE', items: [{ id: 'dashboard', label: 'Synthèse', icon: 'dashboard' }] },
-        { title: 'VENTES BOUTIQUE', items: [{ id: 'ventes', label: 'Historique des Ventes', icon: 'receipt_long' }] },
+        { title: 'VENTES BOUTIQUE', items: [
+          { id: 'ventes', label: 'Historique des Ventes', icon: 'receipt_long' },
+          { id: 'factures', label: 'Factures', icon: 'description' },
+          { id: 'devis', label: 'Devis', icon: 'request_quote' }
+        ] },
         { title: 'RAYONS & STOCK', items: [{ id: 'stock', label: 'Produits & Stock', icon: 'warehouse' }] },
         { title: 'CLIENTS', items: [{ id: 'clients', label: 'Comptes Clients', icon: 'groups' }, { id: 'credits', label: 'Carnet de Crédit', icon: 'account_balance_wallet' }] },
       ];
@@ -142,8 +155,10 @@ export function Sidebar({
       sections = [
         { title: 'TABLEAU DE BORD', items: [{ id: 'dashboard', label: 'Vue générale', icon: 'dashboard' }] },
         { title: 'DOCUMENTS COMMERCIAUX', items: [
-          { id: 'ventes', label: 'Factures & Devis', icon: 'assignment' },
+          { id: 'factures', label: 'Factures', icon: 'receipt_long' },
+          { id: 'devis', label: 'Devis', icon: 'request_quote' },
           { id: 'livraisons', label: 'Bons de Livraison (BL)', icon: 'local_shipping' },
+          { id: 'retours', label: 'Retours de Vente & Avoirs', icon: 'assignment_return' },
           { id: 'bons_sortie', label: 'Bons de Sortie (BS)', icon: 'output' },
           { id: 'bons_achat', label: 'Commandes d\'Achat (BA)', icon: 'shopping_bag' }
         ] },

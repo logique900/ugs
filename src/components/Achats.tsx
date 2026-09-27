@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {  Achat, Fournisseur, Article, Projet, LigneAchat, Reglement , Utilisateur, MouvementStock } from '../types';
 import { generatePurchaseOrderPdf } from '../utils/pdfExportEngine';
+import { generateNextDocNumber } from '../utils/numbering';
 import { getArticleStock, updateArticleStock } from '../utils/stockUtils';
 
 interface AchatsProps {
@@ -241,9 +242,7 @@ export function Achats({
     if (!newSupplierId || newLines.length === 0) return;
 
     const supplier = scopedFournisseurs.find(f => f.id === newSupplierId);
-    const year = new Date().getFullYear();
-    const count = achats.length + 1;
-    const numero = `BC-${year}-${count.toString().padStart(4, '0')}`;
+    const numero = generateNextDocNumber('ACH', achats.map(a => a.numero), newDate);
 
     const newAchat: Achat = {
       id: `a-${Date.now()}`,

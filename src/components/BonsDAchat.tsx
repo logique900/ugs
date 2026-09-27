@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { BonDAchat, StatutBA, LigneBA, Fournisseur, Article, StockOperation, Projet, Utilisateur, AuditLog } from '../types';
 import { Barcode1D } from './Barcode1D';
+import { generatePurchaseOrderPdf } from '../utils/pdfExportEngine';
+import { generateNextDocNumber } from '../utils/numbering';
 
 interface BonsDAchatProps {
   bonsDAchat: BonDAchat[];
@@ -143,9 +145,7 @@ export default function BonsDAchat({
     const fourn = fournisseurs.find(f => f.id === newFournisseurId);
     const proj = projets.find(p => p.id === newProjetId);
 
-    const numIndex = bonsDAchat.length + 1;
-    const numPadded = String(numIndex).padStart(6, '0');
-    const newNumero = `BA-2026-${numPadded}`;
+    const newNumero = generateNextDocNumber('BA', bonsDAchat.map(b => b.numero));
 
     const newBA: BonDAchat = {
       id: `ba-${Date.now()}`,
@@ -597,12 +597,26 @@ export default function BonsDAchat({
 
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* Voir / Détails */}
                           <button
                             onClick={() => { setSelectedBA(ba); setIsDetailModalOpen(true); }}
                             className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                            title="Voir & Imprimer BA"
+                            title="Voir le détail du document"
                           >
                             <span className="material-symbols-outlined text-[18px]">visibility</span>
+                          </button>
+
+                          {/* Imprimer Directement PDF (sans aperçu modal) */}
+                          <button
+                            onClick={() => {
+                              const fournisseur = fournisseurs.find(f => f.id === ba.fournisseurId);
+                              const projet = projets.find(p => p.id === ba.projetId) || projets[0];
+                              generatePurchaseOrderPdf(ba as any, fournisseur, projet);
+                            }}
+                            className="p-1.5 text-blue-600 hover:text-white hover:bg-blue-600 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                            title="Imprimer / Télécharger PDF A4 Directement"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">print</span>
                           </button>
 
                           {currentUser.role !== 'comptable' && ba.statut !== 'RÉCEPTIONNÉ' && ba.statut !== 'ANNULÉ' && (

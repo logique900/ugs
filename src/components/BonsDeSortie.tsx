@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { BonDeSortie, StatutBS, MotifSortieBS, LigneBS, Article, StockOperation, Projet, Utilisateur, AuditLog } from '../types';
 import { Barcode1D } from './Barcode1D';
 import { CameraBarcodeScannerModal } from './CameraBarcodeScannerModal';
+import { generateStockExitPdf } from '../utils/pdfExportEngine';
+import { generateNextDocNumber } from '../utils/numbering';
 
 function SearchableArticleSelect({ 
   articles, 
@@ -304,9 +306,8 @@ export default function BonsDeSortie({
     }
 
     const proj = projets.find(p => p.id === newProjetId);
-    const numIndex = bonsDeSortie.length + 1;
     const prefix = forceMotif === 'Transfert' ? 'TR' : 'BS';
-    const newNumero = `${prefix}-2026-${String(numIndex).padStart(6, '0')}`;
+    const newNumero = generateNextDocNumber(prefix, bonsDeSortie.map(b => b.numero));
 
     const newBS: BonDeSortie = {
       id: `bs-${Date.now()}`,
@@ -515,37 +516,33 @@ export default function BonsDeSortie({
     <div className="space-y-6 pb-12 animate-in fade-in duration-300">
       
       {/* Header Banner */}
-      <div className="bg-zinc-950 rounded-xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden border border-purple-800/30">
-        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 rounded-full bg-purple-500/10 blur-3xl pointer-events-none"></div>
+      <div className="bg-gradient-to-r from-slate-950 via-indigo-950 to-purple-950 rounded-3xl p-6 sm:p-8 text-white shadow-2xl relative overflow-hidden border border-purple-500/20">
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-80 h-80 rounded-full bg-purple-500/15 blur-3xl pointer-events-none"></div>
+        <div className="absolute bottom-0 left-1/3 -mb-10 w-60 h-60 rounded-full bg-indigo-500/10 blur-2xl pointer-events-none"></div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-500/20 backdrop-blur-md rounded-full text-purple-200 text-xs font-bold tracking-wide border border-purple-400/30">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-purple-500/25 backdrop-blur-md rounded-full text-purple-200 text-xs font-extrabold tracking-wide border border-purple-400/40 shadow-xs">
               <span className="material-symbols-outlined text-[16px]">{forceMotif === 'Transfert' ? 'swap_horiz' : 'output'}</span>
               Gestion Interne ERP Management
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
               {forceMotif === 'Transfert' ? 'Transferts UGS ➔ Boutiques' : 'Bons de Sortie de Stock (BS)'}
             </h1>
+            <p className="text-xs text-purple-200 font-medium">
+              Pilotez les flux logistiques et réapprovisionnements multi-sites en temps réel avec traçabilité complète.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
-            <button
-              onClick={() => setShowComparison(!showComparison)}
-              className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl transition-all border border-white/20 flex items-center gap-1.5 cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[18px]">compare_arrows</span>
-              Différence BL vs BS
-            </button>
-
             {currentUser.role === 'comptable' ? (
-              <div className="flex items-center gap-2 px-4 py-2.5 bg-purple-500/20 backdrop-blur-md rounded-xl text-purple-200 text-xs font-bold border border-purple-400/30">
+              <div className="flex items-center gap-2 px-4 py-3 bg-purple-500/20 backdrop-blur-md rounded-2xl text-purple-200 text-xs font-bold border border-purple-400/30">
                 <span className="material-symbols-outlined text-[18px] text-purple-300">verified</span>
                 <span>Mode Audit & Contrôle Sorties Internes</span>
               </div>
             ) : (
               <button
                 onClick={handleOpenNewModal}
-                className="px-5 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 cursor-pointer transform active:scale-95"
+                className="px-6 py-3.5 bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-xl shadow-purple-600/30 transition-all flex items-center gap-2 cursor-pointer transform active:scale-95 border border-purple-400/30"
               >
                 <span className="material-symbols-outlined text-[20px]">{forceMotif === 'Transfert' ? 'swap_horiz' : 'add_circle'}</span>
                 {forceMotif === 'Transfert' ? 'Nouveau Transfert' : 'Nouveau Bon de Sortie (BS)'}
@@ -555,38 +552,64 @@ export default function BonsDeSortie({
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards (Advanced Design) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
-          <div className="flex justify-between items-start text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">{forceMotif === 'Transfert' ? 'Total Transferts' : 'Total BS Émis'}</span>
-            <span className="material-symbols-outlined text-[18px] text-purple-400">{forceMotif === 'Transfert' ? 'swap_horiz' : 'outbox'}</span>
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-purple-600"></div>
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                {forceMotif === 'Transfert' ? 'Total Transferts' : 'Total BS Émis'}
+              </span>
+              <p className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono">{filteredBS.length}</p>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold shadow-xs group-hover:scale-110 transition-transform">
+              <span className="material-symbols-outlined text-[20px]">{forceMotif === 'Transfert' ? 'swap_horiz' : 'outbox'}</span>
+            </div>
           </div>
-          <p className="text-2xl font-bold text-white mt-2">{filteredBS.length}</p>
         </div>
 
-        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
-          <div className="flex justify-between items-start text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Articles {forceMotif === 'Transfert' ? 'Transférés' : 'Sortis'}</span>
-            <span className="material-symbols-outlined text-[18px] text-indigo-400">inventory_2</span>
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-600"></div>
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                Articles {forceMotif === 'Transfert' ? 'Transférés' : 'Sortis'}
+              </span>
+              <p className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono">
+                {filteredBS.reduce((acc, bs) => acc + bs.lignes.reduce((sum, l) => sum + l.qteDemandee, 0), 0)}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shadow-xs group-hover:scale-110 transition-transform">
+              <span className="material-symbols-outlined text-[20px]">inventory_2</span>
+            </div>
           </div>
-          <p className="text-2xl font-bold text-white mt-2">{filteredBS.reduce((acc, bs) => acc + bs.lignes.reduce((sum, l) => sum + l.qteDemandee, 0), 0)}</p>
         </div>
 
-        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
-          <div className="flex justify-between items-start text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Transports Internes</span>
-            <span className="material-symbols-outlined text-[18px] text-amber-400">local_shipping</span>
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500"></div>
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">Transports Internes</span>
+              <p className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono">{filteredBS.filter(bs => bs.motif === 'Transfert').length}</p>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shadow-xs group-hover:scale-110 transition-transform">
+              <span className="material-symbols-outlined text-[20px]">local_shipping</span>
+            </div>
           </div>
-          <p className="text-2xl font-bold text-white mt-2">{filteredBS.filter(bs => bs.motif === 'Transfert').length}</p>
         </div>
 
-        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 border border-slate-700/60">
-          <div className="flex justify-between items-start text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Sorties Validées</span>
-            <span className="material-symbols-outlined text-[18px] text-emerald-400">verified</span>
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-600"></div>
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">Sorties Validées</span>
+              <p className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono">{filteredBS.filter(bs => bs.statut === 'VALIDÉ').length}</p>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shadow-xs group-hover:scale-110 transition-transform">
+              <span className="material-symbols-outlined text-[20px]">verified</span>
+            </div>
           </div>
-          <p className="text-2xl font-bold text-white mt-2">{filteredBS.filter(bs => bs.statut === 'VALIDÉ').length}</p>
         </div>
       </div>
 
@@ -781,12 +804,22 @@ export default function BonsDeSortie({
 
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* Voir / Aperçu Détails */}
                           <button
                             onClick={() => { setSelectedBS(bs); setIsDetailModalOpen(true); }}
                             className="p-1.5 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
-                            title="Voir / Imprimer Bon de Sortie"
+                            title="Voir le détail du document"
                           >
                             <span className="material-symbols-outlined text-[18px]">visibility</span>
+                          </button>
+
+                          {/* Imprimer Directement PDF (sans aperçu modal) */}
+                          <button
+                            onClick={() => generateStockExitPdf(bs, projets.find(p => p.id === bs.projetId) || projets[0])}
+                            className="p-1.5 text-purple-600 hover:text-white hover:bg-purple-600 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                            title="Imprimer / Télécharger PDF A4 Directement"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">print</span>
                           </button>
 
                           {currentUser.role !== 'comptable' && !bs.isStockDecremented && bs.statut !== 'ANNULÉ' && (
@@ -813,58 +846,66 @@ export default function BonsDeSortie({
       {/* MODAL 1: Nouveau Bon de Sortie (BS) */}
       {isNewModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 space-y-6 p-6 sm:p-8 animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-100 space-y-6 p-6 sm:p-8 animate-in zoom-in-95 duration-200">
             
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <span className="px-3 py-1 bg-purple-100 text-purple-800 font-extrabold text-xs rounded-full uppercase tracking-wider">
-                  {forceMotif === 'Transfert' ? 'Nouveau Transfert' : 'Nouveau Bon de Sortie (BS)'}
-                </span>
-                <h2 className="text-xl font-bold text-slate-900 mt-1">
-                  {forceMotif === 'Transfert' ? 'Création d\'un Transfert de Stock' : 'Création d\'une Demande de Sortie de Stock'}
-                </h2>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-5">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shadow-md">
+                  <span className="material-symbols-outlined text-[24px]">
+                    {forceMotif === 'Transfert' ? 'swap_horiz' : 'outbox'}
+                  </span>
+                </div>
+                <div>
+                  <span className="px-3 py-0.5 bg-purple-100 text-purple-800 font-extrabold text-[11px] rounded-full uppercase tracking-wider">
+                    {forceMotif === 'Transfert' ? 'Nouveau Transfert UGS' : 'Nouveau Bon de Sortie (BS)'}
+                  </span>
+                  <h2 className="text-xl font-extrabold text-slate-900 mt-0.5">
+                    {forceMotif === 'Transfert' ? 'Création d\'un Transfert de Stock & Services' : 'Création d\'une Demande de Sortie de Stock'}
+                  </h2>
+                </div>
               </div>
-              <button type="button" onClick={() => setIsNewModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-xl">
-                <span className="material-symbols-outlined">close</span>
+              <button type="button" onClick={() => setIsNewModalOpen(false)} className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer">
+                <span className="material-symbols-outlined text-[20px]">close</span>
               </button>
             </div>
 
             <form onSubmit={handleCreateBS} className="space-y-6">
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* General Info Card */}
+              <div className="bg-slate-50/80 border border-slate-200/60 rounded-2xl p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Demandeur Interne *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Demandeur Interne *</label>
                   <input
                     type="text"
                     required
                     value={newDemandeur}
                     onChange={e => setNewDemandeur(e.target.value)}
                     placeholder="Ex: Sami Ben Amor (Technicien)"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Service / Département *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Service / Département *</label>
                   <input
                     type="text"
                     required
                     value={newService}
                     onChange={e => setNewService(e.target.value)}
-                    placeholder="Ex: Maintenance / Service Après-Vente"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                    placeholder="Ex: Maintenance / SAV"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Entrepôt Source *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Entrepôt Source *</label>
                   <select
                     value={newProjetId}
                     onChange={e => setNewProjetId(e.target.value)}
                     required
                     disabled={forceMotif === 'Transfert'}
-                    className={`w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold ${forceMotif === 'Transfert' ? 'text-slate-500 cursor-not-allowed' : 'text-slate-800'} focus:outline-none focus:ring-2 focus:ring-purple-500/20`}
+                    className={`w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold ${forceMotif === 'Transfert' ? 'text-slate-500 cursor-not-allowed bg-slate-100' : 'text-slate-800'} focus:outline-none focus:ring-2 focus:ring-purple-500/30`}
                   >
                     {projets.map(p => (
                       <option key={p.id} value={p.id}>{p.nom}</option>
@@ -874,17 +915,17 @@ export default function BonsDeSortie({
 
               </div>
 
-              {/* Motif Obligatoire */}
-              <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-3">
+              {/* Motif & Destination Card */}
+              <div className="bg-gradient-to-br from-indigo-50/60 to-purple-50/50 border border-indigo-200/60 rounded-2xl p-5 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {!forceMotif && (
                     <div>
-                      <label className="block text-xs font-bold text-purple-900 mb-1">Motif Obligatoire de Sortie *</label>
+                      <label className="block text-xs font-bold text-indigo-950 mb-1.5">Motif Obligatoire de Sortie *</label>
                       <select
                         value={newMotif}
                         onChange={e => setNewMotif(e.target.value as MotifSortieBS)}
                         required
-                        className="w-full px-3.5 py-2.5 bg-white border border-purple-300 rounded-xl text-xs font-bold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                        className="w-full px-3.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 shadow-xs"
                       >
                         {MOTIFS_LIST.map(m => (
                           <option key={m} value={m}>{m}</option>
@@ -894,7 +935,7 @@ export default function BonsDeSortie({
                   )}
 
                   <div className={forceMotif ? "col-span-2" : ""}>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                    <label className="block text-xs font-bold text-indigo-950 mb-1.5">
                       Justification / Responsable
                       {newMotif === 'Autre' && <span className="text-rose-600 font-bold"> * Obligatoire</span>}
                     </label>
@@ -903,16 +944,16 @@ export default function BonsDeSortie({
                       required={newMotif === 'Autre'}
                       value={newMotifJustification}
                       onChange={e => setNewMotifJustification(e.target.value)}
-                      placeholder={forceMotif === 'Transfert' ? 'Ex: Réapprovisionnement régulier de la boutique...' : 'Ex: Remplacement pièce défectueuse sur machine 3...'}
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800"
+                      placeholder={forceMotif === 'Transfert' ? 'Ex: Réapprovisionnement régulier de la boutique...' : 'Ex: Remplacement pièce défectueuse...'}
+                      className="w-full px-3.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-xs font-medium text-slate-800 shadow-xs"
                     />
                   </div>
                 </div>
 
                 {/* Si Motif est Transfert: Sélection Boutique Destinataire */}
                 {newMotif === 'Transfert' && (
-                  <div className="p-3.5 bg-white rounded-xl border border-indigo-200 space-y-2">
-                    <div className="flex items-center gap-2 text-indigo-900 font-extrabold text-xs">
+                  <div className="p-4 bg-white rounded-xl border border-indigo-200 shadow-sm space-y-2">
+                    <div className="flex items-center gap-2 text-indigo-950 font-black text-xs">
                       <span className="material-symbols-outlined text-[18px] text-indigo-600">storefront</span>
                       <span>Destination du Transfert (Société UGS ➔ Boutique) :</span>
                     </div>
@@ -920,7 +961,7 @@ export default function BonsDeSortie({
                       <select
                         value={newDestinationBoutiqueId}
                         onChange={e => setNewDestinationBoutiqueId(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-indigo-50/50 border border-indigo-300 rounded-xl text-xs font-bold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full px-3.5 py-2.5 bg-indigo-50/60 border border-indigo-300 rounded-xl text-xs font-bold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                       >
                         {projets.filter(p => p.id !== newProjetId).map(p => (
                           <option key={p.id} value={p.id}>
@@ -928,24 +969,23 @@ export default function BonsDeSortie({
                           </option>
                         ))}
                       </select>
-                      
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Fast Scanner */}
-              <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center shrink-0">
+              {/* Fast Scanner Card */}
+              <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-4 rounded-2xl text-white shadow-lg flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="w-10 h-10 bg-white/10 text-indigo-300 rounded-xl flex items-center justify-center shrink-0 border border-white/10">
                   <span className="material-symbols-outlined">barcode_scanner</span>
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs font-bold text-indigo-900 block mb-1">Scan Rapide Code-barres</label>
+                  <label className="text-xs font-bold text-indigo-200 block mb-1">Scan Rapide Code-barres</label>
                   <div className="flex gap-2">
                     <input 
                       type="text" 
                       placeholder="Scannez ou saisissez un code et appuyez sur Entrée..." 
-                      className="flex-1 px-3 py-2 bg-white border border-indigo-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                      className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-xs text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-indigo-400" 
                       value={scannerInput}
                       onChange={(e) => setScannerInput(e.target.value)}
                       onKeyDown={(e) => {
@@ -958,16 +998,16 @@ export default function BonsDeSortie({
                     <button
                       type="button"
                       onClick={() => handleProcessScan(scannerInput)}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-sm transition-colors"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
                     >
                       Ajouter
                     </button>
                     <button
                       type="button"
                       onClick={() => setIsScannerOpen(true)}
-                      className="px-4 py-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold rounded-lg text-sm transition-colors flex items-center gap-2"
+                      className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer border border-white/10"
                     >
-                      <span className="material-symbols-outlined text-[18px]">photo_camera</span>
+                      <span className="material-symbols-outlined text-[16px]">photo_camera</span>
                       Caméra
                     </button>
                   </div>
@@ -977,18 +1017,21 @@ export default function BonsDeSortie({
               {/* Line Items with Stock Checks */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-extrabold text-sm text-slate-900">Articles à faire sortir</h3>
+                  <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-purple-600 text-[18px]">list_alt</span>
+                    Articles à faire sortir
+                  </h3>
                   <button
                     type="button"
                     onClick={handleAddLine}
-                    className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl transition-colors flex items-center gap-1"
+                    className="px-3.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[16px]">add</span>
                     Ajouter une ligne
                   </button>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {newLignes.map((l, idx) => {
                     const art = articles.find(a => a.id === l.articleId);
                     const stockAvail = art ? getAvailableStock(art.id, newProjetId) : 0;
@@ -996,9 +1039,9 @@ export default function BonsDeSortie({
                     const isOver = qte > stockAvail;
 
                     return (
-                      <div key={idx} className={`p-3.5 rounded-xl border transition-all grid grid-cols-1 sm:grid-cols-12 gap-3 items-center ${isOver ? 'bg-rose-50/80 border-rose-300' : 'bg-slate-50 border-slate-200'}`}>
+                      <div key={idx} className={`p-4 rounded-2xl border transition-all grid grid-cols-1 sm:grid-cols-12 gap-3 items-center ${isOver ? 'bg-rose-50/80 border-rose-300 shadow-sm' : 'bg-slate-50/90 border-slate-200/80 shadow-xs'}`}>
                         <div className="sm:col-span-5">
-                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article</label>
+                          <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide mb-1">Article</label>
                           <SearchableArticleSelect
                             articles={articles}
                             value={l.articleId}
@@ -1013,14 +1056,14 @@ export default function BonsDeSortie({
                         </div>
 
                         <div className="sm:col-span-2 text-center">
-                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Stock Dispo</label>
-                          <span className={`text-xs font-extrabold px-2 py-1 rounded-lg block ${stockAvail > 0 ? 'bg-slate-200 text-slate-800' : 'bg-rose-200 text-rose-900'}`}>
+                          <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide mb-1">Stock Dispo</label>
+                          <span className={`text-xs font-extrabold px-2.5 py-1.5 rounded-xl block ${stockAvail > 0 ? 'bg-slate-200/80 text-slate-800' : 'bg-rose-200 text-rose-900'}`}>
                             {stockAvail}
                           </span>
                         </div>
 
                         <div className="sm:col-span-2">
-                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Qté Sortie</label>
+                          <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide mb-1">Qté Sortie</label>
                           <input
                             type="number"
                             min="1"
@@ -1030,13 +1073,13 @@ export default function BonsDeSortie({
                               updated[idx].qteDemandee = Number(e.target.value);
                               setNewLignes(updated);
                             }}
-                            className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900"
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 shadow-xs"
                           />
                         </div>
 
                         <div className="sm:col-span-2 text-center">
-                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Stock Après</label>
-                          <span className={`text-xs font-extrabold px-2 py-1 rounded-lg block ${isOver ? 'bg-rose-600 text-white animate-pulse' : 'bg-emerald-100 text-emerald-800'}`}>
+                          <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide mb-1">Stock Après</label>
+                          <span className={`text-xs font-extrabold px-2.5 py-1.5 rounded-xl block ${isOver ? 'bg-rose-600 text-white animate-pulse' : 'bg-emerald-100 text-emerald-800'}`}>
                             {stockAvail - qte}
                           </span>
                         </div>
@@ -1046,7 +1089,8 @@ export default function BonsDeSortie({
                             <button
                               type="button"
                               onClick={() => handleRemoveLine(idx)}
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors mt-3"
+                              className="p-2 text-rose-500 hover:bg-rose-100/60 rounded-xl transition-colors cursor-pointer mt-4"
+                              title="Supprimer la ligne"
                             >
                               <span className="material-symbols-outlined text-[18px]">delete</span>
                             </button>
@@ -1059,32 +1103,33 @@ export default function BonsDeSortie({
               </div>
 
               {/* Negative stock override */}
-              <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl border border-amber-200">
+              <div className="flex items-center gap-2.5 p-3.5 bg-amber-50/80 rounded-2xl border border-amber-200">
                 <input
                   type="checkbox"
                   id="negativeOverride"
                   checked={allowNegativeStock}
                   onChange={e => setAllowNegativeStock(e.target.checked)}
-                  className="w-4 h-4 text-purple-600 rounded"
+                  className="w-4 h-4 text-purple-600 rounded cursor-pointer"
                 />
-                <label htmlFor="negativeOverride" className="text-xs text-amber-900 font-semibold cursor-pointer">
+                <label htmlFor="negativeOverride" className="text-xs text-amber-900 font-bold cursor-pointer">
                   Autoriser exceptionnellement un ajustement en stock négatif (Trace inscrite au journal d'audit)
                 </label>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-3 pt-5 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsNewModalOpen(false)}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                  className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors cursor-pointer"
+                  className="px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-purple-600/20 transition-all cursor-pointer flex items-center gap-2"
                 >
-                  Enregistrer Demande de Sortie (BS)
+                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                  <span>Enregistrer Demande de Sortie (BS)</span>
                 </button>
               </div>
 

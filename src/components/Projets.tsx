@@ -68,6 +68,7 @@ export function Projets({
     rib: '',
   });
 
+  const isSuperAdmin = currentUser?.role === 'super_admin';
   const isAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'directeur';
   const allowedProjets = isAdmin 
     ? projets 
@@ -218,7 +219,7 @@ export function Projets({
           </p>
         </div>
 
-        {isAdmin && (
+        {isSuperAdmin && (
           <button 
             onClick={handleOpenAddModal}
             className="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-all shadow-md hover:shadow-indigo-500/20 cursor-pointer gap-2"
@@ -412,7 +413,7 @@ export function Projets({
                     )}
 
                     <div className="flex items-center gap-1 ml-auto">
-                      {isAdmin && (
+                      {isSuperAdmin && (
                         <>
                           <button
                             type="button"
@@ -503,7 +504,7 @@ export function Projets({
                           Accéder
                         </button>
                       )}
-                      {isAdmin && (
+                      {isSuperAdmin && (
                         <>
                           <button
                             onClick={(e) => handleOpenEditModal(projet, e)}

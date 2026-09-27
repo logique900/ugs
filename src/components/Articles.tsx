@@ -5,6 +5,7 @@ import { Article, Projet, HistoriqueModification, Role } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { CameraBarcodeScannerModal } from './CameraBarcodeScannerModal';
 
 import { Utilisateur } from '../types';
 
@@ -18,6 +19,7 @@ interface ArticlesProps {
 
 export function Articles({ currentUser, selectedProjectId, articles, onArticlesChange, projets }: ArticlesProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
   const [printLabelArticle, setPrintLabelArticle] = useState<Article | null>(null);
   const [familleFilter, setFamilleFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
@@ -32,16 +34,16 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
   // Gestion des permissions (Admin, Comptable, Caissier)
   const activeRole: Role = currentUser.role || 'admin';
 
-  const isAdmin = activeRole === 'admin' || activeRole === 'directeur';
+  const isAdmin = activeRole === 'admin' || activeRole === 'directeur' || activeRole === 'super_admin';
   const isComptable = activeRole === 'comptable';
-  const isCaissier = activeRole === 'caissier' || activeRole === 'agent' || activeRole === 'chef_projet';
+  const isCaissier = activeRole === 'caissier';
 
-  // Matrice des permissions
-  const canAddProduct = isAdmin || isCaissier;
-  const canEditProduct = isAdmin || isCaissier;
-  const canDeactivateProduct = isAdmin;
-  const canEditPrices = isAdmin || isCaissier;
-  const canManageCategories = isAdmin || isCaissier;
+  // Matrice des permissions : Le caissier peut SEULEMENT consulter les articles sans modifications
+  const canAddProduct = !isCaissier && (isAdmin || activeRole === 'agent' || activeRole === 'chef_projet');
+  const canEditProduct = !isCaissier && (isAdmin || activeRole === 'agent' || activeRole === 'chef_projet');
+  const canDeactivateProduct = !isCaissier && isAdmin;
+  const canEditPrices = !isCaissier && isAdmin;
+  const canManageCategories = !isCaissier && isAdmin;
   const canViewPurchasePrice = isAdmin || isComptable;
   const canViewMargins = isAdmin || isComptable;
   const canViewSellingPrice = true;
@@ -763,7 +765,7 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
           </button>
           
           {/* Category Management Button */}
-          {canManageCategories ? (
+          {canManageCategories && (
             <button 
               onClick={() => setIsCategoryModalOpen(true)}
               className="inline-flex items-center justify-center px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-label-md text-label-md transition-colors shadow-sm cursor-pointer"
@@ -771,34 +773,16 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
               <span className="material-symbols-outlined text-[18px] mr-2">category</span>
               Catégories
             </button>
-          ) : (
-            <button 
-              disabled
-              className="inline-flex items-center justify-center px-4 py-2.5 bg-slate-200 text-slate-400 rounded-lg font-label-md text-label-md cursor-not-allowed border border-slate-300 opacity-60"
-              title="Réservé à l'administrateur"
-            >
-              <span className="material-symbols-outlined text-[18px] mr-2">lock</span>
-              Catégories (Verrouillé)
-            </button>
           )}
 
           {/* New Article Button */}
-          {canAddProduct ? (
+          {canAddProduct && (
             <button 
               onClick={handleOpenAddModal}
               className="inline-flex items-center justify-center px-4 py-2.5 bg-primary hover:bg-red-700 text-white rounded-lg font-label-md text-label-md transition-colors shadow-sm cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px] mr-2">add</span>
               Nouvel Article
-            </button>
-          ) : (
-            <button 
-              disabled
-              className="inline-flex items-center justify-center px-4 py-2.5 bg-slate-200 text-slate-400 rounded-lg font-label-md text-label-md cursor-not-allowed border border-slate-300 opacity-60"
-              title="Réservé à l'administrateur"
-            >
-              <span className="material-symbols-outlined text-[18px] mr-2">lock</span>
-              Nouvel Article (Verrouillé)
             </button>
           )}
         </div>
@@ -892,24 +876,36 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
         {/* Filters Toolbar & Search */}
         <div className="p-4 border-b border-outline-variant bg-surface flex flex-col gap-3">
           <div className="flex flex-col lg:flex-row items-center gap-4">
-            <div className="relative flex-1 w-full">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
-              <input
-                type="text"
-                placeholder="Rechercher par nom, référence ou code-barres..."
-                className="block w-full pl-10 pr-10 py-2.5 border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest text-on-surface font-body-md transition-shadow shadow-2xs"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              {searchTerm && (
-                <button 
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
-                  title="Effacer la recherche"
-                >
-                  <span className="material-symbols-outlined text-[18px]">close</span>
-                </button>
-              )}
+            <div className="flex items-center gap-2 flex-1 w-full">
+              <div className="relative flex-1">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
+                <input
+                  type="text"
+                  placeholder="Rechercher par nom, référence ou code-barres..."
+                  className="block w-full pl-10 pr-10 py-2.5 border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest text-on-surface font-body-md transition-shadow shadow-2xs"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                {searchTerm && (
+                  <button 
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                    title="Effacer la recherche"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsCameraScannerOpen(true)}
+                className="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm shrink-0 cursor-pointer active:scale-95"
+                title="Scanner un code-barres par caméra smartphone"
+              >
+                <span className="material-symbols-outlined text-[18px] text-amber-400">qr_code_scanner</span>
+                <span className="hidden sm:inline">Scanner</span>
+              </button>
             </div>
             
             <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
@@ -3084,6 +3080,18 @@ export function Articles({ currentUser, selectedProjectId, articles, onArticlesC
         <PrintLabelModal
           article={printLabelArticle}
           onClose={() => setPrintLabelArticle(null)}
+        />
+      )}
+
+      {/* CAMERA BARCODE SCANNER MODAL */}
+      {isCameraScannerOpen && (
+        <CameraBarcodeScannerModal
+          articles={articles}
+          title="Recherche & Scan d'Article par Caméra"
+          onScanSuccess={(code) => {
+            setSearchTerm(code);
+          }}
+          onClose={() => setIsCameraScannerOpen(false)}
         />
       )}
     </div>
